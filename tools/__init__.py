@@ -5,6 +5,7 @@ from .esmfold import predict_structure
 from .stability import analyze_stability
 from .variants import design_variants
 from .compare import compare_variants
+from .mpnn import design_variants_mpnn
 
 __all__ = [
     "search_literature",
@@ -14,4 +15,5 @@ __all__ = [
     "analyze_stability",
     "design_variants",
     "compare_variants",
+    "design_variants_mpnn",
 ]

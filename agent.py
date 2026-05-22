@@ -1,7 +1,12 @@
 """
-Agente Científico CRIZA v1.1-0
+Agente Científico CRIZA v1.2-0
 Analiza viabilidad técnica de producir proteínas por fermentación microbiana
 y diseña variantes termoestables para aplicaciones de procesamiento.
+
+Changelog v1.2-0:
+- SEB-77: design_variants_mpnn — diseño ML de variantes via ProteinMPNN
+  (Dauparas et al., Science 2022). Requiere PROTEINMPNN_PATH en .env.
+  Complementa (no reemplaza) design_variants rule-based.
 
 Changelog v1.1-0:
 - Migración search_pubmed → search_literature (Semantic Scholar)
@@ -20,6 +25,7 @@ from tools import (
     analyze_stability,
     design_variants,
     compare_variants,
+    design_variants_mpnn,
 )
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
@@ -230,6 +236,54 @@ TOOLS = [
             "required": ["wildtype_sequence", "wildtype_plddt", "variants", "protein_name"],
         },
     },
+    {
+        "name": "design_variants_mpnn",
+        "description": (
+            "Design protein sequence variants from structure using ProteinMPNN (ML-based).\n"
+            "Use AFTER predict_structure — requires the pdb_path from that output.\n"
+            "ProteinMPNN (Dauparas et al., Science 2022) generates sequences optimized\n"
+            "for structural compatibility via a message-passing neural network.\n"
+            "Unlike design_variants (rule-based), explores the full sequence space —\n"
+            "may find non-obvious thermostabilizing mutations.\n"
+            "\n"
+            "REQUIRES: PROTEINMPNN_PATH set in .env + PyTorch installed.\n"
+            "If not configured, returns setup instructions. Fallback: use design_variants.\n"
+            "\n"
+            "Workflow integration:\n"
+            "  Option A (rule-based only): design_variants → compare_variants\n"
+            "  Option B (ML-based only):   design_variants_mpnn → compare_variants\n"
+            "  Option C (best coverage):   design_variants + design_variants_mpnn → compare_variants\n"
+            "\n"
+            "Temperature guide:\n"
+            "  0.1 → conservative (close to native-like, high accuracy)\n"
+            "  0.3 → balanced (recommended for exploration)\n"
+            "  1.0 → maximum diversity (broad sequence space)"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pdb_path": {
+                    "type": "string",
+                    "description": "Path to PDB file from predict_structure output (use the 'pdb_path' field)",
+                },
+                "protein_name": {
+                    "type": "string",
+                    "description": "Protein name for reference",
+                },
+                "n_sequences": {
+                    "type": "integer",
+                    "description": "Number of sequences to generate (default 10, max 50)",
+                    "default": 10,
+                },
+                "temperature": {
+                    "type": "number",
+                    "description": "Sampling temperature: 0.1 (conservative) to 1.0 (diverse). Default 0.1.",
+                    "default": 0.1,
+                },
+            },
+            "required": ["pdb_path", "protein_name"],
+        },
+    },
 ]
 
 # ──────────────────────────────────────────────
@@ -260,8 +314,11 @@ WORKFLOW OBLIGATORIO v1.1 — seguir este orden:
 4. STABILITY: correr analyze_stability con la secuencia y per_residue_plddt de ESMFold
    → identifica regiones débiles y estrategias de ingeniería
 5. VARIANTS: correr design_variants con la secuencia completa y las weak_regions
-   → genera candidatas termoestables
-6. COMPARE: correr compare_variants con top 3-5 candidatas
+   → genera candidatas termoestables (rule-based: prolinas, consenso, combinadas)
+   OPCIONAL: si PROTEINMPNN_PATH está configurado, correr también design_variants_mpnn
+   con el pdb_path de ESMFold para candidatas ML-based adicionales.
+   Si design_variants_mpnn falla por falta de setup, continuar con las rule-based.
+6. COMPARE: correr compare_variants con top 3-5 candidatas (rule-based y/o MPNN)
    → valida computacionalmente cuáles son mejores que el wildtype
 7. BRIEF: sintetizar el output final
 
@@ -335,6 +392,13 @@ def dispatch_tool(name: str, inputs: dict) -> str:
             protein_name=inputs["protein_name"],
             max_variants=inputs.get("max_variants", 5),
         )
+    elif name == "design_variants_mpnn":
+        result = design_variants_mpnn(
+            pdb_path=inputs["pdb_path"],
+            protein_name=inputs["protein_name"],
+            n_sequences=inputs.get("n_sequences", 10),
+            temperature=inputs.get("temperature", 0.1),
+        )
     else:
         result = {"error": f"Unknown tool: {name}"}
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -357,7 +421,7 @@ def run_agent(user_input: str, verbose: bool = True) -> str:
     """
     if verbose:
         print("\n" + "=" * 60)
-        print("  AGENTE CIENTIFICO CRIZA v1.1-0")
+        print("  AGENTE CIENTIFICO CRIZA v1.2-0")
         print("=" * 60 + "\n")
 
     messages = [{"role": "user", "content": user_input}]
