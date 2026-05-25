@@ -119,6 +119,42 @@ Cuando `core` exista, `scientific` lo llamará via HTTP — el dev no necesita v
 
 ---
 
+## ADR-007 — Herramientas opcionales con fallback graceful
+
+**Fecha:** Mayo 2026  
+**Estado:** Activo
+
+**Contexto:**  
+ProteinMPNN y FoldX requieren instalación manual y, en el caso de FoldX, registro en un sitio externo. No pueden incluirse en `requirements.txt` ni instalarse automáticamente. El agente no puede depender de su presencia para funcionar.
+
+**Opciones evaluadas:**
+- Hacer las herramientas obligatorias — rompe el pipeline si no están instaladas
+- Omitirlas del agente — el agente pierde capacidades
+- Integrarlas con fallback graceful — el agente las usa si están disponibles, continúa sin ellas si no lo están
+
+**Decisión:** Fallback graceful
+
+**Implementación:**
+```python
+def design_variants_mpnn(pdb_path, protein_name, ...):
+    mpnn_path = _find_proteinmpnn()
+    if not mpnn_path:
+        return {
+            "success": False,
+            "setup_instructions": "...",
+            "fallback": "Usar design_variants() rule-based"
+        }
+    # ... resto de la lógica
+```
+
+**Razón:**  
+El pipeline base (sin ProteinMPNN ni FoldX) es ya científicamente válido. Las herramientas opcionales mejoran la calidad del análisis pero no son prerequisito. Bloquear el pipeline por software no instalado sería un error de UX. El agente reporta en el brief cuando una herramienta no estaba disponible.
+
+**Consecuencias:**  
+El system prompt instruye al agente a intentar las herramientas opcionales y reportar su resultado en el brief. `.env.example` documenta cómo instalar cada herramienta opcional.
+
+---
+
 ## ADR-006 — Variantes proteicas como hipótesis computacionales
 
 **Fecha:** Mayo 2026  

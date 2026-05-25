@@ -6,13 +6,14 @@
 
 ---
 
-## Estado actual: v1 ✅
+## Estado actual: v1.3 ✅
 
 **Fecha de entrega:** Mayo 2026  
-**Protocolo completo:**
+**Pipeline completo:**
 ```
-PubMed (literatura) → UniProt (secuencia) → ESMFold (estructura + PDB)
-→ analyze_stability (regiones débiles) → design_variants (candidatas)
+Semantic Scholar (literatura) → UniProt (secuencia) → ESMFold (estructura + PDB)
+→ analyze_stability (regiones débiles) → design_variants (candidatas rule-based)
+→ [design_variants_mpnn] (ML, opcional) → [predict_tm_change] (FoldX, opcional)
 → compare_variants (validación computacional) → Brief técnico
 ```
 
@@ -20,93 +21,33 @@ PubMed (literatura) → UniProt (secuencia) → ESMFold (estructura + PDB)
 
 | Tool | Archivo | Estado | API / Método |
 |---|---|---|---|
-| `search_pubmed` | `tools/pubmed.py` | ✅ Producción | NCBI E-utilities |
+| `search_literature` | `tools/semantic_scholar.py` | ✅ Producción | Semantic Scholar API |
 | `get_protein_sequence` | `tools/uniprot.py` | ✅ Producción | UniProt REST |
-| `predict_structure` | `tools/esmfold.py` | ✅ Producción | ESM Atlas API (Meta) |
+| `predict_structure` | `tools/esmfold.py` | ✅ Producción | ESM Atlas API (Meta) — 200aa |
 | `analyze_stability` | `tools/stability.py` | ✅ Producción | Sin API — análisis pLDDT |
-| `design_variants` | `tools/variants.py` | ✅ Producción | Rule-based (ver nota) |
+| `design_variants` | `tools/variants.py` | ✅ Producción | Rule-based (prolina, consenso) |
 | `compare_variants` | `tools/compare.py` | ✅ Producción | ESMFold sobre variantes |
+| `design_variants_mpnn` | `tools/mpnn.py` | ✅ Listo (opcional) | ProteinMPNN subprocess |
+| `predict_tm_change` | `tools/foldx.py` | ✅ Listo (opcional) | FoldX CLI subprocess |
 
-**Nota sobre `design_variants`:** Implementación actual es rule-based (sustituciones de prolina, mutaciones de consenso, combinadas). Funciona y produce variantes validadas científicamente. La mejora a ProteinMPNN (ML) está planificada para v1.1.
+**Nota sobre herramientas opcionales:** `design_variants_mpnn` y `predict_tm_change` requieren software externo instalado (`PROTEINMPNN_PATH` y `FOLDX_PATH` en `.env`). Si no están configuradas, retornan `success=False` con instrucciones de setup — no interrumpen el análisis.
 
----
+### Tests
 
-## v1.1 — Pendiente 🔲
-
-### [v1.1-0] Migrar search_pubmed → Semantic Scholar
-
-**Por qué:** CRIZA apunta a ser multi-rubro (biotecnología, agricultura, agroindustria, materiales, etc.). PubMed cubre bien ciencias biomédicas pero tiene cobertura parcial fuera de ese dominio. Semantic Scholar cubre 200M+ papers de todos los dominios científicos, incluyendo todo PubMed.
-
-**Implementación:**
-```python
-# tools/semantic_scholar.py — reemplaza tools/pubmed.py
-# API gratuita: https://api.semanticscholar.org/graph/v1/paper/search
-# Misma interfaz que search_pubmed() para compatibilidad
-def search_literature(query: str, max_results: int = 10) -> dict:
-    ...
-```
-
-**Impacto en agent.py:** cambiar import + nombre del tool. El workflow y el prompt no cambian.
-
-**Prioridad:** Alta — cambio simple con alto impacto en cobertura
+| Suite | Tests | Estado |
+|---|---|---|
+| Unit tests | 80 tests | ✅ Todos pasando (`pytest`) |
+| Integration tests | 24 tests | ✅ Disponibles (`pytest -m integration`) |
 
 ---
 
-### [v1.1-A] Integrar ProteinMPNN para diseño de variantes basado en ML
+## v1.4 — Pendiente 🔲
 
-**Por qué importa:** La versión actual de `design_variants` usa reglas basadas en conocimiento publicado (bien validadas, pero limitadas en diversidad). ProteinMPNN explora el espacio de secuencias de forma más amplia y puede descubrir variantes no obvias.
+### [SEB-79] ESMFold local — secuencias completas
 
-**Estado actual del problema:** ProteinMPNN no tiene instalación pip estándar — es un repo de scripts (`github.com/dauparas/ProteinMPNN`). Opciones:
-1. Clonar repo y llamar como subprocess (más simple)
-2. Usar ESM-IF1 via `fair-esm` pip package (alternativa Meta)
-3. API de Hugging Face si algún modelo está hosteado
+**Por qué:** Actualmente analizamos solo los primeros 200 aa por limitaciones de la API pública. Proteínas largas (lactoferrina: 708 aa) se analizan parcialmente.
 
-**Input necesario:** Archivo PDB de la estructura (ya lo generamos y guardamos en `structures/` desde v1)
-
-**Implementación sugerida:**
-```python
-# tools/mpnn.py
-def design_variants_mpnn(pdb_path: str, protein_name: str, n_sequences: int = 20) -> dict:
-    # Corre ProteinMPNN sobre el PDB
-    # Retorna N secuencias diseñadas con scores
-    # El agente luego corre compare_variants sobre las top 5
-```
-
-**Prioridad:** Alta — es la mejora de mayor impacto técnico para v2
-
----
-
-### [v1.1-B] Predicción de Tm (temperatura de desnaturalización)
-
-**Por qué importa:** Actualmente el agente encuentra Tm en PubMed cuando está publicado, pero no puede predecir Tm de variantes diseñadas. Para decir "esta variante aguanta X°C" necesitamos cálculo computacional.
-
-**Opciones evaluadas:**
-- **FoldX:** Más preciso, calcula ΔΔG de mutaciones → estima cambio de Tm. Requiere instalación local y registro (gratuito para académicos). Tiene CLI que se puede llamar desde Python.
-- **DynaMut / mCSM:** Web servers, sin API REST documentada — difícil de automatizar.
-- **Aproximación actual:** Usamos delta pLDDT como proxy + Tm de literatura. Funciona pero no es directo.
-
-**Implementación sugerida:**
-```python
-# tools/foldx.py
-def predict_tm_change(wildtype_pdb: str, mutations: list[dict]) -> dict:
-    # Corre FoldX BuildModel + Stability
-    # Retorna ΔΔG y estimación de ΔTm
-```
-
-**Prerequisito:** Instalar FoldX en el entorno de ejecución
-
----
-
-### [v1.1-C] Expandir ESMFold a secuencias completas
-
-**Por qué importa:** Actualmente analizamos solo los primeros 200 aa por limitaciones de la API pública de ESM Atlas. Proteínas largas (lactoferrina: 708 aa) se analizan parcialmente.
-
-**Solución:** Correr ESMFold localmente (modelo open-source disponible via `fair-esm`)
-```bash
-pip install fair-esm torch
-```
-
-**Implementación sugerida:**
+**Solución:** Correr ESMFold localmente via `fair-esm`
 ```python
 # tools/esmfold_local.py
 def predict_structure_local(sequence: str, protein_name: str) -> dict:
@@ -114,7 +55,11 @@ def predict_structure_local(sequence: str, protein_name: str) -> dict:
     # Misma interfaz que predict_structure() para compatibilidad
 ```
 
-**Prerequisito:** GPU recomendada para secuencias largas (o CPU con ~20-30 min de cómputo)
+**Estado:** 🔴 **Bloqueado** — decisión de infraestructura GPU pendiente con Pablo (Mayo 2026)
+
+**Prerequisito:** GPU recomendada (Lambda Labs A10 24GB, ~$0.60/hr). Sin GPU, el cómputo toma 20-30 min por secuencia en CPU.
+
+Ver documento: `C:\Users\sebab\Documents\Plataformas\KRIZA\infraestructura_computacional_etapas.md`
 
 ---
 
@@ -142,17 +87,15 @@ def predict_structure_local(sequence: str, protein_name: str) -> dict:
 
 **Qué es:** AlphaFold 3 predice interacciones proteína-ligando, proteína-ADN, proteína-proteína — más relevante que ESMFold para casos donde la función depende de un cofactor.
 
-**Limitación actual:** AF3 no tiene API programática pública. Accesible solo via web server manual (alphafoldserver.com).
+**Limitación actual:** AF3 no tiene API programática pública. Accesible solo via web server manual (alphafoldserver.com). Código local disponible pero requiere GPU 40GB.
 
-**Prerequisito:** API programática de AF3 (en desarrollo por DeepMind/Google)
+**Prerequisito:** Lambda Labs A100 40GB (Etapa 2 de infraestructura)
 
 ---
 
 ### [v2-D] Análisis económico integrado
 
-**Qué es:** El agente calcula automáticamente COGS (costo de producción por kg), margen estimado y payback period para cada proteína analizada.
-
-**Input:** Precios de reactivos, costo de energía, amortización de equipos, precio de mercado del producto.
+**Qué es:** El agente calcula automáticamente COGS, margen estimado y payback period para cada proteína analizada.
 
 ---
 
@@ -161,6 +104,9 @@ def predict_structure_local(sequence: str, protein_name: str) -> dict:
 | Versión | Fecha | Cambios principales |
 |---|---|---|
 | v0 | Mayo 2026 | PubMed + UniProt + ESMFold. Brief técnico básico. |
-| v1 | Mayo 2026 | + analyze_stability + design_variants + compare_variants. PDB persistido. Brief incluye Tm y variantes diseñadas. |
-| v1.1 | Pendiente | ProteinMPNN + FoldX + ESMFold local |
-| v2 | Pendiente | Knowledge Module + multi-proteína + AF3 |
+| v1 | Mayo 2026 | + analyze_stability + design_variants + compare_variants. PDB persistido. |
+| v1.1 | Mayo 2026 | Migración a Semantic Scholar. Coverage multi-dominio (200M+ papers). |
+| v1.2 | Mayo 2026 | + design_variants_mpnn (ProteinMPNN). + predict_tm_change (FoldX). Herramientas opcionales con fallback graceful. |
+| v1.3 | Mayo 2026 | Suite de tests completa: 80 unit + 24 integration. Reorganización docs/ outputs/. |
+| v1.4 | Pendiente | ESMFold local (SEB-79) — bloqueado por decisión GPU. |
+| v2 | Pendiente | Knowledge Module + multi-proteína + AF3. |
