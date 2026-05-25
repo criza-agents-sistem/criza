@@ -1,7 +1,12 @@
 """
-Agente Científico CRIZA v1.2-0
+Agente Científico CRIZA v1.3-0
 Analiza viabilidad técnica de producir proteínas por fermentación microbiana
 y diseña variantes termoestables para aplicaciones de procesamiento.
+
+Changelog v1.3-0:
+- SEB-78: predict_tm_change — predicción de ΔΔG y ΔTm via FoldX
+  (Schymkowitz et al., 2005). Requiere FOLDX_PATH en .env.
+  Convierte "±3°C estimado" en "-1.8 kcal/mol → ΔTm ≈ +3.1°C" por variante.
 
 Changelog v1.2-0:
 - SEB-77: design_variants_mpnn — diseño ML de variantes via ProteinMPNN
@@ -26,6 +31,7 @@ from tools import (
     design_variants,
     compare_variants,
     design_variants_mpnn,
+    predict_tm_change,
 )
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
@@ -284,6 +290,50 @@ TOOLS = [
             "required": ["pdb_path", "protein_name"],
         },
     },
+    {
+        "name": "predict_tm_change",
+        "description": (
+            "Predict ΔΔG and estimate ΔTm for designed variants using FoldX.\n"
+            "Use AFTER design_variants or design_variants_mpnn.\n"
+            "FoldX computes the thermodynamic free energy change (ΔΔG, kcal/mol)\n"
+            "when mutations are introduced — more precise than pLDDT delta alone.\n"
+            "\n"
+            "Output per variant:\n"
+            "  - ΔΔG (kcal/mol): negative = stabilizing, positive = destabilizing\n"
+            "  - ΔTm estimate (°C): ΔTm ≈ -ΔΔG × 1.7 (±1-2°C uncertainty)\n"
+            "  - Absolute Tm estimate if wildtype_tm is provided\n"
+            "\n"
+            "REQUIRES: FOLDX_PATH set in .env (download from foldxsuite.biocomputing.eu).\n"
+            "No GPU needed. CPU-only, runs in seconds per variant.\n"
+            "If not configured, returns setup instructions. Fallback: compare_variants.\n"
+            "\n"
+            "Best practice: combine with compare_variants for orthogonal evidence:\n"
+            "  - Variants with ΔΔG < -0.5 kcal/mol AND delta_pLDDT > 0 → top wet lab candidates\n"
+            "  - Variants with contradictory signals → test experimentally, uncertain epistasis"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "wildtype_pdb": {
+                    "type": "string",
+                    "description": "Path to wildtype PDB file from predict_structure output (use 'pdb_path' field)",
+                },
+                "variants": {
+                    "type": "array",
+                    "description": "Variants list from design_variants or design_variants_mpnn (use 'variants' key). Each variant must have 'mutations' list.",
+                },
+                "protein_name": {
+                    "type": "string",
+                    "description": "Protein name for reference",
+                },
+                "wildtype_tm": {
+                    "type": "number",
+                    "description": "Known wildtype Tm from literature (°C). Optional — if provided, estimates absolute Tm for each variant.",
+                },
+            },
+            "required": ["wildtype_pdb", "variants", "protein_name"],
+        },
+    },
 ]
 
 # ──────────────────────────────────────────────
@@ -318,8 +368,14 @@ WORKFLOW OBLIGATORIO v1.1 — seguir este orden:
    OPCIONAL: si PROTEINMPNN_PATH está configurado, correr también design_variants_mpnn
    con el pdb_path de ESMFold para candidatas ML-based adicionales.
    Si design_variants_mpnn falla por falta de setup, continuar con las rule-based.
-6. COMPARE: correr compare_variants con top 3-5 candidatas (rule-based y/o MPNN)
-   → valida computacionalmente cuáles son mejores que el wildtype
+6. TM PREDICTION (OPCIONAL): si FOLDX_PATH está configurado, correr predict_tm_change
+   con el wildtype_pdb y las variantes diseñadas.
+   → convierte estimaciones genéricas en ΔΔG específico por variante (kcal/mol) y ΔTm (°C)
+   → usar wildtype_tm de literatura si está disponible para Tm absoluta estimada
+   Si FoldX no está disponible, continuar con compare_variants como validación.
+7. COMPARE: correr compare_variants con top 3-5 candidatas
+   → valida estructuralmente (pLDDT delta). Combinar con FoldX ΔΔG si disponible.
+   Candidatos ideales: ΔΔG < -0.5 kcal/mol Y delta_pLDDT > 0.
 7. BRIEF: sintetizar el output final
 
 OUTPUT REQUERIDO — brief técnico estructurado:
@@ -399,6 +455,13 @@ def dispatch_tool(name: str, inputs: dict) -> str:
             n_sequences=inputs.get("n_sequences", 10),
             temperature=inputs.get("temperature", 0.1),
         )
+    elif name == "predict_tm_change":
+        result = predict_tm_change(
+            wildtype_pdb=inputs["wildtype_pdb"],
+            variants=inputs["variants"],
+            protein_name=inputs["protein_name"],
+            wildtype_tm=inputs.get("wildtype_tm"),
+        )
     else:
         result = {"error": f"Unknown tool: {name}"}
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -421,7 +484,7 @@ def run_agent(user_input: str, verbose: bool = True) -> str:
     """
     if verbose:
         print("\n" + "=" * 60)
-        print("  AGENTE CIENTIFICO CRIZA v1.2-0")
+        print("  AGENTE CIENTIFICO CRIZA v1.3-0")
         print("=" * 60 + "\n")
 
     messages = [{"role": "user", "content": user_input}]

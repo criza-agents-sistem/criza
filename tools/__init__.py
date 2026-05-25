@@ -6,6 +6,7 @@ from .stability import analyze_stability
 from .variants import design_variants
 from .compare import compare_variants
 from .mpnn import design_variants_mpnn
+from .foldx import predict_tm_change
 
 __all__ = [
     "search_literature",
@@ -16,4 +17,5 @@ __all__ = [
     "design_variants",
     "compare_variants",
     "design_variants_mpnn",
+    "predict_tm_change",
 ]
