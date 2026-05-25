@@ -7,12 +7,14 @@ from .variants import design_variants
 from .compare import compare_variants
 from .mpnn import design_variants_mpnn
 from .foldx import predict_tm_change
+from .esmfold_local import predict_structure_local
 
 __all__ = [
     "search_literature",
     "search_pubmed",
     "get_protein_sequence",
     "predict_structure",
+    "predict_structure_local",
     "analyze_stability",
     "design_variants",
     "compare_variants",

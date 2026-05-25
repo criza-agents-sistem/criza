@@ -1,17 +1,21 @@
 """
-Agente Científico CRIZA v1.3-0
+Agente Científico CRIZA v1.4-0
 Analiza viabilidad técnica de producir proteínas por fermentación microbiana
 y diseña variantes termoestables para aplicaciones de procesamiento.
+
+Changelog v1.4-0:
+- SEB-79: predict_structure_local — ESMFold corriendo localmente via fair-esm.
+  Sin límite de longitud, sin timeout, sin API externa.
+  Requiere: pip install fair-esm torch + GPU recomendada (Lambda Labs A10).
+  Fallback automático a predict_structure() (API, 200aa) si no está instalado.
 
 Changelog v1.3-0:
 - SEB-78: predict_tm_change — predicción de ΔΔG y ΔTm via FoldX
   (Schymkowitz et al., 2005). Requiere FOLDX_PATH en .env.
-  Convierte "±3°C estimado" en "-1.8 kcal/mol → ΔTm ≈ +3.1°C" por variante.
 
 Changelog v1.2-0:
 - SEB-77: design_variants_mpnn — diseño ML de variantes via ProteinMPNN
   (Dauparas et al., Science 2022). Requiere PROTEINMPNN_PATH en .env.
-  Complementa (no reemplaza) design_variants rule-based.
 
 Changelog v1.1-0:
 - Migración search_pubmed → search_literature (Semantic Scholar)
@@ -27,6 +31,7 @@ from tools import (
     search_literature,
     get_protein_sequence,
     predict_structure,
+    predict_structure_local,
     analyze_stability,
     design_variants,
     compare_variants,
@@ -122,6 +127,42 @@ TOOLS = [
                 "sequence": {
                     "type": "string",
                     "description": "Amino acid sequence (single-letter code, max 200 aa for API reliability)",
+                },
+                "protein_name": {
+                    "type": "string",
+                    "description": "Protein name for reference",
+                },
+            },
+            "required": ["sequence", "protein_name"],
+        },
+    },
+    {
+        "name": "predict_structure_local",
+        "description": (
+            "Predict protein 3D structure using ESMFold running LOCALLY — no length limit.\n"
+            "Use this INSTEAD OF predict_structure when analyzing proteins > 200 aa.\n"
+            "Requires fair-esm + torch installed (GPU recommended: Lambda Labs A10).\n"
+            "If not installed, returns structure_obtained=False with setup_instructions\n"
+            "→ in that case, fall back to predict_structure() with first 200 aa.\n"
+            "\n"
+            "Key advantage: analyzes the FULL sequence (e.g., lactoferrin 708 aa).\n"
+            "Output is identical to predict_structure() — compatible with all downstream tools.\n"
+            "\n"
+            "Speed (A10 GPU): ~30s per protein regardless of length.\n"
+            "Speed (CPU): ~20-30 min for sequences > 400 aa.\n"
+            "\n"
+            "Interpretation:\n"
+            "  ≥ 90 → very high confidence, well-defined structure\n"
+            "  70-90 → high confidence, reliable\n"
+            "  50-70 → medium, flexible regions present\n"
+            "  < 50  → low, likely disordered"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sequence": {
+                    "type": "string",
+                    "description": "Full amino acid sequence — no truncation needed",
                 },
                 "protein_name": {
                     "type": "string",
@@ -359,8 +400,11 @@ WORKFLOW OBLIGATORIO v1.1 — seguir este orden:
    (sistemas de expresión, condiciones de fermentación, rendimientos, estabilidad térmica)
    Semantic Scholar cubre 200M+ papers — incluye biotech, química, ciencias de alimentos y más.
 2. SEQUENCE: recuperar secuencia desde UniProt del candidato más prometedor
-3. STRUCTURE: correr ESMFold (pasar solo los primeros 200 aa — límite confiable de la API)
-   → guardar per_residue_plddt y avg_plddt para los siguientes pasos
+3. STRUCTURE: intentar predict_structure_local con la secuencia completa.
+   Si retorna structure_obtained=False (fair-esm no instalado): usar predict_structure
+   con solo los primeros 200 aa (límite confiable de la API pública).
+   → guardar per_residue_plddt, avg_plddt y pdb_path para los siguientes pasos
+   → si se usó predict_structure_local, indicarlo en el brief: "estructura analizada completa (Xaa)"
 4. STABILITY: correr analyze_stability con la secuencia y per_residue_plddt de ESMFold
    → identifica regiones débiles y estrategias de ingeniería
 5. VARIANTS: correr design_variants con la secuencia completa y las weak_regions
@@ -425,6 +469,8 @@ def dispatch_tool(name: str, inputs: dict) -> str:
         result = get_protein_sequence(inputs["protein_name"], inputs.get("organism"))
     elif name == "predict_structure":
         result = predict_structure(inputs["sequence"], inputs["protein_name"])
+    elif name == "predict_structure_local":
+        result = predict_structure_local(inputs["sequence"], inputs["protein_name"])
     elif name == "analyze_stability":
         result = analyze_stability(
             sequence=inputs["sequence"],
@@ -484,7 +530,7 @@ def run_agent(user_input: str, verbose: bool = True) -> str:
     """
     if verbose:
         print("\n" + "=" * 60)
-        print("  AGENTE CIENTIFICO CRIZA v1.3-0")
+        print("  AGENTE CIENTIFICO CRIZA v1.4-0")
         print("=" * 60 + "\n")
 
     messages = [{"role": "user", "content": user_input}]
