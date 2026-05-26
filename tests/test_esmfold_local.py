@@ -97,12 +97,19 @@ class TestPredictStructureLocalMocked:
     Uses sys.modules patching to avoid requiring actual torch/esm installation.
     """
 
+    # 5 residuos (MGSNT), cada uno con N + CA con el mismo B-factor.
+    # pLDDT por residuo (CA only): MET=85, GLY=82, SER=78, ASN=75, THR=91 → avg=82.2
     SAMPLE_PDB = "\n".join([
         "ATOM      1  N   MET A   1      -1.000   2.000   3.000  1.00 85.00           N",
-        "ATOM      2  CA  MET A   1      -1.500   2.500   3.500  1.00 82.00           C",
-        "ATOM      3  N   GLY A   2       0.000   1.000   2.000  1.00 78.00           N",
-        "ATOM      4  CA  GLY A   2       0.500   1.500   2.500  1.00 75.00           C",
-        "ATOM      5  N   SER A   3       1.000   0.500   1.500  1.00 91.00           N",
+        "ATOM      2  CA  MET A   1      -1.500   2.500   3.500  1.00 85.00           C",
+        "ATOM      3  N   GLY A   2       0.000   1.000   2.000  1.00 82.00           N",
+        "ATOM      4  CA  GLY A   2       0.500   1.500   2.500  1.00 82.00           C",
+        "ATOM      5  N   SER A   3       1.000   0.500   1.500  1.00 78.00           N",
+        "ATOM      6  CA  SER A   3       1.500   1.000   2.000  1.00 78.00           C",
+        "ATOM      7  N   ASN A   4       2.000   0.000   1.000  1.00 75.00           N",
+        "ATOM      8  CA  ASN A   4       2.500   0.500   1.500  1.00 75.00           C",
+        "ATOM      9  N   THR A   5       3.000  -0.500   0.500  1.00 91.00           N",
+        "ATOM     10  CA  THR A   5       3.500   0.000   1.000  1.00 91.00           C",
         "END",
     ])
 
@@ -169,9 +176,9 @@ class TestPredictStructureLocalMocked:
         assert "expression_implication" in result
         assert result["avg_plddt"] > 0
 
-    def test_plddt_computed_from_pdb_atoms(self, tmp_path):
-        """avg_plddt should reflect B-factor values in the PDB ATOM lines."""
-        # SAMPLE_PDB has B-factors: 85, 82, 78, 75, 91 → avg = 82.2
+    def test_plddt_computed_from_pdb_ca_atoms(self, tmp_path):
+        """avg_plddt should reflect B-factor values of CA atoms only (one per residue)."""
+        # SAMPLE_PDB CA atoms: MET=85, GLY=82, SER=78, ASN=75, THR=91 → avg = 82.2
         import sys
 
         mock_model = MagicMock()

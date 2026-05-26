@@ -1,8 +1,8 @@
 """
 Tests for tools/compare.py — compare_variants()
 
-Unit tests mock ESMFold to avoid API calls.
-Integration tests run real ESMFold (slow, require API access).
+Unit tests mock _fold() (el dispatcher interno que elige entre pod/local/API).
+Integration tests corren ESMFold real (lento, requieren acceso a API o pod).
 """
 
 import pytest
@@ -10,7 +10,7 @@ from unittest.mock import patch
 from tools.compare import compare_variants
 
 
-# ── Shared mock response ──────────────────────────────────────────────────────
+# ── Mock helper ───────────────────────────────────────────────────────────────
 
 def make_esmfold_response(avg_plddt: float, success: bool = True):
     if not success:
@@ -30,10 +30,10 @@ class TestCompareVariantsUnit:
         """Variant with higher pLDDT than wildtype should rank first."""
         wildtype_plddt = 70.0
         side_effects = [
-            make_esmfold_response(80.0),  # variant 1: +10 pLDDT (better)
-            make_esmfold_response(65.0),  # variant 2: -5 pLDDT (worse)
+            make_esmfold_response(80.0),  # variant 1: +10 pLDDT (mejor)
+            make_esmfold_response(65.0),  # variant 2: -5 pLDDT (peor)
         ]
-        with patch("tools.compare.predict_structure", side_effect=side_effects):
+        with patch("tools.compare._fold", side_effect=side_effects):
             result = compare_variants(
                 wildtype_sequence="MGSNTAGNAGKTGLTQGASM",
                 wildtype_plddt=wildtype_plddt,
@@ -48,7 +48,7 @@ class TestCompareVariantsUnit:
     def test_delta_plddt_computed_correctly(self, sample_variants):
         wildtype_plddt = 70.0
         variant_plddt = 78.0
-        with patch("tools.compare.predict_structure",
+        with patch("tools.compare._fold",
                    return_value=make_esmfold_response(variant_plddt)):
             result = compare_variants(
                 wildtype_sequence="MGSNTAGNAGKTGLTQGASM",
@@ -60,7 +60,7 @@ class TestCompareVariantsUnit:
         assert abs(result["results"][0]["delta_plddt"] - (variant_plddt - wildtype_plddt)) < 0.01
 
     def test_failed_esmfold_handled_gracefully(self, sample_variants):
-        with patch("tools.compare.predict_structure",
+        with patch("tools.compare._fold",
                    return_value=make_esmfold_response(0, success=False)):
             result = compare_variants(
                 wildtype_sequence="MGSNTAGNAGKTGLTQGASM",
@@ -73,7 +73,7 @@ class TestCompareVariantsUnit:
         assert result["results"][0]["plddt_obtained"] is False
 
     def test_returns_required_keys(self, sample_variants):
-        with patch("tools.compare.predict_structure",
+        with patch("tools.compare._fold",
                    return_value=make_esmfold_response(75.0)):
             result = compare_variants(
                 wildtype_sequence="MGSNTAGNAGKTGLTQGASM",
@@ -87,7 +87,7 @@ class TestCompareVariantsUnit:
         assert required.issubset(result.keys())
 
     def test_max_variants_limit(self, sample_variants):
-        with patch("tools.compare.predict_structure",
+        with patch("tools.compare._fold",
                    return_value=make_esmfold_response(75.0)):
             result = compare_variants(
                 wildtype_sequence="MGSNTAGNAGKTGLTQGASM",
@@ -100,9 +100,9 @@ class TestCompareVariantsUnit:
         assert result["variants_tested"] == 1
 
     def test_verdict_significantly_better(self, sample_variants):
-        """delta_pLDDT >= 5 should get the top verdict."""
-        with patch("tools.compare.predict_structure",
-                   return_value=make_esmfold_response(80.0)):  # +10 over 70 WT
+        """delta_pLDDT >= 5 → priority 1, verdict indica mejora significativa."""
+        with patch("tools.compare._fold",
+                   return_value=make_esmfold_response(80.0)):  # +10 sobre WT 70
             result = compare_variants(
                 wildtype_sequence="MGSNTAGNAGKTGLTQGASM",
                 wildtype_plddt=70.0,
@@ -111,12 +111,14 @@ class TestCompareVariantsUnit:
             )
 
         assert result["results"][0]["priority"] == 1
-        assert "significantly better" in result["results"][0]["plddt_verdict"].lower()
+        # Verificar que el verdict indica mejora (acepta ES o EN)
+        verdict = result["results"][0]["plddt_verdict"].lower()
+        assert "mejor" in verdict or "better" in verdict
 
     def test_verdict_worse_than_wildtype(self, sample_variants):
-        """delta_pLDDT < -1 should be deprioritized."""
-        with patch("tools.compare.predict_structure",
-                   return_value=make_esmfold_response(65.0)):  # -5 under 70 WT
+        """delta_pLDDT < -1 → priority 4 (descartar)."""
+        with patch("tools.compare._fold",
+                   return_value=make_esmfold_response(65.0)):  # -5 bajo WT 70
             result = compare_variants(
                 wildtype_sequence="MGSNTAGNAGKTGLTQGASM",
                 wildtype_plddt=70.0,
@@ -127,12 +129,12 @@ class TestCompareVariantsUnit:
         assert result["results"][0]["priority"] == 4
 
     def test_lab_candidates_contain_only_good_variants(self, sample_variants):
-        """lab_candidates should only include priority 1 or 2 variants."""
+        """lab_candidates solo debe incluir priority 1 o 2."""
         side_effects = [
-            make_esmfold_response(80.0),  # +10: priority 1 → lab candidate
-            make_esmfold_response(65.0),  # -5: priority 4 → NOT lab candidate
+            make_esmfold_response(80.0),  # +10: priority 1 → candidata
+            make_esmfold_response(65.0),  # -5:  priority 4 → NO candidata
         ]
-        with patch("tools.compare.predict_structure", side_effect=side_effects):
+        with patch("tools.compare._fold", side_effect=side_effects):
             result = compare_variants(
                 wildtype_sequence="MGSNTAGNAGKTGLTQGASM",
                 wildtype_plddt=70.0,
@@ -158,8 +160,8 @@ class TestCompareVariantsIntegration:
 
     def test_real_esmfold_call(self, sample_variants):
         """
-        Real ESMFold API call. Slow (~30-60s per variant).
-        Requires internet access.
+        Llamada real a ESMFold (API o pod). Lento (~30-60s por variante).
+        Requiere acceso a internet o pod corriendo.
         """
         result = compare_variants(
             wildtype_sequence="MGSNTAGNAGKTGLTQGASM",

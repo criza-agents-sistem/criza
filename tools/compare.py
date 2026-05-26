@@ -1,16 +1,32 @@
 """
 Variant comparison tool.
 
-Runs ESMFold on each designed variant and compares pLDDT profiles against
-the wildtype to rank which variants are predicted to be better structured
-(and thus more thermostable) than the original protein.
+Corre ESMFold en cada variante diseñada y compara pLDDT vs wildtype
+para rankear cuáles variantes son estructuralmente mejores.
 
-This is the validation step in the v1 pipeline:
-  analyze_stability → design_variants → compare_variants → Brief
+v2: usa predict_structure_local (pod RunPod o local) cuando está disponible,
+fallback a predict_structure (API pública, 200aa) si no.
 """
 
 import time
 from tools.esmfold import predict_structure
+from tools.esmfold_local import predict_structure_local, ESMFOLD_POD_URL, _check_dependencies
+
+
+def _fold(sequence: str, label: str) -> dict:
+    """
+    Corre ESMFold en la secuencia dada.
+    Prioridad: pod HTTP → local → API pública.
+    """
+    # Intentar local/pod primero (sin límite de longitud)
+    local_available = bool(ESMFOLD_POD_URL) or _check_dependencies()[0]
+    if local_available:
+        result = predict_structure_local(sequence, label)
+        if result.get("structure_obtained"):
+            return result
+
+    # Fallback a API pública (trunca a 200aa)
+    return predict_structure(sequence, label)
 
 
 def compare_variants(
@@ -21,18 +37,27 @@ def compare_variants(
     max_variants: int = 5,
 ) -> dict:
     """
-    Validate designed variants by comparing ESMFold pLDDT against wildtype.
+    Valida variantes diseñadas comparando pLDDT de ESMFold vs wildtype.
 
     Args:
-        wildtype_sequence: Original protein sequence
-        wildtype_plddt: Average pLDDT of wildtype from previous ESMFold run
-        variants: List of variant dicts from design_variants output
-        protein_name: Protein name for reference
-        max_variants: Maximum number of variants to run through ESMFold (API rate limit)
+        wildtype_sequence: Secuencia original de la proteína
+        wildtype_plddt:    pLDDT promedio del wildtype (de predict_structure/_local)
+        variants:          Lista de variantes de design_variants
+        protein_name:      Nombre de la proteína
+        max_variants:      Máximo de variantes a correr (default 5)
 
     Returns:
-        dict with ranked variants, pLDDT comparison, and lab recommendations
+        dict con variantes rankeadas y recomendaciones para wet lab
     """
+    # Determinar si usamos análisis completo o truncado a 200aa
+    using_local = bool(ESMFOLD_POD_URL) or _check_dependencies()[0]
+    analysis_note = (
+        "Variantes evaluadas con ESMFold completo (sin truncación) via pod/local."
+        if using_local else
+        "Variantes evaluadas con ESMFold API pública — truncadas a 200aa. "
+        "Mutaciones en posiciones > 200 no reflejadas en la comparación."
+    )
+
     results = []
     variants_to_test = variants[:max_variants]
 
@@ -43,23 +68,22 @@ def compare_variants(
         if not variant_seq:
             continue
 
-        # Rate limiting — ESM Atlas public API is sensitive to rapid sequential calls
+        # Rate limiting entre llamadas secuenciales al pod
         if i > 0:
-            time.sleep(3)
+            time.sleep(2)
 
-        # Run ESMFold on variant (truncated to same length as wildtype analysis)
-        fold_result = predict_structure(
+        fold_result = _fold(
             sequence=variant_seq,
-            protein_name=f"{protein_name} | {variant_id}",
+            label=f"{protein_name} | {variant_id}",
         )
 
         if not fold_result.get("structure_obtained"):
             results.append({
-                "variant_id":     variant_id,
-                "strategy":       variant.get("strategy", "unknown"),
-                "mutations":      variant.get("mutations", []),
-                "plddt_obtained": False,
-                "error":          fold_result.get("error", "ESMFold failed"),
+                "variant_id":        variant_id,
+                "strategy":          variant.get("strategy", "unknown"),
+                "mutations":         variant.get("mutations", []),
+                "plddt_obtained":    False,
+                "error":             fold_result.get("error", "ESMFold falló"),
                 "predicted_delta_Tm": variant.get("predicted_delta_Tm"),
             })
             continue
@@ -67,75 +91,70 @@ def compare_variants(
         variant_plddt = fold_result["avg_plddt"]
         delta_plddt = round(variant_plddt - wildtype_plddt, 2)
 
-        # Interpretation of pLDDT delta
         if delta_plddt >= 5:
-            plddt_verdict = "Significantly better than wildtype — strong thermostability candidate"
+            plddt_verdict = "Significativamente mejor que wildtype — candidata fuerte a termoestabilidad"
             priority = 1
         elif delta_plddt >= 2:
-            plddt_verdict = "Moderately better than wildtype — good candidate for validation"
+            plddt_verdict = "Moderadamente mejor que wildtype — buena candidata para validación"
             priority = 2
         elif delta_plddt >= -1:
-            plddt_verdict = "Similar to wildtype — mutation may be neutral; test experimentally"
+            plddt_verdict = "Similar a wildtype — mutación posiblemente neutra; validar experimentalmente"
             priority = 3
         else:
-            plddt_verdict = "Worse than wildtype — mutation likely destabilizing; deprioritize"
+            plddt_verdict = "Peor que wildtype — mutación probablemente desestabilizante; descartar"
             priority = 4
 
         results.append({
-            "variant_id":               variant_id,
-            "strategy":                 variant.get("strategy"),
-            "mutations":                variant.get("mutations", []),
-            "plddt_obtained":           True,
-            "wildtype_plddt":           wildtype_plddt,
-            "variant_plddt":            variant_plddt,
-            "delta_plddt":              delta_plddt,
-            "plddt_verdict":            plddt_verdict,
-            "priority":                 priority,
-            "predicted_delta_Tm":       variant.get("predicted_delta_Tm"),
-            "wet_lab_validation":       variant.get("wet_lab_validation"),
-            "rationale":                variant.get("rationale"),
+            "variant_id":          variant_id,
+            "strategy":            variant.get("strategy"),
+            "mutations":           variant.get("mutations", []),
+            "plddt_obtained":      True,
+            "wildtype_plddt":      wildtype_plddt,
+            "variant_plddt":       variant_plddt,
+            "delta_plddt":         delta_plddt,
+            "plddt_verdict":       plddt_verdict,
+            "priority":            priority,
+            "predicted_delta_Tm":  variant.get("predicted_delta_Tm"),
+            "wet_lab_validation":  variant.get("wet_lab_validation"),
+            "rationale":           variant.get("rationale"),
         })
 
-    # Sort by priority (best first), then by delta_plddt descending
+    # Ordenar por prioridad, luego por delta_plddt descendente
     results.sort(key=lambda x: (x.get("priority", 5), -x.get("delta_plddt", -99)))
 
-    # Top candidates for wet lab
     lab_candidates = [r for r in results if r.get("priority", 5) <= 2]
-    deprioritized = [r for r in results if r.get("priority", 5) >= 4]
+    deprioritized  = [r for r in results if r.get("priority", 5) >= 4]
 
-    # Summary
     if lab_candidates:
         best = lab_candidates[0]
         summary = (
-            f"Best variant: {best['variant_id']} — "
+            f"Mejor variante: {best['variant_id']} — "
             f"pLDDT {best.get('variant_plddt', '?')} vs wildtype {wildtype_plddt} "
             f"(Δ{best.get('delta_plddt', '?'):+.2f}). "
-            f"Predicted thermostability improvement: {best.get('predicted_delta_Tm', 'unknown')}."
+            f"Mejora de termoestabilidad predicha: {best.get('predicted_delta_Tm', 'desconocido')}."
         )
     else:
-        summary = "No variants showed clear improvement over wildtype in structural prediction. Consider broader sequence space exploration or directed evolution."
+        summary = (
+            "Ninguna variante mostró mejora clara sobre el wildtype. "
+            "Considerar exploración más amplia del espacio de secuencias o evolución dirigida."
+        )
 
     return {
-        "protein_name":         protein_name,
-        "wildtype_plddt":       wildtype_plddt,
-        "variants_tested":      len(results),
-        "results":              results,
-        "lab_candidates":       [r["variant_id"] for r in lab_candidates],
-        "deprioritized":        [r["variant_id"] for r in deprioritized],
-        "summary":              summary,
+        "protein_name":      protein_name,
+        "wildtype_plddt":    wildtype_plddt,
+        "variants_tested":   len(results),
+        "results":           results,
+        "lab_candidates":    [r["variant_id"] for r in lab_candidates],
+        "deprioritized":     [r["variant_id"] for r in deprioritized],
+        "summary":           summary,
         "lab_recommendation": (
-            f"Synthesize and experimentally validate top {min(3, len(lab_candidates))} candidate(s): "
+            f"Sintetizar y validar experimentalmente top {min(3, len(lab_candidates))} candidata(s): "
             + ", ".join(r["variant_id"] for r in lab_candidates[:3])
-            + ". Measure Tm by DSF (differential scanning fluorimetry) and confirm functional activity "
-            "(antimicrobial assay or iron-binding capacity for lactoferrin)."
+            + ". Medir Tm por DSF (fluorimetría de barrido diferencial) y confirmar "
+            "actividad funcional (ensayo antimicrobiano o capacidad de unión a hierro para lactoferrina)."
             if lab_candidates else
-            "No clear computational winner. Recommend experimental screening of all variants or pivoting to directed evolution."
+            "Sin ganador computacional claro. Recomendado: screening experimental de todas las variantes."
         ),
-        "note": (
-            "pLDDT comparison is a proxy for structural quality, not a direct Tm measurement. "
-            "Higher pLDDT in a variant indicates more confident/stable structure prediction, "
-            "which correlates with thermostability but must be confirmed experimentally. "
-            "ESMFold analyzes only the first 200 aa — variants with mutations beyond position 200 "
-            "are not reflected in the pLDDT comparison."
-        ),
+        "analysis_mode":  "local/pod (secuencia completa)" if using_local else "API pública (200aa)",
+        "note":           analysis_note,
     }

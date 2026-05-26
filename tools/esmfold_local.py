@@ -1,31 +1,36 @@
 """
 ESMFold local structure prediction — SEB-79
 
-Runs ESMFold (Meta) locally via fair-esm package.
-No length limit, no API dependency, no timeouts.
+Dos modos de operación (en orden de prioridad):
 
-Requirements:
-    pip install fair-esm torch
-    GPU recommended (Lambda Labs A10 24GB): ~30s per protein
-    CPU fallback: ~20-30 min per protein for long sequences
+  1. Pod HTTP API (recomendado):
+       Si ESMFOLD_POD_URL está en .env, llama al servidor FastAPI corriendo en el pod RunPod.
+       Sin límite de longitud, ~45s por proteína en A100.
+       Si el pod está apagado → fallback a modo 2 o 3.
 
-Install ESMFold model weights (auto-downloaded on first run, ~2.5 GB):
-    import esm; esm.pretrained.esmfold_v1()
+  2. Ejecución local:
+       Si fair-esm + torch están instalados localmente, corre el modelo en esta máquina.
+       GPU: ~45s. CPU: ~25 min para secuencias > 400 aa.
 
-Output interface is identical to predict_structure() for pipeline compatibility.
-The only differences: no truncation, and 'method': 'local' in the output.
+  3. Fallback:
+       Retorna structure_obtained=False con instrucciones de setup.
+       El agente cae automáticamente a predict_structure() (API pública, 200aa).
+
+Output idéntico a predict_structure() para compatibilidad con el pipeline downstream.
 """
 
+import os
+import requests
 from pathlib import Path
 
 
-def _check_dependencies() -> tuple[bool, str]:
-    """
-    Check if fair-esm and torch are installed and importable.
+# URL del servidor ESMFold en el pod RunPod (configurar en .env)
+# Ejemplo: https://53yj64wek7otne-8000.proxy.runpod.net
+ESMFOLD_POD_URL = os.getenv("ESMFOLD_POD_URL", "").rstrip("/")
 
-    Returns:
-        (available: bool, error_message: str)
-    """
+
+def _check_dependencies() -> tuple[bool, str]:
+    """Check si fair-esm y torch están instalados localmente."""
     try:
         import torch  # noqa: F401
     except ImportError:
@@ -38,7 +43,7 @@ def _check_dependencies() -> tuple[bool, str]:
 
 
 def _is_gpu_available() -> bool:
-    """Return True if CUDA GPU is available."""
+    """Return True si hay GPU CUDA disponible."""
     try:
         import torch
         return torch.cuda.is_available()
@@ -46,140 +51,185 @@ def _is_gpu_available() -> bool:
         return False
 
 
-def predict_structure_local(sequence: str, protein_name: str) -> dict:
-    """
-    Predict protein 3D structure using ESMFold running locally.
+def _fallback_response(protein_name: str, error: str, extra: dict = None) -> dict:
+    """Respuesta estándar cuando ESMFold no está disponible."""
+    resp = {
+        "protein_name":       protein_name,
+        "structure_obtained": False,
+        "error":              error,
+        "setup_instructions": (
+            "Opciones para ESMFold sin límite de longitud:\n\n"
+            "1. Pod RunPod (recomendado):\n"
+            "   - Agregar ESMFOLD_POD_URL en .env\n"
+            "   - Levantar el pod en cloud.runpod.io (pod 53yj64wek7otne)\n"
+            "   - Iniciar servidor: python3 /root/pod_server.py\n\n"
+            "2. Instalación local:\n"
+            "   pip install fair-esm torch\n"
+            "   GPU: ~45s/proteína | CPU: ~25 min para >400 aa\n\n"
+            "Modelo: ~2.5 GB, se descarga automáticamente en el primer uso."
+        ),
+        "fallback": (
+            "predict_structure() via ESM Atlas public API — "
+            "limitado a primeros 200 aa pero sin setup requerido"
+        ),
+    }
+    if extra:
+        resp.update(extra)
+    return resp
 
-    Same interface as predict_structure() in esmfold.py, but:
-    - No length limit — analyzes the full sequence
-    - No external API dependency
-    - GPU recommended; CPU fallback is very slow for long sequences
 
-    Args:
-        sequence:     Amino acid sequence in single-letter code (full length)
-        protein_name: Name for reference
-
-    Returns:
-        dict compatible with predict_structure() output.
-        If fair-esm/torch not installed: returns structure_obtained=False
-        with setup_instructions instead of raising an exception.
-    """
-    available, error_msg = _check_dependencies()
-    if not available:
-        return {
-            "protein_name":       protein_name,
-            "structure_obtained": False,
-            "error":              error_msg,
-            "setup_instructions": (
-                "Install dependencies for ESMFold local:\n"
-                "  pip install fair-esm torch\n\n"
-                "GPU recommended (A10 24GB on Lambda Labs):\n"
-                "  - Cost: ~$0.60/hr on-demand\n"
-                "  - Speed: ~30s per protein\n"
-                "  - Setup: see docs/ONBOARDING.md — Lambda Labs section\n\n"
-                "CPU fallback (no GPU):\n"
-                "  - Speed: ~20-30 min per protein for sequences > 400 aa\n"
-                "  - No additional setup required beyond pip install\n\n"
-                "Model weights (~2.5 GB) are downloaded automatically on first run."
-            ),
-            "fallback": (
-                "predict_structure() using ESM Atlas public API — "
-                "limited to first 200 aa but no local setup required"
-            ),
-        }
-
-    import esm
-    import torch
-
-    sequence = sequence.strip().upper()
-    original_length = len(sequence)
-
-    use_gpu = _is_gpu_available()
-    device_label = "GPU (CUDA)" if use_gpu else "CPU (slow — GPU recommended for sequences > 200 aa)"
-
+def _predict_via_pod(sequence: str, protein_name: str) -> dict:
+    """Llama al servidor ESMFold en el pod RunPod via HTTP."""
+    url = f"{ESMFOLD_POD_URL}/predict"
     try:
-        # Load model — cached in memory after first call within the same process.
-        # Weights are downloaded to ~/.cache/torch/hub/ on first run (~2.5 GB).
-        model = esm.pretrained.esmfold_v1()
-        model = model.eval()
-        if use_gpu:
-            model = model.cuda()
+        resp = requests.post(
+            url,
+            json={"sequence": sequence, "protein_name": protein_name},
+            timeout=300,   # 5 min — suficiente para 710aa en A100
+        )
+    except requests.exceptions.ConnectionError:
+        return _fallback_response(
+            protein_name,
+            f"Pod no alcanzable en {ESMFOLD_POD_URL} — ¿está corriendo el pod?",
+            {"pod_url": ESMFOLD_POD_URL},
+        )
+    except requests.exceptions.Timeout:
+        return _fallback_response(
+            protein_name,
+            f"Timeout al contactar el pod ({ESMFOLD_POD_URL}) — secuencia demasiado larga o pod ocupado",
+        )
 
-        # Run prediction — returns PDB string
-        with torch.no_grad():
-            pdb_content = model.infer_pdb(sequence)
+    if resp.status_code != 200:
+        return _fallback_response(
+            protein_name,
+            f"Pod error {resp.status_code}: {resp.text[:200]}",
+        )
 
-        # Persist PDB to structures/ (downstream tools: ProteinMPNN, FoldX)
+    data = resp.json()
+
+    # Guardar PDB localmente (para ProteinMPNN, FoldX si están configurados)
+    pdb_content = data.pop("pdb_content", None)
+    if pdb_content:
         pdb_dir = Path(__file__).parent.parent / "structures"
         pdb_dir.mkdir(exist_ok=True)
         safe_name = "".join(c if c.isalnum() else "_" for c in protein_name)
-        pdb_path = pdb_dir / f"{safe_name}_{original_length}aa_local.pdb"
-        pdb_path.write_text(pdb_content)
+        local_pdb = pdb_dir / f"{safe_name}_{len(sequence)}aa_local.pdb"
+        local_pdb.write_text(pdb_content)
+        data["pdb_path"] = str(local_pdb)
 
-        # Extract pLDDT from B-factor column (columns 60-66 of ATOM lines)
-        plddt_scores: list[float] = []
-        for line in pdb_content.split("\n"):
-            if line.startswith("ATOM"):
-                try:
-                    val = float(line[60:66].strip())
-                    plddt_scores.append(val)
-                except ValueError:
-                    pass
+    return data
 
-        # Normalize if returned in 0-1 scale (unlikely for local, but safe)
-        if plddt_scores and max(plddt_scores) <= 1.0:
-            plddt_scores = [v * 100.0 for v in plddt_scores]
 
-        if not plddt_scores:
-            return {
-                "protein_name":       protein_name,
-                "structure_obtained": False,
-                "error":              "Could not parse pLDDT scores from PDB output",
-            }
+def _predict_locally(sequence: str, protein_name: str) -> dict:
+    """Corre ESMFold directamente en esta máquina (requiere fair-esm + torch)."""
+    import esm
+    import torch
 
-        avg_plddt = round(sum(plddt_scores) / len(plddt_scores), 2)
+    original_length = len(sequence)
+    use_gpu = _is_gpu_available()
+    device_label = "GPU (CUDA)" if use_gpu else "CPU (lento — GPU recomendada para >200 aa)"
 
-        # Standard AlphaFold/ESMFold pLDDT interpretation
-        if avg_plddt >= 90:
-            confidence = "Muy alta (≥90) — estructura bien definida, predicción muy confiable"
-            expression_implication = "Alta probabilidad de plegamiento correcto en sistema de expresión microbiano"
-        elif avg_plddt >= 70:
-            confidence = "Alta (70-90) — estructura confiable con posibles regiones flexibles"
-            expression_implication = "Plegamiento correcto probable. Verificar regiones de baja confianza"
-        elif avg_plddt >= 50:
-            confidence = "Media (50-70) — regiones desordenadas o flexibles presentes"
-            expression_implication = "Puede haber problemas de solubilidad o agregación. Considerar variantes más estables"
-        else:
-            confidence = "Baja (<50) — proteína probablemente intrínsecamente desordenada"
-            expression_implication = "Alto riesgo de cuerpos de inclusión. Requiere optimización significativa de expresión"
+    model = esm.pretrained.esmfold_v1()
+    model = model.eval()
+    if use_gpu:
+        model = model.cuda()
 
-        high_conf = sum(1 for s in plddt_scores if s >= 70)
-        pct_high  = round(100 * high_conf / len(plddt_scores), 1)
+    with torch.no_grad():
+        pdb_content = model.infer_pdb(sequence)
 
-        return {
-            "protein_name":           protein_name,
-            "original_length":        original_length,
-            "analyzed_length":        original_length,   # full sequence — no truncation
-            "truncated":              False,
-            "structure_obtained":     True,
-            "method":                 "local",
-            "device":                 device_label,
-            "pdb_path":               str(pdb_path),
-            "avg_plddt":              avg_plddt,
-            "pct_residues_high_conf": pct_high,
-            "confidence_level":       confidence,
-            "expression_implication": expression_implication,
-            "per_residue_plddt":      [round(v, 2) for v in plddt_scores],
-            "note": (
-                f"Full sequence analyzed locally ({original_length} aa) — no truncation. "
-                f"{pct_high}% of residues have high confidence (pLDDT ≥ 70). "
-                f"Computed on {device_label}. PDB saved to {pdb_path}."
-            ),
-        }
+    # Guardar PDB
+    pdb_dir = Path(__file__).parent.parent / "structures"
+    pdb_dir.mkdir(exist_ok=True)
+    safe_name = "".join(c if c.isalnum() else "_" for c in protein_name)
+    pdb_path = pdb_dir / f"{safe_name}_{original_length}aa_local.pdb"
+    pdb_path.write_text(pdb_content)
 
-    except Exception as e:
+    # pLDDT por residuo — solo átomos CA (uno por residuo, no por átomo)
+    plddt_scores: list[float] = []
+    for line in pdb_content.split("\n"):
+        if line.startswith("ATOM") and " CA " in line:
+            try:
+                plddt_scores.append(float(line[60:66].strip()))
+            except ValueError:
+                pass
+
+    if max(plddt_scores, default=0) <= 1.0:
+        plddt_scores = [v * 100.0 for v in plddt_scores]
+
+    if not plddt_scores:
         return {
             "protein_name":       protein_name,
             "structure_obtained": False,
-            "error":              f"ESMFold local error: {e}",
+            "error":              "No se pudo parsear pLDDT del PDB",
         }
+
+    avg_plddt = round(sum(plddt_scores) / len(plddt_scores), 2)
+    high_conf = sum(1 for s in plddt_scores if s >= 70)
+    pct_high = round(100 * high_conf / len(plddt_scores), 1)
+
+    if avg_plddt >= 90:
+        confidence = "Muy alta (≥90) — estructura bien definida, predicción muy confiable"
+        expression_implication = "Alta probabilidad de plegamiento correcto en sistema de expresión microbiano"
+    elif avg_plddt >= 70:
+        confidence = "Alta (70-90) — estructura confiable con posibles regiones flexibles"
+        expression_implication = "Plegamiento correcto probable. Verificar regiones de baja confianza"
+    elif avg_plddt >= 50:
+        confidence = "Media (50-70) — regiones desordenadas o flexibles presentes"
+        expression_implication = "Puede haber problemas de solubilidad o agregación. Considerar variantes más estables"
+    else:
+        confidence = "Baja (<50) — proteína probablemente intrínsecamente desordenada"
+        expression_implication = "Alto riesgo de cuerpos de inclusión. Requiere optimización significativa de expresión"
+
+    return {
+        "protein_name":           protein_name,
+        "original_length":        original_length,
+        "analyzed_length":        original_length,
+        "truncated":              False,
+        "structure_obtained":     True,
+        "method":                 "local",
+        "device":                 device_label,
+        "pdb_path":               str(pdb_path),
+        "avg_plddt":              avg_plddt,
+        "pct_residues_high_conf": pct_high,
+        "confidence_level":       confidence,
+        "expression_implication": expression_implication,
+        "per_residue_plddt":      [round(v, 2) for v in plddt_scores],
+        "note": (
+            f"Secuencia completa analizada localmente ({original_length} aa) — sin truncación. "
+            f"{pct_high}% de residuos con alta confianza (pLDDT ≥ 70). "
+            f"Computado en {device_label}. PDB guardado en {pdb_path}."
+        ),
+    }
+
+
+def predict_structure_local(sequence: str, protein_name: str) -> dict:
+    """
+    Predicción de estructura 3D con ESMFold — sin límite de longitud.
+
+    Prioridad:
+      1. Pod RunPod via HTTP (si ESMFOLD_POD_URL está en .env)
+      2. Ejecución local (si fair-esm + torch instalados)
+      3. Fallback con instrucciones de setup
+
+    Args:
+        sequence:     Secuencia completa en código de una letra
+        protein_name: Nombre para referencia y nombre del archivo PDB
+
+    Returns:
+        dict compatible con predict_structure() — mismo formato de output.
+    """
+    sequence = sequence.strip().upper()
+
+    # --- Modo 1: Pod HTTP API ---
+    if ESMFOLD_POD_URL:
+        return _predict_via_pod(sequence, protein_name)
+
+    # --- Modo 2: Ejecución local ---
+    available, error_msg = _check_dependencies()
+    if not available:
+        return _fallback_response(protein_name, error_msg)
+
+    try:
+        return _predict_locally(sequence, protein_name)
+    except Exception as e:
+        return _fallback_response(protein_name, f"ESMFold local error: {e}")

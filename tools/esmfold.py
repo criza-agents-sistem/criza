@@ -55,10 +55,10 @@ def predict_structure(sequence: str, protein_name: str) -> dict:
         pdb_path = pdb_dir / f"{safe_name}_{len(sequence)}aa.pdb"
         pdb_path.write_text(pdb_content)
 
-        # Extract pLDDT from B-factor column in PDB
+        # Extract per-residue pLDDT from B-factor column — CA atoms only (one per residue)
         plddt_scores = []
         for line in pdb_content.split("\n"):
-            if line.startswith("ATOM"):
+            if line.startswith("ATOM") and " CA " in line:
                 try:
                     val = float(line[60:66].strip())
                     plddt_scores.append(val)
