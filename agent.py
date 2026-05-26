@@ -538,7 +538,7 @@ def run_agent(user_input: str, verbose: bool = True) -> str:
     while True:
         response = client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=8096,
+            max_tokens=16000,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=messages,
@@ -548,7 +548,7 @@ def run_agent(user_input: str, verbose: bool = True) -> str:
         messages.append({"role": "assistant", "content": response.content})
 
         # ── Final answer ──
-        if response.stop_reason == "end_turn":
+        if response.stop_reason in ("end_turn", "max_tokens"):
             for block in response.content:
                 if hasattr(block, "text"):
                     return block.text
