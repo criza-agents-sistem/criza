@@ -25,8 +25,14 @@ Changelog v1.1-0:
 import json
 import os
 from pathlib import Path
-import anthropic
 from dotenv import load_dotenv
+
+# CRÍTICO: cargar .env ANTES de importar tools.
+# esmfold_local.py lee ESMFOLD_POD_URL al nivel de módulo (al importar).
+# Si load_dotenv corre después, la URL queda como "" para siempre.
+load_dotenv(Path(__file__).parent / ".env", override=True)
+
+import anthropic
 from tools import (
     search_literature,
     get_protein_sequence,
@@ -38,8 +44,6 @@ from tools import (
     design_variants_mpnn,
     predict_tm_change,
 )
-
-load_dotenv(Path(__file__).parent / ".env", override=True)
 
 
 client = anthropic.Anthropic()

@@ -24,9 +24,15 @@ import requests
 from pathlib import Path
 
 
-# URL del servidor ESMFold en el pod RunPod (configurar en .env)
-# Ejemplo: https://53yj64wek7otne-8000.proxy.runpod.net
-ESMFOLD_POD_URL = os.getenv("ESMFOLD_POD_URL", "").rstrip("/")
+def _get_pod_url() -> str:
+    """Lee ESMFOLD_POD_URL del entorno en el momento de la llamada (no al importar).
+    Así funciona correctamente aunque load_dotenv se llame después del import."""
+    return os.getenv("ESMFOLD_POD_URL", "").rstrip("/")
+
+
+# Alias de módulo para compatibilidad con compare.py que importa este nombre.
+# Siempre vacío al importar — usar _get_pod_url() en runtime.
+ESMFOLD_POD_URL = ""
 
 
 def _check_dependencies() -> tuple[bool, str]:
@@ -60,13 +66,13 @@ def _fallback_response(protein_name: str, error: str, extra: dict = None) -> dic
         "setup_instructions": (
             "Opciones para ESMFold sin límite de longitud:\n\n"
             "1. Pod RunPod (recomendado):\n"
-            "   - Agregar ESMFOLD_POD_URL en .env\n"
-            "   - Levantar el pod en cloud.runpod.io (pod 53yj64wek7otne)\n"
-            "   - Iniciar servidor: python3 /root/pod_server.py\n\n"
+            "   - Verificar ESMFOLD_POD_URL en .env\n"
+            "   - Levantar el pod en cloud.runpod.io (pod djds4c7vfo8m47)\n"
+            "   - El servidor arranca automáticamente vía startup.sh\n\n"
             "2. Instalación local:\n"
             "   pip install fair-esm torch\n"
             "   GPU: ~45s/proteína | CPU: ~25 min para >400 aa\n\n"
-            "Modelo: ~2.5 GB, se descarga automáticamente en el primer uso."
+            "Modelo: ~14 GB, se descarga automáticamente en el primer uso."
         ),
         "fallback": (
             "predict_structure() via ESM Atlas public API — "
@@ -78,9 +84,9 @@ def _fallback_response(protein_name: str, error: str, extra: dict = None) -> dic
     return resp
 
 
-def _predict_via_pod(sequence: str, protein_name: str) -> dict:
+def _predict_via_pod(sequence: str, protein_name: str, pod_url: str) -> dict:
     """Llama al servidor ESMFold en el pod RunPod via HTTP."""
-    url = f"{ESMFOLD_POD_URL}/predict"
+    url = f"{pod_url}/predict"
     try:
         resp = requests.post(
             url,
@@ -90,8 +96,8 @@ def _predict_via_pod(sequence: str, protein_name: str) -> dict:
     except requests.exceptions.ConnectionError:
         return _fallback_response(
             protein_name,
-            f"Pod no alcanzable en {ESMFOLD_POD_URL} — ¿está corriendo el pod?",
-            {"pod_url": ESMFOLD_POD_URL},
+            f"Pod no alcanzable en {pod_url} — ¿está corriendo el pod?",
+            {"pod_url": pod_url},
         )
     except requests.exceptions.Timeout:
         return _fallback_response(
@@ -221,8 +227,9 @@ def predict_structure_local(sequence: str, protein_name: str) -> dict:
     sequence = sequence.strip().upper()
 
     # --- Modo 1: Pod HTTP API ---
-    if ESMFOLD_POD_URL:
-        return _predict_via_pod(sequence, protein_name)
+    pod_url = _get_pod_url()
+    if pod_url:
+        return _predict_via_pod(sequence, protein_name, pod_url)
 
     # --- Modo 2: Ejecución local ---
     available, error_msg = _check_dependencies()

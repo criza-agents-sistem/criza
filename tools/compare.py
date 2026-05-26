@@ -8,9 +8,10 @@ v2: usa predict_structure_local (pod RunPod o local) cuando está disponible,
 fallback a predict_structure (API pública, 200aa) si no.
 """
 
+import os
 import time
 from tools.esmfold import predict_structure
-from tools.esmfold_local import predict_structure_local, ESMFOLD_POD_URL, _check_dependencies
+from tools.esmfold_local import predict_structure_local, _check_dependencies
 
 
 def _fold(sequence: str, label: str) -> dict:
@@ -18,8 +19,8 @@ def _fold(sequence: str, label: str) -> dict:
     Corre ESMFold en la secuencia dada.
     Prioridad: pod HTTP → local → API pública.
     """
-    # Intentar local/pod primero (sin límite de longitud)
-    local_available = bool(ESMFOLD_POD_URL) or _check_dependencies()[0]
+    # Leer URL en runtime (no al importar) para que load_dotenv ya haya corrido.
+    local_available = bool(os.getenv("ESMFOLD_POD_URL", "")) or _check_dependencies()[0]
     if local_available:
         result = predict_structure_local(sequence, label)
         if result.get("structure_obtained"):
@@ -50,7 +51,7 @@ def compare_variants(
         dict con variantes rankeadas y recomendaciones para wet lab
     """
     # Determinar si usamos análisis completo o truncado a 200aa
-    using_local = bool(ESMFOLD_POD_URL) or _check_dependencies()[0]
+    using_local = bool(os.getenv("ESMFOLD_POD_URL", "")) or _check_dependencies()[0]
     analysis_note = (
         "Variantes evaluadas con ESMFold completo (sin truncación) via pod/local."
         if using_local else
