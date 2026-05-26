@@ -26,10 +26,11 @@ Cualquier tarea que involucre ESMFold en proteínas completas (>200 aa):
 
 **Datos del pod:**
 - URL panel: cloud.runpod.io → Pods
-- SSH: `ssh root@216.249.100.66 -p 20475 -i ~/.ssh/id_criza`  
-  *(IP/puerto pueden cambiar si se Termina y re-deployea — siempre usar Stop)*
-- Servidor ESMFold: `https://53yj64wek7otne-8000.proxy.runpod.net/health`
-- Iniciar servidor en el pod: `nohup python3 /root/pod_server.py > /root/pod_server.log 2>&1 &`
+- Pod ID: `djds4c7vfo8m47` (nombre: criza-scientific-agent) — **Secure Cloud, sin migraciones**
+- SSH: `ssh root@38.80.152.72 -p 31061 -i ~/.ssh/id_criza`
+- Servidor ESMFold: `https://djds4c7vfo8m47-8000.proxy.runpod.net/health`
+- Network volume: `criza-workspace` 30GB (persiste aunque se Termine el pod)
+- Iniciar servidor en el pod: `nohup python3 /workspace/pod_server.py > /workspace/pod_server.log 2>&1 &`
 
 **Costo:** ~$1.39/hr solo mientras está Running. Stopped = $0/hr (solo storage).
 
