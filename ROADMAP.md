@@ -6,12 +6,41 @@
 
 ---
 
-## Estado actual: v1.3 ✅
+## 🖥️ Protocolo RunPod — LEER ANTES DE CADA ANÁLISIS
+
+**El pod está APAGADO por defecto.** Sebas lo stopea después de cada uso para no gastar.
+
+**Cuándo pedir que lo inicien:**
+Cualquier tarea que involucre ESMFold en proteínas completas (>200 aa):
+- Correr el agente con `predict_structure_local`
+- `compare_variants` sobre variantes de proteínas largas
+- Deployar cambios a `pod_server.py`
+
+**Cómo pedirlo:**
+> "Para este análisis necesito el pod RunPod. ¿Podés iniciarlo en cloud.runpod.io → Pods → Start?"
+
+**Cuándo avisar que lo apaguen:**
+- Al terminar el análisis o la sesión de trabajo con ESMFold
+- Antes de cerrar sesión si el pod estuvo activo
+> "Ya terminamos con el pod — podés hacer Stop en RunPod para no gastar."
+
+**Datos del pod:**
+- URL panel: cloud.runpod.io → Pods
+- SSH: `ssh root@216.249.100.66 -p 20475 -i ~/.ssh/id_criza`  
+  *(IP/puerto pueden cambiar si se Termina y re-deployea — siempre usar Stop)*
+- Servidor ESMFold: `https://53yj64wek7otne-8000.proxy.runpod.net/health`
+- Iniciar servidor en el pod: `nohup python3 /root/pod_server.py > /root/pod_server.log 2>&1 &`
+
+**Costo:** ~$1.39/hr solo mientras está Running. Stopped = $0/hr (solo storage).
+
+---
+
+## Estado actual: v1.4 ✅
 
 **Fecha de entrega:** Mayo 2026  
 **Pipeline completo:**
 ```
-Semantic Scholar (literatura) → UniProt (secuencia) → ESMFold (estructura + PDB)
+Semantic Scholar (literatura) → UniProt (secuencia) → ESMFold local (estructura completa + PDB)
 → analyze_stability (regiones débiles) → design_variants (candidatas rule-based)
 → [design_variants_mpnn] (ML, opcional) → [predict_tm_change] (FoldX, opcional)
 → compare_variants (validación computacional) → Brief técnico
@@ -23,7 +52,8 @@ Semantic Scholar (literatura) → UniProt (secuencia) → ESMFold (estructura + 
 |---|---|---|---|
 | `search_literature` | `tools/semantic_scholar.py` | ✅ Producción | Semantic Scholar API |
 | `get_protein_sequence` | `tools/uniprot.py` | ✅ Producción | UniProt REST |
-| `predict_structure` | `tools/esmfold.py` | ✅ Producción | ESM Atlas API (Meta) — 200aa |
+| `predict_structure` | `tools/esmfold.py` | ✅ Producción | ESM Atlas API (Meta) — 200aa, fallback |
+| `predict_structure_local` | `tools/esmfold_local.py` | ✅ Producción | fair-esm local — sin límite de longitud |
 | `analyze_stability` | `tools/stability.py` | ✅ Producción | Sin API — análisis pLDDT |
 | `design_variants` | `tools/variants.py` | ✅ Producción | Rule-based (prolina, consenso) |
 | `compare_variants` | `tools/compare.py` | ✅ Producción | ESMFold sobre variantes |
@@ -32,34 +62,14 @@ Semantic Scholar (literatura) → UniProt (secuencia) → ESMFold (estructura + 
 
 **Nota sobre herramientas opcionales:** `design_variants_mpnn` y `predict_tm_change` requieren software externo instalado (`PROTEINMPNN_PATH` y `FOLDX_PATH` en `.env`). Si no están configuradas, retornan `success=False` con instrucciones de setup — no interrumpen el análisis.
 
+**ESMFold local:** Requiere pod RunPod A100 activo (cloud.runpod.io). Si el pod está apagado, el agente hace fallback automático a `predict_structure` (API pública, 200aa). SSH: `ssh root@216.249.100.66 -p 20475 -i ~/.ssh/id_criza`
+
 ### Tests
 
 | Suite | Tests | Estado |
 |---|---|---|
-| Unit tests | 80 tests | ✅ Todos pasando (`pytest`) |
+| Unit tests | 95 tests | ✅ Todos pasando (`pytest`) |
 | Integration tests | 24 tests | ✅ Disponibles (`pytest -m integration`) |
-
----
-
-## v1.4 — Pendiente 🔲
-
-### [SEB-79] ESMFold local — secuencias completas
-
-**Por qué:** Actualmente analizamos solo los primeros 200 aa por limitaciones de la API pública. Proteínas largas (lactoferrina: 708 aa) se analizan parcialmente.
-
-**Solución:** Correr ESMFold localmente via `fair-esm`
-```python
-# tools/esmfold_local.py
-def predict_structure_local(sequence: str, protein_name: str) -> dict:
-    # Usa fair-esm local — sin límite de longitud, sin timeout
-    # Misma interfaz que predict_structure() para compatibilidad
-```
-
-**Estado:** 🔴 **Bloqueado** — decisión de infraestructura GPU pendiente con Pablo (Mayo 2026)
-
-**Prerequisito:** GPU recomendada (Lambda Labs A10 24GB, ~$0.60/hr). Sin GPU, el cómputo toma 20-30 min por secuencia en CPU.
-
-Ver documento: `C:\Users\sebab\Documents\Plataformas\KRIZA\infraestructura_computacional_etapas.md`
 
 ---
 
@@ -108,5 +118,5 @@ Ver documento: `C:\Users\sebab\Documents\Plataformas\KRIZA\infraestructura_compu
 | v1.1 | Mayo 2026 | Migración a Semantic Scholar. Coverage multi-dominio (200M+ papers). |
 | v1.2 | Mayo 2026 | + design_variants_mpnn (ProteinMPNN). + predict_tm_change (FoldX). Herramientas opcionales con fallback graceful. |
 | v1.3 | Mayo 2026 | Suite de tests completa: 80 unit + 24 integration. Reorganización docs/ outputs/. |
-| v1.4 | Pendiente | ESMFold local (SEB-79) — bloqueado por decisión GPU. |
+| v1.4 | Mayo 2026 | + predict_structure_local (fair-esm, sin límite de longitud). GPU: RunPod A100 80GB. 95 tests. |
 | v2 | Pendiente | Knowledge Module + multi-proteína + AF3. |
