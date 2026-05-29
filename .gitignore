@@ -24,6 +24,7 @@ ENV/
 outputs/
 *.txt
 !README*.txt
+!requirements*.txt
 
 # Estructuras predichas (archivos PDB pesados)
 *.pdb
