@@ -1,4 +1,5 @@
-from .semantic_scholar import search_literature
+from .openalex import search_literature          # primaria: OpenAlex (mejor rate limits)
+# from .semantic_scholar import search_literature  # fallback manual si se necesita
 from .pubmed import search_pubmed          # mantenido como fallback / referencia
 from .uniprot import get_protein_sequence
 from .esmfold import predict_structure

@@ -7,6 +7,14 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+
+# Forzar UTF-8 en stdout/stderr para evitar UnicodeEncodeError en Windows
+# con caracteres como α, β, Δ en el brief técnico.
+if sys.stdout.encoding != "utf-8":
+    sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
+if sys.stderr.encoding != "utf-8":
+    sys.stderr = open(sys.stderr.fileno(), mode="w", encoding="utf-8", buffering=1)
+
 from agent import run_agent
 
 

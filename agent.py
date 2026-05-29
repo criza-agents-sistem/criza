@@ -17,13 +17,22 @@ Changelog v1.2-0:
 - SEB-77: design_variants_mpnn — diseño ML de variantes via ProteinMPNN
   (Dauparas et al., Science 2022). Requiere PROTEINMPNN_PATH en .env.
 
+Changelog v1.4.1:
+- Migración search_literature: Semantic Scholar → OpenAlex como fuente primaria.
+  Semantic Scholar tenía rate limiting persistente que degradaba análisis silenciosamente.
+  OpenAlex: 250M+ papers, 10 req/seg, sin API key, fallback automático a SS si falla.
+  Archivo: tools/openalex.py (drop-in replacement — output idéntico).
+  Tests: 110 pasando (15 nuevos unit + 8 integration para OpenAlex).
+
 Changelog v1.1-0:
 - Migración search_pubmed → search_literature (Semantic Scholar)
   200M+ papers, todos los dominios, sin API key requerida.
+  Nota: reemplazado en v1.4.1 por OpenAlex por problemas de rate limiting.
 """
 
 import json
 import os
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -540,13 +549,24 @@ def run_agent(user_input: str, verbose: bool = True) -> str:
     messages = [{"role": "user", "content": user_input}]
 
     while True:
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=16000,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=messages,
-        )
+        # Retry con backoff si Anthropic retorna 429 (rate limit de tokens/min)
+        for attempt in range(4):
+            try:
+                response = client.messages.create(
+                    model="claude-sonnet-4-5",
+                    max_tokens=16000,
+                    system=SYSTEM_PROMPT,
+                    tools=TOOLS,
+                    messages=messages,
+                )
+                break  # éxito, salir del retry loop
+            except anthropic.RateLimitError:
+                if attempt == 3:
+                    raise  # re-lanzar si agotamos los intentos
+                wait = 20 * (attempt + 1)  # 20s, 40s, 60s
+                if verbose:
+                    print(f"  [rate limit Anthropic — esperando {wait}s antes de reintentar...]\n")
+                time.sleep(wait)
 
         # Add assistant turn to history
         messages.append({"role": "assistant", "content": response.content})

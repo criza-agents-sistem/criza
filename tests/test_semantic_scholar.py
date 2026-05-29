@@ -1,4 +1,10 @@
 """
+DEPRECATED — reemplazado por tests/test_openalex.py (v1.4.1)
+
+OpenAlex es ahora la fuente primaria de búsqueda bibliográfica.
+Semantic Scholar se mantiene como fallback automático si OpenAlex falla.
+Este archivo se conserva como referencia histórica de qué se testeaba.
+
 Tests for tools/semantic_scholar.py — search_literature()
 
 Integration tests: require Semantic Scholar API access (no key needed).

@@ -1,6 +1,6 @@
 # Arquitectura — Agente Científico CRIZA
 
-**Versión:** v1.3 | **Última actualización:** Mayo 2026
+**Versión:** v1.4.1 | **Última actualización:** Mayo 2026
 
 ## Visión general
 
@@ -14,7 +14,7 @@ Usuario (objetivo de producción)
   ┌─────────────────────────────────────────────────────────┐
   │                   Tools (8 herramientas)                │
   │                                                         │
-  │  Semantic Scholar → UniProt → ESMFold                   │
+  │  OpenAlex → UniProt → ESMFold local (RunPod)             │
   │  analyze_stability → design_variants                    │
   │  → [design_variants_mpnn] → [predict_tm_change]         │
   │  → compare_variants                                     │
@@ -53,9 +53,10 @@ Claude decide el orden y cantidad de llamadas a tools. El workflow mandatorio es
 El system prompt instruye al agente a seguir este orden:
 
 ```
-1. LITERATURE SCAN  → mínimo 3 búsquedas en Semantic Scholar (queries distintos)
-2. SEQUENCE         → recuperar secuencia del candidato más prometedor
-3. STRUCTURE        → predicción ESMFold (pasar solo primeros 200 aa — límite confiable)
+1. LITERATURE SCAN  → mínimo 3 búsquedas en OpenAlex (queries distintos)
+2. SEQUENCE         → recuperar secuencia del candidato más prometedor (UniProt)
+3. STRUCTURE LOCAL  → predicción ESMFold completa via RunPod (sin límite de longitud)
+                      Fallback si pod apagado: predict_structure con primeros 200aa
 4. STABILITY        → identificar weak regions con per-residue pLDDT
 5. VARIANTS         → diseñar candidatas termoestables (rule-based)
 6. [MPNN]           → si ProteinMPNN disponible, diseñar variantes adicionales por ML
@@ -68,19 +69,25 @@ El system prompt instruye al agente a seguir este orden:
 
 ## Herramientas
 
-### `search_literature` — Semantic Scholar API
+### `search_literature` — OpenAlex API (primaria desde v1.4.1)
 
 **Qué hace:** Busca papers científicos para fundamentar recomendaciones de sistemas de expresión, condiciones de fermentación y estabilidad térmica.
 
 **Input:** `query: str`, `max_results: int = 10`
 
-**Output:** `{query, total_found, returned, results: [{title, abstract, year, journal, authors, url, doi, citation_count}]}`
+**Output:** `{query, total_found, returned, results: [{title, abstract, year, journal, authors, url, doi, citation_count}], source}`
 
-**API:** `https://api.semanticscholar.org/graph/v1/paper/search`
-- Gratuita sin API key: 100 req/5min
-- Con `SEMANTIC_SCHOLAR_API_KEY` en `.env`: 1 req/seg
+**API primaria:** `https://api.openalex.org/works`
+- Gratuita, sin API key
+- Rate limit: 10 req/seg en polite pool (pasar `mailto=` en header)
+- Abstract reconstruido desde inverted index (`_reconstruct_abstract()`)
 
-**Por qué Semantic Scholar y no PubMed:** Cubre 200M+ papers de todos los dominios. Para fermentación de precisión necesitamos química, ciencias de alimentos, materiales y economía — dominios fuera de PubMed. PubMed se mantiene en `tools/pubmed.py` como fallback.
+**Fallback automático:** Si OpenAlex retorna 429/503 o timeout → `tools/semantic_scholar.py`
+- Semantic Scholar: 100 req/5min sin key, 1 req/seg con `SEMANTIC_SCHOLAR_API_KEY`
+
+**Por qué OpenAlex sobre Semantic Scholar:** SS tenía rate limiting persistente que degradaba el agente silenciosamente — caía a conocimiento interno de Claude sin notificar. OpenAlex tiene los mismos 200M+ papers con límites 10x más generosos.
+
+**Historial:** PubMed (v1.0) → Semantic Scholar (v1.1) → OpenAlex (v1.4.1)
 
 **Limitaciones:** Solo abstracts (no texto completo). Algunos papers muy recientes pueden no estar indexados.
 
@@ -103,7 +110,27 @@ El system prompt instruye al agente a seguir este orden:
 
 ---
 
-### `predict_structure` — ESM Atlas API (Meta)
+### `predict_structure_local` — ESMFold local via RunPod (primaria desde v1.4)
+
+**Qué hace:** Predice estructura 3D completa usando ESMFold corriendo en un pod RunPod. Sin límite de longitud de secuencia.
+
+**Input:** `sequence: str`, `protein_name: str`
+
+**Output:** Idéntico a `predict_structure` — compatible con todos los tools downstream.
+
+**Infraestructura:** Pod `qruo50jffhrgze` (mighty_brown_lark) — H200 SXM 141GB, US-CA-2. El pod está APAGADO por defecto — Sebas lo inicia antes de cada análisis con proteínas largas.
+
+**Fallback:** Si `ESMFOLD_POD_URL` no está configurado o el pod no responde → retorna `structure_obtained=False` con instrucciones. El agente entonces usa `predict_structure` (API pública, 200aa).
+
+**Variable de entorno:** `ESMFOLD_POD_URL=https://qruo50jffhrgze-8000.proxy.runpod.net`
+
+**Decisión crítica de implementación:** `ESMFOLD_POD_URL` se lee en runtime con `_get_pod_url()`, nunca al importar el módulo. Esto evita el bug donde `load_dotenv()` corría después del import y la variable siempre quedaba vacía.
+
+**Velocidad:** ~30-60s por proteína en H200 SXM, sin límite de longitud.
+
+---
+
+### `predict_structure` — ESM Atlas API (Meta) — fallback
 
 **Qué hace:** Predice el plegamiento 3D y evalúa la expresabilidad de la proteína. Retorna pLDDT por residuo y persiste el archivo PDB.
 
@@ -288,22 +315,24 @@ Ver `docs/DECISIONS.md` para el log completo en formato ADR. Resumen:
 
 | Decisión | Elección | Razón |
 |---|---|---|
-| Fuente bibliográfica | Semantic Scholar | 200M+ papers, multi-dominio |
+| Fuente bibliográfica | OpenAlex (v1.4.1) | 200M+ papers, 10 req/seg, sin rate limiting. SS tenía límites que degradaban el agente silenciosamente |
 | Motor de razonamiento | Claude (tool use) | Conocimiento científico nativo, loop adaptativo |
 | Arquitectura | Loop agéntico | Flexible según cantidad de literatura disponible |
-| Límite ESMFold | 200 aa | Confiabilidad sobre completitud |
+| ESMFold sin límite | RunPod H200 SXM | predict_structure_local analiza proteínas completas (708aa lactoferrina = 85.78 pLDDT) |
+| Env vars lazy loading | `_get_pod_url()` en runtime | Bug histórico: module-level `os.getenv()` evaluado antes de `load_dotenv()` siempre retornaba `""` |
 | Herramientas opcionales | Fallback graceful | No romper el pipeline si falta software externo |
-| Entorno | Docker | Reproducibilidad cross-platform |
+| Entorno | Docker + Python directo | Docker para onboarding de equipo; Python directo para desarrollo diario |
 
 ---
 
-## Limitaciones del sistema (v1.3)
+## Limitaciones del sistema (v1.4.1)
 
 | Limitación | Impacto | Solución planeada |
 |---|---|---|
-| ESMFold limitado a 200 aa | Solo N-terminal de proteínas largas | ESMFold local (SEB-79, bloqueado por decisión GPU) |
+| Pod RunPod manual | Hay que iniciarlo antes de cada análisis con proteínas largas | SEB-95: migración a RunPod Serverless o Modal |
 | ProteinMPNN requiere instalación manual | Tool opcional, no en producción base | `.env.example` con instrucciones detalladas |
-| FoldX requiere licencia + instalación | Tool opcional, no en producción base | `.env.example` con instrucciones detalladas |
-| Semantic Scholar solo abstracts | Puede perder datos en texto completo | Aceptable para v1; mejora futura |
-| ESM Atlas sin SLA | API pública puede fallar | Fallback documentado en el output del agente |
+| FoldX requiere licencia + binario | Tool opcional, retorna estimaciones sin configurar | SEB-94: registrarse en foldxsuite.crg.eu y subir binario al pod |
+| OpenAlex/SS solo abstracts | Puede perder datos en texto completo | Aceptable para v1; mejora futura |
+| ESM Atlas sin SLA (fallback) | API pública puede fallar | Fallback documentado; usar pod RunPod para producción |
 | ΔTm es aproximación empírica | Error ±2–3°C típico | Suficiente para filtrar hipótesis; wet lab confirma |
+| Anthropic 30k tokens/min | Análisis con muchas búsquedas puede hacer rate limit | Retry con backoff implementado en agent.py |
