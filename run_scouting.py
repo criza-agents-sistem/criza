@@ -25,29 +25,28 @@ from scout import run_scout
 # ──────────────────────────────────────────────
 
 QUERY = """
-Identificar oportunidades de producto para un negocio B2B en biotecnología.
+Identificar oportunidades de producto para un negocio B2B de biotecnología.
+
+MODELO DE NEGOCIO:
+Producir o conseguir producir un ingrediente biotecnológico y vendérselo (B2B)
+a empresas que ya fabrican un producto final. El ingrediente reemplaza o potencia
+uno que esas empresas ya usan. La producción puede ser propia (fermentación) o
+subcontratada a un socio especializado si la oportunidad lo justifica.
 
 CONTEXTO:
-- Modelo de negocio: producir un ingrediente biotecnológico y vendérselo a empresas
-  que ya fabrican un producto final (B2B). El ingrediente reemplaza o potencia uno que ya usan.
-- Infraestructura disponible: fermentadores ~500L (28-32°C, pH 5.5-7.0), experiencia
-  en fermentación industrial. Acceso potencial a una maltería en Córdoba, Argentina.
-- Sector inicial: agropecuario (regulación más liviana que humano/farma).
-- Dato relevante: procesamiento térmico y peletizado borran la trazabilidad GMO —
-  abre la puerta a producción con organismos GMO sin etiquetado especial en el producto final.
+- Infraestructura propia: fermentadores ~500L, 28-32°C, pH 5.5-7.0, Córdoba, Argentina.
+- Acceso a subproductos de maltería como sustratos de fermentación.
+- GMO + procesamiento térmico (peletizado, pasteurización, UHT): elimina trazabilidad GMO.
+  Es un habilitador opcional — NO un requisito para ser candidato.
+- Argentina: ventaja por sustitución de importaciones en múltiples mercados.
 
-CRITERIOS DE OPORTUNIDAD:
-1. Mercado grande y establecido (demanda real, no especulativa)
-2. Ingrediente de pequeñas cantidades con alto impacto en el producto final
-3. Actualmente caro de producir o con limitaciones de abastecimiento
-4. La fermentación microbiana puede mejorar costo, rendimiento o disponibilidad
-5. Dolor concreto en la industria destino
+PEDIDO:
+Buscá en el universo más amplio posible. Sin restricción de sector ni dominio.
+Cubrí al menos: nutrición humana B2B, nutrición animal, agropecuario, industrial,
+cosmética/cuidado personal. No te limitás a fermentación: si hay una buena
+oportunidad con otra tecnología de producción, incluilá y marcá que requiere socio.
 
-PEDIDO EXPLÍCITO:
-- Explorá TODO el universo: enzimas, proteínas, moléculas pequeñas, ácidos orgánicos,
-  pigmentos, bacteriocinas, vitaminas, biosurfactantes, biopolímeros, etc.
-- No te limites a proteínas. El sesgo hacia proteínas empobrece el resultado.
-- Sé exigente: preferí 5 candidatos muy sólidos a 10 candidatos mediocres.
+Sé exigente con el filtro: preferí 5 candidatos muy sólidos a 10 mediocres.
 """
 
 
