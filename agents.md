@@ -62,6 +62,14 @@ Pod **APAGADO por defecto**. Iniciarlo solo para análisis con proteínas largas
 
 ## Reglas específicas
 
+### Definition of Done — código (no negociable)
+Todo módulo nuevo (agente, tool, runner) está Done cuando tiene:
+1. **Tests unitarios** — casos críticos cubiertos con pytest
+2. **`agents.md` actualizado** — refleja la nueva estructura
+3. **`docs/progress/`** — sesión documentada al cierre
+No mover a Done en Linear sin estos tres puntos. Si no hay tiempo para tests,
+el issue queda In Progress y se crea un issue de deuda técnica explícito.
+
 - `load_dotenv()` corre **antes** de importar tools — bug histórico resuelto, no revertir
 - `ESMFOLD_POD_URL` se lee en runtime con `_get_pod_url()`, nunca al importar
 - Tests de integración excluidos por defecto: `pytest -m "not integration"`
