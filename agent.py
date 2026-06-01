@@ -530,20 +530,29 @@ def dispatch_tool(name: str, inputs: dict) -> str:
 # AGENTIC LOOP
 # ──────────────────────────────────────────────
 
-def run_agent(user_input: str, verbose: bool = True) -> str:
+DEFAULT_MODEL = os.getenv("SPECIALIST_MODEL", "claude-sonnet-4-6")
+
+
+def run_agent(
+    user_input: str,
+    verbose: bool = True,
+    model: str = DEFAULT_MODEL,
+) -> str:
     """
-    Run the scientific agent until it produces a final analysis.
+    Run the scientific agent (specialist) until it produces a final analysis.
 
     Args:
         user_input: Description of the protein/objective to analyze
         verbose: Print tool calls as they happen
+        model: Claude model to use. Default: SPECIALIST_MODEL from .env,
+               fallback to claude-sonnet-4-6. For deep analysis, use claude-opus-4-5.
 
     Returns:
         Final text analysis (technical brief)
     """
     if verbose:
         print("\n" + "=" * 60)
-        print("  AGENTE CIENTIFICO CRIZA v1.4-0")
+        print(f"  ESPECIALISTA CIENTIFICO CRIZA (proteinas) — {model}")
         print("=" * 60 + "\n")
 
     messages = [{"role": "user", "content": user_input}]
@@ -553,7 +562,7 @@ def run_agent(user_input: str, verbose: bool = True) -> str:
         for attempt in range(4):
             try:
                 response = client.messages.create(
-                    model="claude-sonnet-4-5",
+                    model=model,
                     max_tokens=16000,
                     system=SYSTEM_PROMPT,
                     tools=TOOLS,
