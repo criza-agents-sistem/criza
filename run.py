@@ -15,7 +15,7 @@ if sys.stdout.encoding != "utf-8":
 if sys.stderr.encoding != "utf-8":
     sys.stderr = open(sys.stderr.fileno(), mode="w", encoding="utf-8", buffering=1)
 
-from agent import run_agent
+from specialist_proteins import run_agent
 
 
 OUTPUTS_DIR = Path(__file__).parent / "outputs"
