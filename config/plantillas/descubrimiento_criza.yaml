@@ -1,0 +1,34 @@
+# Plantilla del área de descubrimiento — instancia CRIZA
+# Es config de instancia (Capa 2) que el motor genérico (Capa 1) carga al registro de tipos.
+# Autoría: por preguntas guiadas (hoy con el asistente; a futuro el orquestador). Este YAML es el resultado revisable.
+
+area: descubrimiento
+tenant: criza
+objetivo: >
+  Encontrar oportunidades de producto biotech (blue oceans) que CRIZA pueda convertir
+  en negocio para el sector agrícola, ganadero y agroindustrial de Córdoba, Argentina.
+descripcion: Descubrimiento demand-first. Agentes divergente (detecta) y convergente (verifica).
+
+tipos_ficha:
+  - nombre: problema
+    descripcion: Un dolor real del sector, mal resuelto o sin solución (la unidad del área).
+    campos: [dolor, quien_lo_sufre, sector]
+    vectorizar: dolor          # el espacio semántico se arma sobre el DOLOR
+    dedup_por: dolor
+    # Umbral ALTO = solo near-identical (idempotencia: re-ingerir el MISMO texto no duplica).
+    # Validación 2026-06-11: el embedding NO separa de forma confiable "mismo concepto fraseado distinto"
+    # (garrapata-v1/v2 = 0.69, SARA-v1/v2 = 0.52) de "conceptos distintos" (mosca/garrapata = 0.49) —
+    # las bandas se superponen. El dedup CONCEPTUAL es juicio del convergente (vía `vecinos`), no del motor.
+    dedup_umbral: 0.92
+
+  - nombre: solucion
+    descripcion: Una idea biotech que resuelve un problema. Preserva el brief íntegro.
+    campos: [idea, razonamiento, factibilidad, prioridad, riesgos]
+    vectorizar: idea
+    dedup_por: null            # nunca se fusiona; varias soluciones por problema
+
+tipos_conexion:
+  - nombre: resuelve
+    desde: solucion
+    hacia: problema
+    campos: [grado_ajuste]     # opcional: qué tan bien la solución resuelve el problema

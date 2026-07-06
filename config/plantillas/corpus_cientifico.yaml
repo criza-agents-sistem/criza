@@ -1,0 +1,46 @@
+# Plantilla del área de corpus científico — Capa 1 (genérica, reutilizable por cualquier instancia)
+# Cargada con motor/loader.py. Instancia CRIZA usa tenant='criza'.
+# DPN u otras instancias pueden reusar esta plantilla con su propio tenant.
+
+area: corpus_cientifico
+tenant: criza
+objetivo: >
+  Repositorio local de fuentes académicas (papers, tesis, reportes) verificables.
+  Sirve a los agentes investigadores (Evidencia Científica, Investigación Amplia, Mercado)
+  para fundamentar cruces del expediente de decisión con evidencia local y citable.
+descripcion: Pool consultable por búsqueda semántica. Las conexiones entre fuentes y oportunidades las crean los investigadores.
+
+tipos_ficha:
+  - nombre: fuente
+    descripcion: >
+      Un documento académico o técnico (paper, tesis, reporte) con metadata verificable.
+      Vectoriza título + abstract combinados para permitir búsqueda semántica por tema.
+    campos:
+      - titulo
+      - abstract
+      - autores
+      - anio
+      - identifier    # OAI identifier / DOI / handle — clave de dedup exacto
+      - url
+      - repositorio   # CONICET / INTA / SNRD / etc.
+      - idioma
+      - tipo_recurso  # article / thesis / report / preprint
+      - sets          # sets OAI de origen (raw)
+      - titulo_abstract  # campo interno: titulo + ". " + abstract (para vectorización)
+      - open_access      # bool — viene de dc:rights en el harvest OAI-PMH
+      - pdf_url          # url del bitstream PDF, si se encontró (ver ingesta/download_corpus_pdfs.py)
+      - texto_completo   # texto extraído del PDF — null hasta que corra el downloader.
+                         # Fuentes propias = disponible por default, no a pedido del agente
+                         # (orchestration-layer.md Decisión 6).
+      - requiere_solicitud  # bool — el material existe pero no es de descarga directa
+                             # (PDF con isAllowed=n, o dataset con "Consultar"). Declarado,
+                             # no silenciado — ver ingesta/download_corpus_pdfs.py.
+      - solicitud_url       # url de autoservicio para pedirlo (si existe) — null si no hay
+                             # camino de autoservicio conocido en la página (hay que pedirlo
+                             # por otra vía, ej. contacto directo en CONICET).
+    vectorizar: titulo_abstract
+    dedup_por: null   # dedup exacto por 'identifier' se maneja en ingest_corpus.py antes de guardar
+    dedup_umbral: 0.97
+
+# Sin tipos_conexion en v0.1: el corpus es un pool. Los investigadores crean conexiones fuente↔oportunidad.
+tipos_conexion: []

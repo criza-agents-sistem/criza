@@ -21,8 +21,9 @@ import logging
 import sys
 from pathlib import Path
 
-_ROOT = Path(__file__).parent.parent.parent
-_KM   = _ROOT / "knowledge_module"
+_ROOT  = Path(__file__).parent.parent.parent
+_KM    = _ROOT / "knowledge_module"
+_CRIZA = _ROOT / "criza"
 
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -47,7 +48,9 @@ if hasattr(sys.stdout, "reconfigure"):
 
 logger = logging.getLogger(__name__)
 
-_PLANTILLA = _KM / "plantillas" / "corpus_cientifico.yaml"
+# Config de instancia (Capa 2) — vive en criza/, no en knowledge_module/ (Capa Estructural es
+# solo el loader genérico). Movido 2026-07-06, ver AUDITORIA_CUMPLIMIENTO_2026-07-05.md.
+_PLANTILLA = _CRIZA / "config" / "plantillas" / "corpus_cientifico.yaml"
 _TENANT    = "criza"
 
 

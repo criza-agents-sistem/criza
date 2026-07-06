@@ -106,16 +106,16 @@ pendientes, no tareas ejecutables):
 - [ ] **Auditoría objective-first "qué falta para que todo funcione"** — absorbida y ampliada por
       la auditoría de cumplimiento de plataforma 2026-07-05/06 (bullet siguiente). No generar un
       tercer plan paralelo.
-- [ ] **Auditoría de cumplimiento de plataforma (2026-07-05/06)** — sin cambios de código, solo
-      lectura. 24 hallazgos propios de CRIZA (C1-C24): 5 de Design Gate/estructura (sin CLAUDE.md
-      propio, checkbox falso, gates desactualizados) + 10 de **código transversal atrapado en
-      Capa 2** (openalex.py, token_tracker.py, inta.py duplicando el harvester genérico — el
-      hallazgo prioritario, ver principio de plataforma-primero) + 5 sin issue en Linear todavía
-      (límite del plan gratuito) incluyendo que **el loop de aprendizaje está roto en Motor v2**
-      (nunca persiste lecciones) y `specialist_proteins.py` no escribe al KM ni tiene contrato
-      SEB-115. Detalle completo + evidencia: `../docs/AUDITORIA_CUMPLIMIENTO_2026-07-05.md`.
-      Issues: SEB-244 a SEB-248, SEB-266 a SEB-275. Panel: `../plataforma/control_panel/`.
-      **Pendiente: revisar cada uno con Sebas antes de resolver.**
+- [ ] **Auditoría de cumplimiento de plataforma (2026-07-05/06, en revisión activa con Sebas)** —
+      51 hallazgos totales, revisión hallazgo por hallazgo en curso. Temas 1-2 (git, docs
+      desactualizados) y parte del Tema 3 (tenant hardcodeado) ya resueltos. **Hallazgo central
+      nuevo: el KM comparte una sola base entre instancias, sin RLS, contradiciendo su propio
+      diseño (P11) — decidido volver a base separada por instancia, no ejecutado.** También:
+      chunking nunca construido para CRIZA + truncado a 60k caracteres con pérdida de datos (P13),
+      criterio de Capa 1 corregido ("Capa Estructural" = solo lo operativo, no lo genérico-parece).
+      Detalle completo: `../docs/AUDITORIA_CUMPLIMIENTO_2026-07-05.md`. Panel:
+      `../plataforma/control_panel/`. **No resolver nada de esto sin Sebas — varios ítems ya
+      fueron corregidos una vez por apurar la lectura.**
 
 ---
 
