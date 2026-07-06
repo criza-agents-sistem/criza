@@ -54,5 +54,12 @@ agentes:
     # de mercado/evidencia aguas arriba (_validar_cobertura_upstream), no declara la suya.
     # El check de contrato no aplica acá; declararlo produciría un falso positivo.
 
+  - archivo: criza/scientific_agent/specialist_proteins.py
+    tools_var: TOOLS
+    # Agregado 2026-07-06 (AUDIT-C16/C17): agente más viejo del proyecto, nunca migrado al
+    # contrato SEB-115 ni al KM write. Se registra a propósito para que check_km_write_ausente
+    # lo siga marcando hasta que se cierre — no se declara debe_escribir_km: false porque no
+    # hay ninguna decisión real de que este agente no deba escribir al KM, es una deuda.
+
 design_gates_glob: "criza/**/DESIGN_GATE.md"
 roadmap_glob: "criza/**/ROADMAP.md"
