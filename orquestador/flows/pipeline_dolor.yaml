@@ -1,0 +1,65 @@
+# pipeline_dolor.yaml — CRIZA
+# Flow para entradas con dolor específico conocido.
+# Ver docs/DISEÑO_MOTOR_ORQUESTADOR.md §3.1 para el schema completo.
+
+name: "pipeline_criza_dolor"
+version: "1.0"
+description: "Pipeline para entradas con dolor específico conocido"
+entry_type: "dolor"
+
+objective_template: "Armar el expediente de decisión para el dolor: {entry.descripcion}."
+
+steps:
+  - id: "crear_oportunidad"
+    type: "km_write"
+    action: "crear_oportunidad"
+    props_from_entry:
+      nombre: "descripcion"
+      descripcion: "descripcion"
+
+  - id: "market"
+    type: "agent"
+    agent: "mercado"
+    contract_input:
+      caso: "{entry.descripcion}"
+      tarea: "Evaluar cruces 1, 3 y 4 del expediente de decisión"
+      contexto: "{entry.contexto}"
+      conocimiento:
+        oportunidad_id: "{state.oportunidad_id}"
+    on_error: "stop"
+
+  - id: "evidence"
+    type: "agent"
+    agent: "evidencia"
+    contract_input:
+      caso: "{entry.descripcion}"
+      tarea: "Evaluar factibilidad técnica — llenar cruce 2"
+      conocimiento:
+        oportunidad_id: "{state.oportunidad_id}"
+    routing:
+      field: "próximo_agente"
+      routes:
+        cientifico_especialista: "especialista"
+        _default: "armador"
+    on_error: "continue"
+
+  - id: "especialista"
+    type: "agent"
+    agent: "cientifico_especialista"
+    contract_input:
+      conocimiento:
+        oportunidad_id: "{state.oportunidad_id}"
+    on_error: "continue"
+    next: "armador"
+
+  - id: "armador"
+    type: "agent"
+    agent: "armador"
+    contract_input:
+      conocimiento:
+        oportunidad_id: "{state.oportunidad_id}"
+    on_error: "stop"
+
+completion:
+  write_status: true
+  notify_human: true

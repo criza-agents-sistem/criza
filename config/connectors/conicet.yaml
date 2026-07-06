@@ -1,0 +1,80 @@
+# Config del conector CONICET Digital para CRIZA — Capa 2
+# El harvester OAI-PMH genérico (Capa 1, knowledge_module/connectors/oai_pmh.py) lee esto.
+# Cambiar endpoint/sets/keywords aquí sin tocar el harvester.
+
+connector: oai_pmh
+repositorio: CONICET
+endpoint: "https://ri.conicet.gov.ar/oai/request"
+tenant: criza
+area: corpus_cientifico
+
+# Sets OAI a cosechar — institutos de biotech/agro/vet/biología de CONICET.
+# Identificados 2026-07-01 via --list-sets (2452 sets totales; estos 28 cubren el dominio CRIZA).
+# Usar sets específicos en lugar de [] (todo) para acotar de ~600K a ~30K registros relevantes.
+sets:
+  - com_11336_108926  # IABIMO - Agrobiotecnología y Biología Molecular
+  - com_11336_283     # IAL - Agrobiotecnología del Litoral
+  - com_11336_191     # IBAM - Biología Agrícola de Mendoza
+  - com_11336_145     # IBBM - Biotecnología y Biología Molecular
+  - com_11336_167     # IIB-INTECH - Investigaciones Biotecnológicas
+  - com_11336_108933  # IIBIO - Investigaciones Biotecnológicas
+  - com_11336_86135   # CITAAC - Toxicología Ambiental y Agrobiotecnología del Comahue
+  - com_11336_40      # CIVETAN - Investigación Veterinaria de Tandil
+  - com_11336_153     # IGEVET - Genética Veterinaria
+  - com_11336_285     # ICIVET-LITORAL - Ciencias Veterinarias del Litoral
+  - com_11336_48282   # INCIVET - Ciencias Veterinarias
+  - com_11336_118127  # ICIAGRO-Litoral - Ciencias Agropecuarias del Litoral
+  - com_11336_108193  # IFAB - Investigaciones Forestales y Agropecuarias Bariloche
+  - com_11336_48264   # IDAS - Desarrollo Agroindustrial y de la Salud
+  - com_11336_164886  # IMITAB - Investigación y Transferencia Agroalimentaria y Biotecnológica
+  - com_11336_178     # INBIOTEC - Biodiversidad y Biotecnología
+  - com_11336_48340   # CEVHAN - Virología Humana y Animal
+  - com_11336_86      # CIQUIBIC - Química Biológica de Córdoba
+  - com_11336_339     # IBBEA - Biodiversidad y Biología Experimental y Aplicada
+  - com_11336_174     # IIB - Investigaciones Biológicas
+  - com_11336_104     # IIBYT - Investigaciones Biológicas y Tecnológicas
+  - com_11336_206     # IBS - Biología Subtropical
+  - com_11336_96      # IDEA - Diversidad y Ecología Animal
+  - com_11336_48278   # INBIAS - Biotecnología Ambiental y Salud
+  - com_11336_14365   # INBIOFAL - Biotecnología Farmacéutica y Alimentaria
+  - com_11336_48188   # INBIOFIV - Bioprospección y Fisiología Vegetal
+  - com_11336_378     # IBCN - Biología Celular y Neurociencia
+  - com_11336_388     # IMPAM - Microbiología y Parasitología Médica
+
+# Filtro de pertinencia por keywords sobre título/abstract/subject (OR lógico, case-insensitive)
+# Es Capa 2: ajustar sin tocar el harvester. Dejar vacío [] para no filtrar (cosechar todo).
+pertinencia_keywords:
+  - biotecnología
+  - biotech
+  - fermentación
+  - biorreactor
+  - microorganismo
+  - enzima
+  - biomasa
+  - bioproceso
+  - proteína recombinante
+  - anticuerpo
+  - vacuna veterinaria
+  - ganadería
+  - bovino
+  - porcino
+  - avicultura
+  - agricultura
+  - cultivo
+  - fitosanitario
+  - soja
+  - maíz
+  - trigo
+  - agroindustria
+  - agronomía
+  - veterinaria
+  - microbioma
+  - resistencia antimicrobiana
+
+# Mínimo de palabras en el abstract para considerar el record útil (evita stubs)
+abstract_min_chars: 100
+
+# Parámetros de cosecha incremental
+request_delay_seconds: 1.5    # delay entre requests (ser ciudadanos del endpoint público)
+timeout_seconds: 30
+max_retries: 3

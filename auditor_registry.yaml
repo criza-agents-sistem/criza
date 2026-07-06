@@ -1,0 +1,58 @@
+# Config de instancia para el auditor (knowledge_module/auditor/) — Capa 2, CRIZA.
+# Los checks son genéricos; este archivo declara QUÉ auditar en esta instancia.
+# Ver knowledge_module/docs/AUDITOR_DESIGN_GATE.md.
+#
+# Si se agrega un agente, plantilla o fuente propia nueva y no se declara acá, el
+# auditor no la audita — mantener esto al día es parte de la Definition of Done de
+# cualquier módulo nuevo (ver CLAUDE.md).
+
+tenant: criza
+
+plantillas:
+  - area: corpus_cientifico
+    tipo: fuente
+    excluir_campos: [sets, idioma]  # opcionales por diseño, no son gaps si están vacíos
+    umbral_gap_pct: 1.0
+    segmentar_por: repositorio  # CONICET/INTA — sin esto, un gap de un solo repositorio
+                                 # puede quedar oculto detrás del promedio del otro (ver
+                                 # gap de texto_completo en INTA, 2026-07-02)
+
+fuentes_propias:
+  - clave: corpus_cientifico
+    descripcion: "CONICET (625 fichas) + INTA vía el motor nuevo (área corpus_cientifico)"
+    nombres_tool_posibles: [buscar_corpus_cientifico, search_corpus_cientifico]
+    default_minimo_esperado: 50
+    agentes_que_deberian_cubrirla:
+      - criza/market_agent/market_agent.py
+      - criza/evidence_generalista/evidence_generalista.py
+      - criza/investigacion_amplia/investigacion_amplia.py
+
+  - clave: inta_legacy
+    descripcion: "Corpus INTA vía tabla documento legacy — FTS exhaustivo (OR sin límite)"
+    nombres_tool_posibles: [search_corpus_inta, get_sector_corpus]
+    default_minimo_esperado: 500
+    agentes_que_deberian_cubrirla:
+      - criza/evidence_generalista/evidence_generalista.py
+      - criza/investigacion_amplia/investigacion_amplia.py
+
+agentes:
+  - archivo: criza/market_agent/market_agent.py
+    tools_var: TOOLS
+    submit_tool: submit_analysis
+
+  - archivo: criza/evidence_generalista/evidence_generalista.py
+    tools_var: TOOLS
+    submit_tool: submit_evidencia
+
+  - archivo: criza/investigacion_amplia/investigacion_amplia.py
+    tools_var: TOOLS
+    submit_tool: submit_investigacion_amplia
+
+  - archivo: criza/armador/armador.py
+    tools_var: TOOLS
+    # sin submit_tool: armador no tiene fuentes propias, agrega — valida fuentes_y_cobertura
+    # de mercado/evidencia aguas arriba (_validar_cobertura_upstream), no declara la suya.
+    # El check de contrato no aplica acá; declararlo produciría un falso positivo.
+
+design_gates_glob: "criza/**/DESIGN_GATE.md"
+roadmap_glob: "criza/**/ROADMAP.md"

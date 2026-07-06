@@ -1,0 +1,432 @@
+{
+  "step_id": "investigacion_amplia",
+  "mensaje": "Investigación Amplia terminada. ¿Cuál candidato querés profundizar?",
+  "espera_campo": "candidato_elegido",
+  "agent_output": {
+    "análisis": {
+      "informe": "# Investigación Amplia: Ganadería Bovina Argentina\n\n## 1. Metodología y Fuentes Consultadas\n\nSe ejecutaron 25+ búsquedas y accesos a fuentes en las siguientes capas:\n\n- **Tesauro AGROVOC (FAO):** Expansión del término \"cattle\" para mapear taxonomía oficial. Confirmado: Ganado bovino → Ganado de carne / Ganado de leche / Ternero / Vaca / Cebú.\n- **Corpus INTA Digital:** Búsquedas en español e inglés (bovinos, ganado bovino, cattle). Sin resultados en todas las variantes — se declara limitación de cobertura del corpus en este ciclo.\n- **OpenAlex (literatura científica):** Caído (503) durante toda la sesión. Limitación significativa: no fue posible contrastar con literatura global. Se declara explícitamente.\n- **Portales oficiales:** SENASA, MAGYP/SAGyP, INTA. Contenido extraído parcialmente (sitios dinámicos JavaScript); identificados: trazabilidad electrónica animal (SENASA), Monitor Forrajero y Visualizador de Cría Bovina (MAGYP), líneas de producción animal (INTA).\n- **Actores privados:** MSD Salud Animal Argentina (confirmado con portafolio bovino: Bravecto, Multriva). Zoetis, Boehringer Ingelheim, Biogénesis Bagó identificados por conocimiento sectorial establecido.\n- **Portales de industria:** IPCVA (Instituto de Promoción de la Carne Vacuna Argentina) — noticias recientes sobre genética para producir más carne/hectárea y Semana de la Carne en EE.UU. CREA (consorcios tecnológicos ganaderos).\n- **Portales de noticias sectoriales:** Infocampo — confirma actividad editorial en ganadería bovina pero sin contenido de artículos accesible por JavaScript.\n\n**Estado epistémico dominante:** La mayoría de los candidatos son **asumidos** por conocimiento estructural del sector con evidencias indirectas de demanda. La falta de acceso a OpenAlex impide corroboración científica de la prevalencia de problemas. Se requiere validación específica en análisis de profundidad.\n\n---\n\n## 2. Descripción del Sector\n\nLa ganadería bovina argentina es el sector agropecuario de mayor tradición e impacto económico:\n- **Rodeo nacional:** ~54 millones de cabezas\n- **Exportaciones de carne:** USD 3.000M+ anuales (ranking top 5 mundial)\n- **Sistemas dominantes:** Pastoril extensivo (cría de cría), feedlot (invernada intensiva), tambo (leche)\n- **Actores del ecosistema:** Productores criadores, invernadores, tamberos; feedlots; frigoríficos; exportadores; proveedores de insumos (vacunas, antiparasitarios, reproductivos, nutrición); INTA/SENASA/IPCVA como brazos públicos.\n- **Presiones principales del sector:** baja eficiencia reproductiva estructural, costos de sanidad en alza por resistencia antiparasitaria, presión exportadora por trazabilidad y sustentabilidad, y brecha de adopción tecnológica en productores medianos/pequeños.\n\n---\n\n## 3. Panorama Competitivo\n\n### Capa 1: Salud Animal (FUERTE)\nLas multinacionales MSD, Zoetis, Boehringer Ingelheim y los laboratorios nacionales Biogénesis Bagó, Vetanco, Richmond cubren vacunas, antiparasitarios y hormonas reproductivas con alta penetración. Es el segmento con mayor inversión en marketing y ventas. Barrera alta para nuevos entrantes con productos similares.\n\n### Capa 2: Genética y Reproducción (FUERTE en servicios, DÉBIL en herramientas digitales)\nLas asociaciones de razas y empresas de inseminación tienen protocolos bien establecidos. La genómica bovina (evaluaciones EPD, chips SNP) existe pero con baja penetración en productores no-CREA. La IATF (inseminación a tiempo fijo) tiene alta adopción en empresas grandes pero baja en medianas.\n\n### Capa 3: Información, Gestión y Decisiones (DÉBIL a VACÍO)\nLos portales públicos (MAGYP, INTA) dan información general. Las apps de gestión privadas (Tambero.com para tambo, IFT para feedlot) tienen nichos pero no hay solución integral para el productor de cría extensiva. La toma de decisiones en nutrición, manejo sanitario y reproducción sigue siendo manual, apoyada en el veterinario o asesor de campo.\n\n### Capa 4: Trazabilidad y Sustentabilidad (DÉBIL a VACÍO para integración)\nLa identificación electrónica existe como norma SENASA pero la interoperabilidad entre sistemas (campo → frigorífico → exportador) es fragmentada. La medición de huella de carbono y metano entérico a nivel predial prácticamente no existe como servicio comercial en Argentina.\n\n---\n\n## 4. Candidatos Priorizados\n\n### 🥇 TOP CANDIDATO: Monitoreo remoto de salud y celo en ganadería extensiva\n**Por qué es top:** Es el cruce más favorable de demanda real (pérdidas documentables, 54M de animales, tasa de preñez estructuralmente baja) + competencia débil (soluciones globales existen pero son caras y diseñadas para tambos intensivos, no para campo extensivo). El espacio local en carne extensiva está prácticamente vacío para soluciones accesibles. Es un dolor con impacto económico directo y cuantificable.\n\n### 🥈 Trazabilidad integral campo-frigorífico-exportador\n**Por qué es prioridad alta:** Presión regulatoria internacional creciente (EUDR desde 2023, mercados premium) genera demanda real e inmediata. Los actores actuales (CAENA, SIFAB SENASA) cubren parcialmente pero la interoperabilidad es baja. El mercado exportador de USD 3.000M+ es el incentivador.\n\n### 🥉 Asistencia en toma de decisiones para productor mediano\n**Por qué importa:** La brecha de extensión tecnológica es estructural. El IPCVA convoca 400+ productores a una sola jornada en el interior (evidencia de hambre de conocimiento). Sin embargo, la monetización de servicios de asesoramiento digital para productores medianos argentinos es históricamente difícil (resistencia a pagar por información, cultura de gratuidad pública).\n\n### Metano/huella de carbono:\n**Espacio vacío interesante** pero con demanda todavía incipiente en Argentina (aunque en crecimiento por presión exportadora). Requiere validación de urgencia.\n\n---\n\n## 5. Conclusiones\n\nEl sector de ganadería bovina argentina tiene competencia **fuerte** en su núcleo tradicional (insumos veterinarios, genética básica) pero presenta **gaps reales y accionables** en: monitoreo en campo extensivo, integración de trazabilidad cadena completa, herramientas de decisión para productores medianos, y medición de sustentabilidad. El mejor cruce demanda-competencia para análisis de profundidad es el monitoreo remoto de salud y celo en bovinos de carne extensivos: el dolor es estructural, la demanda es verificable y el espacio local está desatendido.\n",
+      "resultado": {
+        "cruce_3": {
+          "qué_existe": "El sector de ganadería bovina argentina cuenta con actores consolidados en tres capas: (1) Salud animal / insumos: multinacionales como MSD Salud Animal (Bravecto antiparasitario, Multriva nutricional), Zoetis, Boehringer Ingelheim y laboratorios nacionales (Biogénesis Bagó, Richmond) dominan el mercado de vacunas, antiparasitarios y hormonas reproductivas. Competencia fuerte y establecida. (2) Información / gestión: INTA, IPCVA y MAGYP ofrecen herramientas públicas como el Visualizador de Cría Bovina y el Monitor Forrajero. Hay apps de gestión predial (VacPlan, Haciendo Campo) pero con baja penetración en productores pequeños y medianos. (3) Genética: asociaciones de raza (Angus, Hereford, Brangus) y empresas de inseminación (Genética Bovina SA, SexedULTRA) operan con protocolos IATF bien establecidos. La trazabilidad individual mediante dispositivos electrónicos (caravanas, bolos ruminales) existe pero su adopción es incompleta y dispar. Los sectores con menor cobertura de soluciones son: monitoreo de bienestar animal y detección temprana de enfermedades en campo extensivo, reducción de emisiones de metano entérico (presión regulatoria creciente de mercados compradores), y herramientas de toma de decisiones para productores sin acceso a asesores (brecha digital/extensión).",
+          "intensidad": "fuerte",
+          "evidencia": [
+            {
+              "competidor": "MSD Salud Animal Argentina",
+              "descripción": "Multinacional con portafolio completo para bovinos: antiparasitarios (Bravecto), nutrición (Multriva), vacunas. Opera en Argentina con sitio local msd-salud-animal.com.ar.",
+              "estado": "establecido",
+              "fuente": "https://www.msd-salud-animal.com.ar"
+            },
+            {
+              "competidor": "IPCVA (Instituto de Promoción de la Carne Vacuna Argentina)",
+              "descripción": "Organismo público-privado que produce investigaciones, cuadernillos técnicos y jornadas de campo. En 2025 realizó jornadas sobre genética y producción de carne por hectárea. Promueve exportaciones (Semana de la Carne en EE.UU.).",
+              "estado": "establecido",
+              "fuente": "https://www.ipcva.com.ar"
+            },
+            {
+              "competidor": "SENASA",
+              "descripción": "Organismo oficial que regula la identificación electrónica animal y trazabilidad de bovinos. Eje regulatorio para el comercio exterior de carne.",
+              "estado": "establecido",
+              "fuente": "https://www.senasa.gob.ar/cadena-animal/bovinos-y-bubalinos/identificacion-y-trazabilidad"
+            },
+            {
+              "competidor": "MAGYP / Secretaría de Agricultura",
+              "descripción": "Portal de información estadística bovina, Monitor Forrajero, Visualizador de Cría Bovina y herramienta de diagnóstico productivo regional.",
+              "estado": "establecido",
+              "fuente": "https://www.magyp.gob.ar/sitio/areas/bovinos/"
+            },
+            {
+              "competidor": "INTA (Instituto Nacional de Tecnología Agropecuaria)",
+              "descripción": "Principal actor de I+D y extensión agropecuaria pública. Trabaja en producción animal, genómica, sanidad y nutrición bovina. Publica en RIA y opera EEAs en todas las regiones ganaderas.",
+              "estado": "establecido",
+              "fuente": "https://inta.gob.ar/areas/produccion-animal/bovinos"
+            },
+            {
+              "competidor": "CREA (Consorcios Regionales de Experimentación Agrícola)",
+              "descripción": "Red de grupos de productores con asesoramiento técnico. Actor clave en adopción tecnológica en ganadería de alta intensidad.",
+              "estado": "establecido",
+              "fuente": "https://www.aacrea.org.ar"
+            },
+            {
+              "competidor": "Zoetis Argentina",
+              "descripción": "Multinacional de salud animal con portafolio bovino (antiparasitarios, reproductivos, vacunas). Competidor directo de MSD en el mercado veterinario.",
+              "estado": "asumido",
+              "fuente": "Conocimiento sectorial establecido; URL directa no respondió"
+            },
+            {
+              "competidor": "Boehringer Ingelheim Animal Health Argentina",
+              "descripción": "Multinacional con productos veterinarios bovinos. Especialmente fuerte en vacunas respiratorias y reproductivas.",
+              "estado": "asumido",
+              "fuente": "Conocimiento sectorial; URL no accesible en este rastreo"
+            },
+            {
+              "competidor": "Biogénesis Bagó",
+              "descripción": "Laboratorio veterinario argentino líder en vacunas bovinas (aftosa, carbunclo, clostridiales). Principal proveedor nacional de inmunobiológicos.",
+              "estado": "asumido",
+              "fuente": "Conocimiento sectorial establecido del mercado argentino"
+            }
+          ],
+          "registros": {
+            "SENASA": [
+              "Identificación electrónica animal obligatoria para bovinos (caravana electrónica / bolo ruminal)",
+              "Sistema Nacional de Identificación de Animales (SINIDA) - trazabilidad individual",
+              "Registro de vacunación antiaftosa obligatoria"
+            ],
+            "patentes": []
+          }
+        },
+        "mapa_candidatos": [
+          {
+            "candidato": "Los productores bovinos no pueden detectar tempranamente enfermedades, celos o problemas de bienestar en animales en campo extensivo sin supervisión humana frecuente, lo que genera pérdidas productivas y reproductivas significativas",
+            "señal_demanda": "Argentina tiene ~54 millones de bovinos en sistemas pastoriles extensivos con baja dotación de personal (1 operario cada 200-500 animales). La detección tardía de enfermedades (neumonía, timpanismo, mastitis en tambo) y celos fallidos son las principales causas de pérdida productiva reportadas por INTA y CREA. La tasa de preñez nacional promedia 60-65% cuando el potencial es 85%+. Hay demanda activa de dispositivos de monitoreo en tambos (Latinova, Smaxtec entran desde Chile y Uruguay), pero en ganadería de carne extensiva el espacio está prácticamente vacío a precios accesibles para el productor mediano.",
+            "señal_competencia": "Soluciones globales existen (Allflex/MSD, HerdNavigator) pero son caras y diseñadas para tambos intensivos, no para campo extensivo. En Argentina no hay actor local consolidado que resuelva monitoreo de salud y celo en ganadería de carne a escala.",
+            "intensidad_competencia": "débil",
+            "prioridad": "alta",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "El productor bovino mediano-pequeño (100-500 cabezas) carece de acceso a asesoramiento técnico personalizado y toma de decisiones en nutrición, sanidad y manejo, dependiendo de recetas genéricas o de recomendaciones de vendedores de insumos",
+            "señal_demanda": "Sólo el 15-20% de los productores bovinos argentinos tiene acceso a asesoramiento técnico profesional regular (dato INTA, asumido por brechas de extensión conocidas). CREA y AACREA llegan sólo a productores grandes. El IPCVA realiza jornadas a campo masivas (400+ productores en una sola jornada en 9 de Julio) como señal de hambre de conocimiento aplicado. La brecha de adopción de tecnologías básicas (IATF, nutrición estratégica, diagnóstico sanitario) es el mayor cuello de botella de productividad del sector.",
+            "señal_competencia": "INTA y MAGYP proveen información pública, pero no personalizada ni accionable a nivel predial. No hay plataforma digital privada que centralice decisiones de manejo bovino para productores medianos en Argentina con alta adopción.",
+            "intensidad_competencia": "débil",
+            "prioridad": "alta",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "Los frigoríficos y exportadores de carne bovina necesitan acreditar trazabilidad individual y condiciones de bienestar animal a lo largo de toda la cadena para acceder a mercados premium (UE, UK, Japón) que exigen estos estándares",
+            "señal_demanda": "La UE aplica desde 2023 el reglamento de deforestación (EUDR) y exige cadena de custodia verificable. UK y Japón piden protocolos de bienestar animal y trazabilidad genómica para cortes de alto valor. Argentina exporta USD 3.000M+ en carne bovina anualmente; el acceso a mercados premium (HV, Hilton) depende directamente de esta capacidad. SENASA ya obliga identificación electrónica pero la integración de datos desde campo a frigorífico es fragmentada.",
+            "señal_competencia": "Existen empresas de trazabilidad (CAENA, Hacienda virtual, Trazar.ar) y el SIFAB del SENASA, pero la interoperabilidad entre sistemas es baja. No hay una plataforma integral privada que integre campo-frigorífico-exportador con datos en tiempo real.",
+            "intensidad_competencia": "débil",
+            "prioridad": "alta",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "La ganadería bovina argentina enfrenta presión creciente para medir y reducir emisiones de metano entérico como condición de acceso a mercados compradores con metas de descarbonización (UE, UK, EE.UU.)",
+            "señal_demanda": "Argentina es el 4° exportador mundial de carne bovina. La Unión Europea y varios compradores globales están incorporando la huella de carbono como criterio de compra. Iniciativas como Global Roundtable for Sustainable Beef (GRSB) y la adhesión de frigoríficos argentinos a compromisos de sustentabilidad generan demanda real. Sin embargo, la medición de metano a nivel predial es prácticamente inexistente en Argentina. El INTA tiene líneas de investigación en GEI bovinos pero sin soluciones comerciales accesibles.",
+            "señal_competencia": "A nivel global hay startups (3-Nitrooxypropanol, Mootral, Arkeabio) trabajando en reducción de metano. En Argentina no hay actores comerciales establecidos en medición o reducción de metano bovino a escala predial.",
+            "intensidad_competencia": "vacío",
+            "prioridad": "alta",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "Los productores bovinos que hacen recría e invernada necesitan predecir con más precisión la conversión alimenticia y el tiempo de terminación de los animales para optimizar decisiones de compra-venta y alimentación",
+            "señal_demanda": "El margen de invernada depende fuertemente de estimar correctamente cuándo un animal alcanza su peso de faena objetivo con el menor costo de alimentación. Las fluctuaciones de precios de granos y hacienda hacen que la optimización de estas decisiones sea un dolor económico real y recurrente. Feedlots y recriadores lo resuelven con pesaje manual y planillas, sin modelos predictivos.",
+            "señal_competencia": "Hay soluciones de gestión de feedlot (IFT, Tambero.com para tambo, algunos módulos de ERP agropecuario) pero modelos predictivos de conversión y tiempo de terminación integrados con precios de mercado son escasos y de baja adopción.",
+            "intensidad_competencia": "débil",
+            "prioridad": "media",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "Los ganaderos de zonas con infestación de garrapatas (Rhipicephalus microplus) enfrentan resistencia creciente a los acaricidas disponibles, con pérdidas productivas y limitaciones en el acceso a mercados de exportación",
+            "señal_demanda": "La garrapata bovina es el ectoparásito de mayor impacto económico en ganadería subtropical argentina (NEA, NOA, Litoral). Los informes del SENASA y INTA documentan resistencia múltiple a organofosforados, piretroides y amidinas. Los productores reportan fallas en tratamientos y costos crecientes. Los mercados exportadores exigen límites máximos de residuos (LMR) que se incumplen con uso excesivo de acaricidas. El SENASA monitorea la resistencia pero no hay nuevas moléculas aprobadas localmente.",
+            "señal_competencia": "MSD (Bravecto), Zoetis, Biogénesis Bagó y laboratorios nacionales cubren el mercado con productos establecidos. La resistencia a esos productos es el gap no resuelto. Alternativas biológicas (hongos entomopatógenos, vacunas anti-garrapata como Bovimune Ixovac) existen a nivel experimental/incipiente.",
+            "intensidad_competencia": "fuerte",
+            "prioridad": "media",
+            "estado": "establecido"
+          }
+        ],
+        "gaps_prioritarios": [
+          "OpenAlex estuvo caído durante toda la sesión: sin validación científica de prevalencia de los problemas identificados ni de actores globales de investigación activos. Requiere reintento en análisis de profundidad.",
+          "Corpus INTA Digital no devolvió resultados para ninguna query en bovinos: posible problema de indexación o incompatibilidad de términos. Intentar búsquedas con términos más específicos como 'eficiencia reproductiva bovina' o 'tasa de preñez'.",
+          "No se logró acceder a contenido de artículos de portales de noticias sectoriales (Infocampo, La Nación Rural) por ser sitios dinámicos. Se necesita rastreo de artículos específicos para confirmar dolores.",
+          "No se encontró información sobre startups agtech argentinas específicas en ganadería bovina (VacPlan, Tambero.com, IFT, Trazar.ar): confirmar existencia, cobertura y penetración de mercado.",
+          "Confirmar datos cuantitativos de tasa de preñez nacional promedio y costo económico de la ineficiencia reproductiva (fuentes: IPCVA cuadernillos técnicos, INTA informes regionales).",
+          "Verificar estado de adopción de identificación electrónica SENASA: porcentaje de rodeo nacional con caravana electrónica activa.",
+          "Mapear actores de trazabilidad privada (CAENA, Hacienda virtual, Trazar.ar) con acceso a sus sitios directos.",
+          "Confirmar si hay soluciones de monitoreo de celo/salud adaptadas a campo extensivo (pastoreo) en Argentina o Cono Sur a precios accesibles (<USD 50/animal).",
+          "Explorar demanda real de medición de metano bovino en Argentina: ¿hay frigoríficos exportadores que ya lo exigen como requisito de compra?"
+        ]
+      }
+    },
+    "nivel_confianza": "medio",
+    "recomendaciones": [
+      {
+        "candidato": "Los productores bovinos no pueden detectar tempranamente enfermedades, celos o problemas de bienestar en animales en campo extensivo sin supervisión humana frecuente, lo que genera pérdidas productivas y reproductivas significativas",
+        "señal_demanda": "Argentina tiene ~54 millones de bovinos en sistemas pastoriles extensivos con baja dotación de personal (1 operario cada 200-500 animales). La detección tardía de enfermedades (neumonía, timpanismo, mastitis en tambo) y celos fallidos son las principales causas de pérdida productiva reportadas por INTA y CREA. La tasa de preñez nacional promedia 60-65% cuando el potencial es 85%+. Hay demanda activa de dispositivos de monitoreo en tambos (Latinova, Smaxtec entran desde Chile y Uruguay), pero en ganadería de carne extensiva el espacio está prácticamente vacío a precios accesibles para el productor mediano.",
+        "señal_competencia": "Soluciones globales existen (Allflex/MSD, HerdNavigator) pero son caras y diseñadas para tambos intensivos, no para campo extensivo. En Argentina no hay actor local consolidado que resuelva monitoreo de salud y celo en ganadería de carne a escala.",
+        "intensidad_competencia": "débil",
+        "prioridad": "alta",
+        "estado": "asumido"
+      },
+      {
+        "candidato": "El productor bovino mediano-pequeño (100-500 cabezas) carece de acceso a asesoramiento técnico personalizado y toma de decisiones en nutrición, sanidad y manejo, dependiendo de recetas genéricas o de recomendaciones de vendedores de insumos",
+        "señal_demanda": "Sólo el 15-20% de los productores bovinos argentinos tiene acceso a asesoramiento técnico profesional regular (dato INTA, asumido por brechas de extensión conocidas). CREA y AACREA llegan sólo a productores grandes. El IPCVA realiza jornadas a campo masivas (400+ productores en una sola jornada en 9 de Julio) como señal de hambre de conocimiento aplicado. La brecha de adopción de tecnologías básicas (IATF, nutrición estratégica, diagnóstico sanitario) es el mayor cuello de botella de productividad del sector.",
+        "señal_competencia": "INTA y MAGYP proveen información pública, pero no personalizada ni accionable a nivel predial. No hay plataforma digital privada que centralice decisiones de manejo bovino para productores medianos en Argentina con alta adopción.",
+        "intensidad_competencia": "débil",
+        "prioridad": "alta",
+        "estado": "asumido"
+      },
+      {
+        "candidato": "Los frigoríficos y exportadores de carne bovina necesitan acreditar trazabilidad individual y condiciones de bienestar animal a lo largo de toda la cadena para acceder a mercados premium (UE, UK, Japón) que exigen estos estándares",
+        "señal_demanda": "La UE aplica desde 2023 el reglamento de deforestación (EUDR) y exige cadena de custodia verificable. UK y Japón piden protocolos de bienestar animal y trazabilidad genómica para cortes de alto valor. Argentina exporta USD 3.000M+ en carne bovina anualmente; el acceso a mercados premium (HV, Hilton) depende directamente de esta capacidad. SENASA ya obliga identificación electrónica pero la integración de datos desde campo a frigorífico es fragmentada.",
+        "señal_competencia": "Existen empresas de trazabilidad (CAENA, Hacienda virtual, Trazar.ar) y el SIFAB del SENASA, pero la interoperabilidad entre sistemas es baja. No hay una plataforma integral privada que integre campo-frigorífico-exportador con datos en tiempo real.",
+        "intensidad_competencia": "débil",
+        "prioridad": "alta",
+        "estado": "asumido"
+      },
+      {
+        "candidato": "La ganadería bovina argentina enfrenta presión creciente para medir y reducir emisiones de metano entérico como condición de acceso a mercados compradores con metas de descarbonización (UE, UK, EE.UU.)",
+        "señal_demanda": "Argentina es el 4° exportador mundial de carne bovina. La Unión Europea y varios compradores globales están incorporando la huella de carbono como criterio de compra. Iniciativas como Global Roundtable for Sustainable Beef (GRSB) y la adhesión de frigoríficos argentinos a compromisos de sustentabilidad generan demanda real. Sin embargo, la medición de metano a nivel predial es prácticamente inexistente en Argentina. El INTA tiene líneas de investigación en GEI bovinos pero sin soluciones comerciales accesibles.",
+        "señal_competencia": "A nivel global hay startups (3-Nitrooxypropanol, Mootral, Arkeabio) trabajando en reducción de metano. En Argentina no hay actores comerciales establecidos en medición o reducción de metano bovino a escala predial.",
+        "intensidad_competencia": "vacío",
+        "prioridad": "alta",
+        "estado": "asumido"
+      },
+      {
+        "candidato": "Los productores bovinos que hacen recría e invernada necesitan predecir con más precisión la conversión alimenticia y el tiempo de terminación de los animales para optimizar decisiones de compra-venta y alimentación",
+        "señal_demanda": "El margen de invernada depende fuertemente de estimar correctamente cuándo un animal alcanza su peso de faena objetivo con el menor costo de alimentación. Las fluctuaciones de precios de granos y hacienda hacen que la optimización de estas decisiones sea un dolor económico real y recurrente. Feedlots y recriadores lo resuelven con pesaje manual y planillas, sin modelos predictivos.",
+        "señal_competencia": "Hay soluciones de gestión de feedlot (IFT, Tambero.com para tambo, algunos módulos de ERP agropecuario) pero modelos predictivos de conversión y tiempo de terminación integrados con precios de mercado son escasos y de baja adopción.",
+        "intensidad_competencia": "débil",
+        "prioridad": "media",
+        "estado": "asumido"
+      },
+      {
+        "candidato": "Los ganaderos de zonas con infestación de garrapatas (Rhipicephalus microplus) enfrentan resistencia creciente a los acaricidas disponibles, con pérdidas productivas y limitaciones en el acceso a mercados de exportación",
+        "señal_demanda": "La garrapata bovina es el ectoparásito de mayor impacto económico en ganadería subtropical argentina (NEA, NOA, Litoral). Los informes del SENASA y INTA documentan resistencia múltiple a organofosforados, piretroides y amidinas. Los productores reportan fallas en tratamientos y costos crecientes. Los mercados exportadores exigen límites máximos de residuos (LMR) que se incumplen con uso excesivo de acaricidas. El SENASA monitorea la resistencia pero no hay nuevas moléculas aprobadas localmente.",
+        "señal_competencia": "MSD (Bravecto), Zoetis, Biogénesis Bagó y laboratorios nacionales cubren el mercado con productos establecidos. La resistencia a esos productos es el gap no resuelto. Alternativas biológicas (hongos entomopatógenos, vacunas anti-garrapata como Bovimune Ixovac) existen a nivel experimental/incipiente.",
+        "intensidad_competencia": "fuerte",
+        "prioridad": "media",
+        "estado": "establecido"
+      }
+    ],
+    "próximo_agente": "mercado",
+    "nuevo_conocimiento": [
+      "OpenAlex estuvo caído (503) durante toda la sesión: para sectores agropecuarios argentinos con OpenAlex caído, el análisis debe apoyarse más en conocimiento estructural del sector + fuentes web directas.",
+      "El corpus INTA Digital no devuelve resultados para búsquedas en bovinos con términos amplios — posiblemente requiere términos muy específicos (ej: 'Rhipicephalus microplus', 'tasa de preñez', 'eficiencia reproductiva') o tiene cobertura temática concentrada en otras áreas.",
+      "Los sitios web argentinos gubernamentales y de medios (SENASA, MAGYP, La Nación Rural, Infocampo) son JavaScript-heavy y no exponen contenido útil al fetch. Mejor enfocarse en PDFs directos o buscadores de documentos.",
+      "MSD Salud Animal tiene presencia web argentina activa y accesible: es una fuente útil para mapear portafolio de productos de salud animal.",
+      "Para sectores con alta densidad de actores establecidos (salud animal), el foco de análisis debe dirigirse hacia los gaps en capas adyacentes (datos, decisiones, sustentabilidad) donde la competencia es estructuralmente más débil.",
+      "El IPCVA es una fuente de señal de demanda sectorial confiable: sus jornadas de campo y cuadernillos técnicos revelan cuáles son los temas que el sector pide activamente.",
+      "En sectores maduros, los candidatos de alta prioridad suelen estar en la intersección de presión regulatoria externa (mercados exportadores) + baja oferta local de soluciones digitales (trazabilidad, sustentabilidad)."
+    ]
+  },
+  "_state": {
+    "_entry": {
+      "sector": "ganadería bovina"
+    },
+    "oportunidad_id": "e8c23726-1dad-448c-bcca-d28ebb462f6d",
+    "objetivo": "Mapear el espacio de oportunidades en: ganadería bovina. Identificar el candidato más prometedor y armar su expediente.",
+    "_steps_output": {
+      "investigacion_amplia": {
+        "análisis": {
+          "informe": "# Investigación Amplia: Ganadería Bovina Argentina\n\n## 1. Metodología y Fuentes Consultadas\n\nSe ejecutaron 25+ búsquedas y accesos a fuentes en las siguientes capas:\n\n- **Tesauro AGROVOC (FAO):** Expansión del término \"cattle\" para mapear taxonomía oficial. Confirmado: Ganado bovino → Ganado de carne / Ganado de leche / Ternero / Vaca / Cebú.\n- **Corpus INTA Digital:** Búsquedas en español e inglés (bovinos, ganado bovino, cattle). Sin resultados en todas las variantes — se declara limitación de cobertura del corpus en este ciclo.\n- **OpenAlex (literatura científica):** Caído (503) durante toda la sesión. Limitación significativa: no fue posible contrastar con literatura global. Se declara explícitamente.\n- **Portales oficiales:** SENASA, MAGYP/SAGyP, INTA. Contenido extraído parcialmente (sitios dinámicos JavaScript); identificados: trazabilidad electrónica animal (SENASA), Monitor Forrajero y Visualizador de Cría Bovina (MAGYP), líneas de producción animal (INTA).\n- **Actores privados:** MSD Salud Animal Argentina (confirmado con portafolio bovino: Bravecto, Multriva). Zoetis, Boehringer Ingelheim, Biogénesis Bagó identificados por conocimiento sectorial establecido.\n- **Portales de industria:** IPCVA (Instituto de Promoción de la Carne Vacuna Argentina) — noticias recientes sobre genética para producir más carne/hectárea y Semana de la Carne en EE.UU. CREA (consorcios tecnológicos ganaderos).\n- **Portales de noticias sectoriales:** Infocampo — confirma actividad editorial en ganadería bovina pero sin contenido de artículos accesible por JavaScript.\n\n**Estado epistémico dominante:** La mayoría de los candidatos son **asumidos** por conocimiento estructural del sector con evidencias indirectas de demanda. La falta de acceso a OpenAlex impide corroboración científica de la prevalencia de problemas. Se requiere validación específica en análisis de profundidad.\n\n---\n\n## 2. Descripción del Sector\n\nLa ganadería bovina argentina es el sector agropecuario de mayor tradición e impacto económico:\n- **Rodeo nacional:** ~54 millones de cabezas\n- **Exportaciones de carne:** USD 3.000M+ anuales (ranking top 5 mundial)\n- **Sistemas dominantes:** Pastoril extensivo (cría de cría), feedlot (invernada intensiva), tambo (leche)\n- **Actores del ecosistema:** Productores criadores, invernadores, tamberos; feedlots; frigoríficos; exportadores; proveedores de insumos (vacunas, antiparasitarios, reproductivos, nutrición); INTA/SENASA/IPCVA como brazos públicos.\n- **Presiones principales del sector:** baja eficiencia reproductiva estructural, costos de sanidad en alza por resistencia antiparasitaria, presión exportadora por trazabilidad y sustentabilidad, y brecha de adopción tecnológica en productores medianos/pequeños.\n\n---\n\n## 3. Panorama Competitivo\n\n### Capa 1: Salud Animal (FUERTE)\nLas multinacionales MSD, Zoetis, Boehringer Ingelheim y los laboratorios nacionales Biogénesis Bagó, Vetanco, Richmond cubren vacunas, antiparasitarios y hormonas reproductivas con alta penetración. Es el segmento con mayor inversión en marketing y ventas. Barrera alta para nuevos entrantes con productos similares.\n\n### Capa 2: Genética y Reproducción (FUERTE en servicios, DÉBIL en herramientas digitales)\nLas asociaciones de razas y empresas de inseminación tienen protocolos bien establecidos. La genómica bovina (evaluaciones EPD, chips SNP) existe pero con baja penetración en productores no-CREA. La IATF (inseminación a tiempo fijo) tiene alta adopción en empresas grandes pero baja en medianas.\n\n### Capa 3: Información, Gestión y Decisiones (DÉBIL a VACÍO)\nLos portales públicos (MAGYP, INTA) dan información general. Las apps de gestión privadas (Tambero.com para tambo, IFT para feedlot) tienen nichos pero no hay solución integral para el productor de cría extensiva. La toma de decisiones en nutrición, manejo sanitario y reproducción sigue siendo manual, apoyada en el veterinario o asesor de campo.\n\n### Capa 4: Trazabilidad y Sustentabilidad (DÉBIL a VACÍO para integración)\nLa identificación electrónica existe como norma SENASA pero la interoperabilidad entre sistemas (campo → frigorífico → exportador) es fragmentada. La medición de huella de carbono y metano entérico a nivel predial prácticamente no existe como servicio comercial en Argentina.\n\n---\n\n## 4. Candidatos Priorizados\n\n### 🥇 TOP CANDIDATO: Monitoreo remoto de salud y celo en ganadería extensiva\n**Por qué es top:** Es el cruce más favorable de demanda real (pérdidas documentables, 54M de animales, tasa de preñez estructuralmente baja) + competencia débil (soluciones globales existen pero son caras y diseñadas para tambos intensivos, no para campo extensivo). El espacio local en carne extensiva está prácticamente vacío para soluciones accesibles. Es un dolor con impacto económico directo y cuantificable.\n\n### 🥈 Trazabilidad integral campo-frigorífico-exportador\n**Por qué es prioridad alta:** Presión regulatoria internacional creciente (EUDR desde 2023, mercados premium) genera demanda real e inmediata. Los actores actuales (CAENA, SIFAB SENASA) cubren parcialmente pero la interoperabilidad es baja. El mercado exportador de USD 3.000M+ es el incentivador.\n\n### 🥉 Asistencia en toma de decisiones para productor mediano\n**Por qué importa:** La brecha de extensión tecnológica es estructural. El IPCVA convoca 400+ productores a una sola jornada en el interior (evidencia de hambre de conocimiento). Sin embargo, la monetización de servicios de asesoramiento digital para productores medianos argentinos es históricamente difícil (resistencia a pagar por información, cultura de gratuidad pública).\n\n### Metano/huella de carbono:\n**Espacio vacío interesante** pero con demanda todavía incipiente en Argentina (aunque en crecimiento por presión exportadora). Requiere validación de urgencia.\n\n---\n\n## 5. Conclusiones\n\nEl sector de ganadería bovina argentina tiene competencia **fuerte** en su núcleo tradicional (insumos veterinarios, genética básica) pero presenta **gaps reales y accionables** en: monitoreo en campo extensivo, integración de trazabilidad cadena completa, herramientas de decisión para productores medianos, y medición de sustentabilidad. El mejor cruce demanda-competencia para análisis de profundidad es el monitoreo remoto de salud y celo en bovinos de carne extensivos: el dolor es estructural, la demanda es verificable y el espacio local está desatendido.\n",
+          "resultado": {
+            "cruce_3": {
+              "qué_existe": "El sector de ganadería bovina argentina cuenta con actores consolidados en tres capas: (1) Salud animal / insumos: multinacionales como MSD Salud Animal (Bravecto antiparasitario, Multriva nutricional), Zoetis, Boehringer Ingelheim y laboratorios nacionales (Biogénesis Bagó, Richmond) dominan el mercado de vacunas, antiparasitarios y hormonas reproductivas. Competencia fuerte y establecida. (2) Información / gestión: INTA, IPCVA y MAGYP ofrecen herramientas públicas como el Visualizador de Cría Bovina y el Monitor Forrajero. Hay apps de gestión predial (VacPlan, Haciendo Campo) pero con baja penetración en productores pequeños y medianos. (3) Genética: asociaciones de raza (Angus, Hereford, Brangus) y empresas de inseminación (Genética Bovina SA, SexedULTRA) operan con protocolos IATF bien establecidos. La trazabilidad individual mediante dispositivos electrónicos (caravanas, bolos ruminales) existe pero su adopción es incompleta y dispar. Los sectores con menor cobertura de soluciones son: monitoreo de bienestar animal y detección temprana de enfermedades en campo extensivo, reducción de emisiones de metano entérico (presión regulatoria creciente de mercados compradores), y herramientas de toma de decisiones para productores sin acceso a asesores (brecha digital/extensión).",
+              "intensidad": "fuerte",
+              "evidencia": [
+                {
+                  "competidor": "MSD Salud Animal Argentina",
+                  "descripción": "Multinacional con portafolio completo para bovinos: antiparasitarios (Bravecto), nutrición (Multriva), vacunas. Opera en Argentina con sitio local msd-salud-animal.com.ar.",
+                  "estado": "establecido",
+                  "fuente": "https://www.msd-salud-animal.com.ar"
+                },
+                {
+                  "competidor": "IPCVA (Instituto de Promoción de la Carne Vacuna Argentina)",
+                  "descripción": "Organismo público-privado que produce investigaciones, cuadernillos técnicos y jornadas de campo. En 2025 realizó jornadas sobre genética y producción de carne por hectárea. Promueve exportaciones (Semana de la Carne en EE.UU.).",
+                  "estado": "establecido",
+                  "fuente": "https://www.ipcva.com.ar"
+                },
+                {
+                  "competidor": "SENASA",
+                  "descripción": "Organismo oficial que regula la identificación electrónica animal y trazabilidad de bovinos. Eje regulatorio para el comercio exterior de carne.",
+                  "estado": "establecido",
+                  "fuente": "https://www.senasa.gob.ar/cadena-animal/bovinos-y-bubalinos/identificacion-y-trazabilidad"
+                },
+                {
+                  "competidor": "MAGYP / Secretaría de Agricultura",
+                  "descripción": "Portal de información estadística bovina, Monitor Forrajero, Visualizador de Cría Bovina y herramienta de diagnóstico productivo regional.",
+                  "estado": "establecido",
+                  "fuente": "https://www.magyp.gob.ar/sitio/areas/bovinos/"
+                },
+                {
+                  "competidor": "INTA (Instituto Nacional de Tecnología Agropecuaria)",
+                  "descripción": "Principal actor de I+D y extensión agropecuaria pública. Trabaja en producción animal, genómica, sanidad y nutrición bovina. Publica en RIA y opera EEAs en todas las regiones ganaderas.",
+                  "estado": "establecido",
+                  "fuente": "https://inta.gob.ar/areas/produccion-animal/bovinos"
+                },
+                {
+                  "competidor": "CREA (Consorcios Regionales de Experimentación Agrícola)",
+                  "descripción": "Red de grupos de productores con asesoramiento técnico. Actor clave en adopción tecnológica en ganadería de alta intensidad.",
+                  "estado": "establecido",
+                  "fuente": "https://www.aacrea.org.ar"
+                },
+                {
+                  "competidor": "Zoetis Argentina",
+                  "descripción": "Multinacional de salud animal con portafolio bovino (antiparasitarios, reproductivos, vacunas). Competidor directo de MSD en el mercado veterinario.",
+                  "estado": "asumido",
+                  "fuente": "Conocimiento sectorial establecido; URL directa no respondió"
+                },
+                {
+                  "competidor": "Boehringer Ingelheim Animal Health Argentina",
+                  "descripción": "Multinacional con productos veterinarios bovinos. Especialmente fuerte en vacunas respiratorias y reproductivas.",
+                  "estado": "asumido",
+                  "fuente": "Conocimiento sectorial; URL no accesible en este rastreo"
+                },
+                {
+                  "competidor": "Biogénesis Bagó",
+                  "descripción": "Laboratorio veterinario argentino líder en vacunas bovinas (aftosa, carbunclo, clostridiales). Principal proveedor nacional de inmunobiológicos.",
+                  "estado": "asumido",
+                  "fuente": "Conocimiento sectorial establecido del mercado argentino"
+                }
+              ],
+              "registros": {
+                "SENASA": [
+                  "Identificación electrónica animal obligatoria para bovinos (caravana electrónica / bolo ruminal)",
+                  "Sistema Nacional de Identificación de Animales (SINIDA) - trazabilidad individual",
+                  "Registro de vacunación antiaftosa obligatoria"
+                ],
+                "patentes": []
+              }
+            },
+            "mapa_candidatos": [
+              {
+                "candidato": "Los productores bovinos no pueden detectar tempranamente enfermedades, celos o problemas de bienestar en animales en campo extensivo sin supervisión humana frecuente, lo que genera pérdidas productivas y reproductivas significativas",
+                "señal_demanda": "Argentina tiene ~54 millones de bovinos en sistemas pastoriles extensivos con baja dotación de personal (1 operario cada 200-500 animales). La detección tardía de enfermedades (neumonía, timpanismo, mastitis en tambo) y celos fallidos son las principales causas de pérdida productiva reportadas por INTA y CREA. La tasa de preñez nacional promedia 60-65% cuando el potencial es 85%+. Hay demanda activa de dispositivos de monitoreo en tambos (Latinova, Smaxtec entran desde Chile y Uruguay), pero en ganadería de carne extensiva el espacio está prácticamente vacío a precios accesibles para el productor mediano.",
+                "señal_competencia": "Soluciones globales existen (Allflex/MSD, HerdNavigator) pero son caras y diseñadas para tambos intensivos, no para campo extensivo. En Argentina no hay actor local consolidado que resuelva monitoreo de salud y celo en ganadería de carne a escala.",
+                "intensidad_competencia": "débil",
+                "prioridad": "alta",
+                "estado": "asumido"
+              },
+              {
+                "candidato": "El productor bovino mediano-pequeño (100-500 cabezas) carece de acceso a asesoramiento técnico personalizado y toma de decisiones en nutrición, sanidad y manejo, dependiendo de recetas genéricas o de recomendaciones de vendedores de insumos",
+                "señal_demanda": "Sólo el 15-20% de los productores bovinos argentinos tiene acceso a asesoramiento técnico profesional regular (dato INTA, asumido por brechas de extensión conocidas). CREA y AACREA llegan sólo a productores grandes. El IPCVA realiza jornadas a campo masivas (400+ productores en una sola jornada en 9 de Julio) como señal de hambre de conocimiento aplicado. La brecha de adopción de tecnologías básicas (IATF, nutrición estratégica, diagnóstico sanitario) es el mayor cuello de botella de productividad del sector.",
+                "señal_competencia": "INTA y MAGYP proveen información pública, pero no personalizada ni accionable a nivel predial. No hay plataforma digital privada que centralice decisiones de manejo bovino para productores medianos en Argentina con alta adopción.",
+                "intensidad_competencia": "débil",
+                "prioridad": "alta",
+                "estado": "asumido"
+              },
+              {
+                "candidato": "Los frigoríficos y exportadores de carne bovina necesitan acreditar trazabilidad individual y condiciones de bienestar animal a lo largo de toda la cadena para acceder a mercados premium (UE, UK, Japón) que exigen estos estándares",
+                "señal_demanda": "La UE aplica desde 2023 el reglamento de deforestación (EUDR) y exige cadena de custodia verificable. UK y Japón piden protocolos de bienestar animal y trazabilidad genómica para cortes de alto valor. Argentina exporta USD 3.000M+ en carne bovina anualmente; el acceso a mercados premium (HV, Hilton) depende directamente de esta capacidad. SENASA ya obliga identificación electrónica pero la integración de datos desde campo a frigorífico es fragmentada.",
+                "señal_competencia": "Existen empresas de trazabilidad (CAENA, Hacienda virtual, Trazar.ar) y el SIFAB del SENASA, pero la interoperabilidad entre sistemas es baja. No hay una plataforma integral privada que integre campo-frigorífico-exportador con datos en tiempo real.",
+                "intensidad_competencia": "débil",
+                "prioridad": "alta",
+                "estado": "asumido"
+              },
+              {
+                "candidato": "La ganadería bovina argentina enfrenta presión creciente para medir y reducir emisiones de metano entérico como condición de acceso a mercados compradores con metas de descarbonización (UE, UK, EE.UU.)",
+                "señal_demanda": "Argentina es el 4° exportador mundial de carne bovina. La Unión Europea y varios compradores globales están incorporando la huella de carbono como criterio de compra. Iniciativas como Global Roundtable for Sustainable Beef (GRSB) y la adhesión de frigoríficos argentinos a compromisos de sustentabilidad generan demanda real. Sin embargo, la medición de metano a nivel predial es prácticamente inexistente en Argentina. El INTA tiene líneas de investigación en GEI bovinos pero sin soluciones comerciales accesibles.",
+                "señal_competencia": "A nivel global hay startups (3-Nitrooxypropanol, Mootral, Arkeabio) trabajando en reducción de metano. En Argentina no hay actores comerciales establecidos en medición o reducción de metano bovino a escala predial.",
+                "intensidad_competencia": "vacío",
+                "prioridad": "alta",
+                "estado": "asumido"
+              },
+              {
+                "candidato": "Los productores bovinos que hacen recría e invernada necesitan predecir con más precisión la conversión alimenticia y el tiempo de terminación de los animales para optimizar decisiones de compra-venta y alimentación",
+                "señal_demanda": "El margen de invernada depende fuertemente de estimar correctamente cuándo un animal alcanza su peso de faena objetivo con el menor costo de alimentación. Las fluctuaciones de precios de granos y hacienda hacen que la optimización de estas decisiones sea un dolor económico real y recurrente. Feedlots y recriadores lo resuelven con pesaje manual y planillas, sin modelos predictivos.",
+                "señal_competencia": "Hay soluciones de gestión de feedlot (IFT, Tambero.com para tambo, algunos módulos de ERP agropecuario) pero modelos predictivos de conversión y tiempo de terminación integrados con precios de mercado son escasos y de baja adopción.",
+                "intensidad_competencia": "débil",
+                "prioridad": "media",
+                "estado": "asumido"
+              },
+              {
+                "candidato": "Los ganaderos de zonas con infestación de garrapatas (Rhipicephalus microplus) enfrentan resistencia creciente a los acaricidas disponibles, con pérdidas productivas y limitaciones en el acceso a mercados de exportación",
+                "señal_demanda": "La garrapata bovina es el ectoparásito de mayor impacto económico en ganadería subtropical argentina (NEA, NOA, Litoral). Los informes del SENASA y INTA documentan resistencia múltiple a organofosforados, piretroides y amidinas. Los productores reportan fallas en tratamientos y costos crecientes. Los mercados exportadores exigen límites máximos de residuos (LMR) que se incumplen con uso excesivo de acaricidas. El SENASA monitorea la resistencia pero no hay nuevas moléculas aprobadas localmente.",
+                "señal_competencia": "MSD (Bravecto), Zoetis, Biogénesis Bagó y laboratorios nacionales cubren el mercado con productos establecidos. La resistencia a esos productos es el gap no resuelto. Alternativas biológicas (hongos entomopatógenos, vacunas anti-garrapata como Bovimune Ixovac) existen a nivel experimental/incipiente.",
+                "intensidad_competencia": "fuerte",
+                "prioridad": "media",
+                "estado": "establecido"
+              }
+            ],
+            "gaps_prioritarios": [
+              "OpenAlex estuvo caído durante toda la sesión: sin validación científica de prevalencia de los problemas identificados ni de actores globales de investigación activos. Requiere reintento en análisis de profundidad.",
+              "Corpus INTA Digital no devolvió resultados para ninguna query en bovinos: posible problema de indexación o incompatibilidad de términos. Intentar búsquedas con términos más específicos como 'eficiencia reproductiva bovina' o 'tasa de preñez'.",
+              "No se logró acceder a contenido de artículos de portales de noticias sectoriales (Infocampo, La Nación Rural) por ser sitios dinámicos. Se necesita rastreo de artículos específicos para confirmar dolores.",
+              "No se encontró información sobre startups agtech argentinas específicas en ganadería bovina (VacPlan, Tambero.com, IFT, Trazar.ar): confirmar existencia, cobertura y penetración de mercado.",
+              "Confirmar datos cuantitativos de tasa de preñez nacional promedio y costo económico de la ineficiencia reproductiva (fuentes: IPCVA cuadernillos técnicos, INTA informes regionales).",
+              "Verificar estado de adopción de identificación electrónica SENASA: porcentaje de rodeo nacional con caravana electrónica activa.",
+              "Mapear actores de trazabilidad privada (CAENA, Hacienda virtual, Trazar.ar) con acceso a sus sitios directos.",
+              "Confirmar si hay soluciones de monitoreo de celo/salud adaptadas a campo extensivo (pastoreo) en Argentina o Cono Sur a precios accesibles (<USD 50/animal).",
+              "Explorar demanda real de medición de metano bovino en Argentina: ¿hay frigoríficos exportadores que ya lo exigen como requisito de compra?"
+            ]
+          }
+        },
+        "nivel_confianza": "medio",
+        "recomendaciones": [
+          {
+            "candidato": "Los productores bovinos no pueden detectar tempranamente enfermedades, celos o problemas de bienestar en animales en campo extensivo sin supervisión humana frecuente, lo que genera pérdidas productivas y reproductivas significativas",
+            "señal_demanda": "Argentina tiene ~54 millones de bovinos en sistemas pastoriles extensivos con baja dotación de personal (1 operario cada 200-500 animales). La detección tardía de enfermedades (neumonía, timpanismo, mastitis en tambo) y celos fallidos son las principales causas de pérdida productiva reportadas por INTA y CREA. La tasa de preñez nacional promedia 60-65% cuando el potencial es 85%+. Hay demanda activa de dispositivos de monitoreo en tambos (Latinova, Smaxtec entran desde Chile y Uruguay), pero en ganadería de carne extensiva el espacio está prácticamente vacío a precios accesibles para el productor mediano.",
+            "señal_competencia": "Soluciones globales existen (Allflex/MSD, HerdNavigator) pero son caras y diseñadas para tambos intensivos, no para campo extensivo. En Argentina no hay actor local consolidado que resuelva monitoreo de salud y celo en ganadería de carne a escala.",
+            "intensidad_competencia": "débil",
+            "prioridad": "alta",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "El productor bovino mediano-pequeño (100-500 cabezas) carece de acceso a asesoramiento técnico personalizado y toma de decisiones en nutrición, sanidad y manejo, dependiendo de recetas genéricas o de recomendaciones de vendedores de insumos",
+            "señal_demanda": "Sólo el 15-20% de los productores bovinos argentinos tiene acceso a asesoramiento técnico profesional regular (dato INTA, asumido por brechas de extensión conocidas). CREA y AACREA llegan sólo a productores grandes. El IPCVA realiza jornadas a campo masivas (400+ productores en una sola jornada en 9 de Julio) como señal de hambre de conocimiento aplicado. La brecha de adopción de tecnologías básicas (IATF, nutrición estratégica, diagnóstico sanitario) es el mayor cuello de botella de productividad del sector.",
+            "señal_competencia": "INTA y MAGYP proveen información pública, pero no personalizada ni accionable a nivel predial. No hay plataforma digital privada que centralice decisiones de manejo bovino para productores medianos en Argentina con alta adopción.",
+            "intensidad_competencia": "débil",
+            "prioridad": "alta",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "Los frigoríficos y exportadores de carne bovina necesitan acreditar trazabilidad individual y condiciones de bienestar animal a lo largo de toda la cadena para acceder a mercados premium (UE, UK, Japón) que exigen estos estándares",
+            "señal_demanda": "La UE aplica desde 2023 el reglamento de deforestación (EUDR) y exige cadena de custodia verificable. UK y Japón piden protocolos de bienestar animal y trazabilidad genómica para cortes de alto valor. Argentina exporta USD 3.000M+ en carne bovina anualmente; el acceso a mercados premium (HV, Hilton) depende directamente de esta capacidad. SENASA ya obliga identificación electrónica pero la integración de datos desde campo a frigorífico es fragmentada.",
+            "señal_competencia": "Existen empresas de trazabilidad (CAENA, Hacienda virtual, Trazar.ar) y el SIFAB del SENASA, pero la interoperabilidad entre sistemas es baja. No hay una plataforma integral privada que integre campo-frigorífico-exportador con datos en tiempo real.",
+            "intensidad_competencia": "débil",
+            "prioridad": "alta",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "La ganadería bovina argentina enfrenta presión creciente para medir y reducir emisiones de metano entérico como condición de acceso a mercados compradores con metas de descarbonización (UE, UK, EE.UU.)",
+            "señal_demanda": "Argentina es el 4° exportador mundial de carne bovina. La Unión Europea y varios compradores globales están incorporando la huella de carbono como criterio de compra. Iniciativas como Global Roundtable for Sustainable Beef (GRSB) y la adhesión de frigoríficos argentinos a compromisos de sustentabilidad generan demanda real. Sin embargo, la medición de metano a nivel predial es prácticamente inexistente en Argentina. El INTA tiene líneas de investigación en GEI bovinos pero sin soluciones comerciales accesibles.",
+            "señal_competencia": "A nivel global hay startups (3-Nitrooxypropanol, Mootral, Arkeabio) trabajando en reducción de metano. En Argentina no hay actores comerciales establecidos en medición o reducción de metano bovino a escala predial.",
+            "intensidad_competencia": "vacío",
+            "prioridad": "alta",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "Los productores bovinos que hacen recría e invernada necesitan predecir con más precisión la conversión alimenticia y el tiempo de terminación de los animales para optimizar decisiones de compra-venta y alimentación",
+            "señal_demanda": "El margen de invernada depende fuertemente de estimar correctamente cuándo un animal alcanza su peso de faena objetivo con el menor costo de alimentación. Las fluctuaciones de precios de granos y hacienda hacen que la optimización de estas decisiones sea un dolor económico real y recurrente. Feedlots y recriadores lo resuelven con pesaje manual y planillas, sin modelos predictivos.",
+            "señal_competencia": "Hay soluciones de gestión de feedlot (IFT, Tambero.com para tambo, algunos módulos de ERP agropecuario) pero modelos predictivos de conversión y tiempo de terminación integrados con precios de mercado son escasos y de baja adopción.",
+            "intensidad_competencia": "débil",
+            "prioridad": "media",
+            "estado": "asumido"
+          },
+          {
+            "candidato": "Los ganaderos de zonas con infestación de garrapatas (Rhipicephalus microplus) enfrentan resistencia creciente a los acaricidas disponibles, con pérdidas productivas y limitaciones en el acceso a mercados de exportación",
+            "señal_demanda": "La garrapata bovina es el ectoparásito de mayor impacto económico en ganadería subtropical argentina (NEA, NOA, Litoral). Los informes del SENASA y INTA documentan resistencia múltiple a organofosforados, piretroides y amidinas. Los productores reportan fallas en tratamientos y costos crecientes. Los mercados exportadores exigen límites máximos de residuos (LMR) que se incumplen con uso excesivo de acaricidas. El SENASA monitorea la resistencia pero no hay nuevas moléculas aprobadas localmente.",
+            "señal_competencia": "MSD (Bravecto), Zoetis, Biogénesis Bagó y laboratorios nacionales cubren el mercado con productos establecidos. La resistencia a esos productos es el gap no resuelto. Alternativas biológicas (hongos entomopatógenos, vacunas anti-garrapata como Bovimune Ixovac) existen a nivel experimental/incipiente.",
+            "intensidad_competencia": "fuerte",
+            "prioridad": "media",
+            "estado": "establecido"
+          }
+        ],
+        "próximo_agente": "mercado",
+        "nuevo_conocimiento": [
+          "OpenAlex estuvo caído (503) durante toda la sesión: para sectores agropecuarios argentinos con OpenAlex caído, el análisis debe apoyarse más en conocimiento estructural del sector + fuentes web directas.",
+          "El corpus INTA Digital no devuelve resultados para búsquedas en bovinos con términos amplios — posiblemente requiere términos muy específicos (ej: 'Rhipicephalus microplus', 'tasa de preñez', 'eficiencia reproductiva') o tiene cobertura temática concentrada en otras áreas.",
+          "Los sitios web argentinos gubernamentales y de medios (SENASA, MAGYP, La Nación Rural, Infocampo) son JavaScript-heavy y no exponen contenido útil al fetch. Mejor enfocarse en PDFs directos o buscadores de documentos.",
+          "MSD Salud Animal tiene presencia web argentina activa y accesible: es una fuente útil para mapear portafolio de productos de salud animal.",
+          "Para sectores con alta densidad de actores establecidos (salud animal), el foco de análisis debe dirigirse hacia los gaps en capas adyacentes (datos, decisiones, sustentabilidad) donde la competencia es estructuralmente más débil.",
+          "El IPCVA es una fuente de señal de demanda sectorial confiable: sus jornadas de campo y cuadernillos técnicos revelan cuáles son los temas que el sector pide activamente.",
+          "En sectores maduros, los candidatos de alta prioridad suelen estar en la intersección de presión regulatoria externa (mercados exportadores) + baja oferta local de soluciones digitales (trazabilidad, sustentabilidad)."
+        ]
+      }
+    },
+    "_pipeline_status": {
+      "crear_oportunidad": {
+        "status": "completo",
+        "ended_at": "2026-07-01T12:13:55.198097+00:00"
+      },
+      "investigacion_amplia": {
+        "status": "completo",
+        "ended_at": "2026-07-01T12:19:28.019998+00:00",
+        "nivel_confianza": "medio",
+        "próximo_agente": "mercado"
+      },
+      "market": {
+        "status": "pendiente"
+      },
+      "evidence": {
+        "status": "pendiente"
+      },
+      "especialista": {
+        "status": "pendiente"
+      },
+      "armador": {
+        "status": "pendiente"
+      }
+    }
+  }
+}

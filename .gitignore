@@ -1,0 +1,27 @@
+# Credenciales — NUNCA al repo (regla de seguridad mínima, CLAUDE.md)
+.env
+.env.*
+!.env.example
+
+# scientific_agent/ tiene su propio repo git independiente — no se trackea acá
+# (decisión pendiente de resolver: ¿submódulo? ¿fusionar historia? — ver hallazgos C5/C16/C17)
+scientific_agent/
+
+# Outputs de corridas de agentes (informes + JSON), logs de runs
+outputs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# IDE / Sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

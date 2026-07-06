@@ -1,0 +1,78 @@
+# pipeline_sector.yaml — CRIZA
+# Flow para entradas tipo sector/planta-recurso.
+# Incluye gate humano después de investigación amplia.
+# Ver docs/DISEÑO_MOTOR_ORQUESTADOR.md §3.2
+
+name: "pipeline_criza_sector"
+version: "1.0"
+description: "Pipeline para sector o planta-recurso: mapeo amplio → gate → análisis profundo"
+entry_type: "sector"
+
+objective_template: "Mapear el espacio de oportunidades en: {entry.sector}. Identificar el candidato más prometedor y armar su expediente."
+
+steps:
+  - id: "crear_oportunidad"
+    type: "km_write"
+    action: "crear_oportunidad"
+    props_from_entry:
+      nombre: "sector"
+      descripcion: "sector"
+
+  - id: "investigacion_amplia"
+    type: "agent"
+    agent: "investigacion_amplia"
+    contract_input:
+      caso: "{entry.sector}"
+      tarea: "Mapear el espacio de soluciones, competidores y candidatos en el sector"
+      conocimiento:
+        oportunidad_id: "{state.oportunidad_id}"
+    on_error: "stop"
+    gate_humano:
+      mensaje: "Investigación Amplia terminada. ¿Cuál candidato querés profundizar?"
+      espera_campo: "candidato_elegido"
+
+  - id: "market"
+    type: "agent"
+    agent: "mercado"
+    contract_input:
+      caso: "{gate.candidato_elegido}"
+      tarea: "Evaluar cruces 1, 3 y 4 del expediente de decisión para el candidato elegido"
+      conocimiento:
+        oportunidad_id: "{state.oportunidad_id}"
+    on_error: "stop"
+
+  - id: "evidence"
+    type: "agent"
+    agent: "evidencia"
+    contract_input:
+      caso: "{gate.candidato_elegido}"
+      tarea: "Evaluar factibilidad técnica — llenar cruce 2"
+      conocimiento:
+        oportunidad_id: "{state.oportunidad_id}"
+    routing:
+      field: "próximo_agente"
+      routes:
+        cientifico_especialista: "especialista"
+        _default: "armador"
+    on_error: "continue"
+
+  - id: "especialista"
+    type: "agent"
+    agent: "cientifico_especialista"
+    contract_input:
+      conocimiento:
+        oportunidad_id: "{state.oportunidad_id}"
+    on_error: "continue"
+    next: "armador"
+
+  - id: "armador"
+    type: "agent"
+    agent: "armador"
+    contract_input:
+      conocimiento:
+        oportunidad_id: "{state.oportunidad_id}"
+    on_error: "stop"
+
+completion:
+  write_status: true
+  notify_human: true
