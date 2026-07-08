@@ -600,6 +600,120 @@ El agente de mercado v1 elimina COMTRADE (requería registro pago y latencia alt
 
 ---
 
+### [2026-07-06] Chunking de corpus_cientifico + fin del cap de 60.000 chars en texto_completo
+
+**Contexto:** hallazgo P13 de la auditoría de cumplimiento 2026-07-05 — los ~1.400+ papers de
+INTA/CONICET con `texto_completo` ya descargado no se troceaban ni vectorizaban por fragmento
+(solo `titulo_abstract` era buscable semánticamente), y el texto extraído se truncaba
+silenciosamente a 60.000 caracteres antes de guardarse (`criza/ingest/download_pdfs.py` y
+`knowledge_module/ingesta/download_corpus_pdfs.py`), perdiendo el resto del contenido para
+tesis/reportes largos sin dejar rastro de que existía más texto.
+
+**Decisión — separar el algoritmo genérico (Capa 1) de la decisión de instancia (Capa 2):**
+igual patrón que ya existía (sin construirse) en `dpn-normativo/config/plantillas/
+normativa_dpn.yaml::norma_chunk`/`chunk_de`. Se construyó:
+
+- `knowledge_module/motor/chunking.py::chunk_texto()` — función pura, Capa 1, sin dependencia
+  de dominio ni de DB. Parte un texto en fragmentos de ~500 tokens (aproximados por palabras,
+  no tokenizer real del modelo — no hace falta esa precisión para dimensionar chunks de
+  búsqueda) con 50 de overlap, respetando límites de párrafo cuando el párrafo entra entero.
+  8 tests unitarios (`knowledge_module/tests/test_chunking.py`).
+- `criza/config/plantillas/corpus_cientifico.yaml` — se agregó `fuente_chunk` (tipo_ficha,
+  vectoriza `texto`) + `chunk_de` (tipo_conexion, fuente_chunk → fuente), Capa 2, mismo patrón
+  que `norma_chunk`/`chunk_de` de DPN.
+- `criza/ingest/chunk_corpus.py` — script de backfill + ingesta continua, dos pasos: (1)
+  re-extrae `texto_completo` sin cap para las fichas truncadas por el límite viejo (resuelve
+  `pdf_url` faltante en fichas INTA migradas desde la tabla `documento` legacy vía metadata
+  OAI-PMH + fallback de scraping, igual que `--scrape-missing` de `download_pdfs.py`); (2)
+  genera `fuente_chunk`+`chunk_de` para toda ficha `fuente` con texto, idempotente (chequea
+  conexiones `chunk_de` entrantes antes de generar).
+
+**Decisión — sacar el cap de 60.000 chars, no mantenerlo como preview:** con chunking
+disponible para búsqueda por fragmento, no hay razón para truncar `texto_completo` — se
+remueve el cap en ambos scripts de descarga (`_MAX_TEXTO` eliminado). El documento completo
+(Capa 2 del diseño de 3 capas, ver `docs/knowledge-schema.md` §4) vuelve a ser realmente
+completo, no una versión recortada.
+
+**Corrida real (2026-07-06):** backfill de texto_completo — 365/365 fichas truncadas
+recuperadas completas (70 CONICET + 295 INTA, todas con pdf_url resuelto — 38 vía metadata
+OAI-PMH, 257 vía scraping de fallback). Sin errores, esto terminó bien.
+
+Chunking (dry-run previo proyectaba 1.414/1.414 fichas, 34.124 fragmentos, 0 errores) —
+la corrida real **quedó incompleta: 712/1.414 fichas procesadas (19.871 fragmentos), 672
+fallaron**. Causa: no fue un error del código ni del servicio de embeddings (esos ya se habían
+resuelto, ver hallazgo de concurrencia abajo) sino que la **DB de Neon (`neondb`) llegó a su
+límite de tamaño de proyecto (512 MB)** a mitad de la corrida — `asyncpg.exceptions.
+DiskFullError: could not extend file because project size limit (512 MB) has been exceeded`.
+Verificado: 489 MB usados, tabla `ficha` sola = 442 MB (creció fuerte por el cap removido +
+~20k fichas `fuente_chunk` con embedding propio de 1024 dims). **Esto bloquea cualquier
+escritura futura al KM, no solo esta**, hasta que se resuelva (upgrade de plan Neon o reducir
+huella de almacenamiento) — pendiente de decisión con Sebas, ver `criza/agents.md` (banner
+al tope) y `criza/docs/progress/2026-07-06.md`.
+
+**Hallazgo de infraestructura — concurrencia vs. batch_size en `guardar_fichas_batch`:**
+la primera corrida (concurrencia=20, `batch_size` default=256) devolvió mayoría de 500/204 del
+servicio BGE-m3 en Modal — 20 llamadas concurrentes × hasta 256 textos/request es hasta 5.120
+textos en vuelo contra un servicio CPU-only de 4GB RAM (`services/bge-m3/modal_app.py`), muy
+por encima de lo que soporta. `dpn-normativo/docs/architecture.md` §Hallazgo throughput ya
+había probado esta misma infraestructura con 0 errores usando concurrencia=12 y `batch_size=20`
+(~15 textos/s sostenido) — se replicó ese mismo patrón validado (concurrencia=10,
+`batch_size=20`) en vez de reinventar uno nuevo, y funcionó sin errores de servicio (el único
+error posterior fue el de espacio en disco de Neon, no relacionado). Lección para cualquier
+script futuro que llame `guardar_fichas_batch` con concurrencia: el `batch_size` importa tanto
+como la concurrencia — el producto de ambos es lo que hay que mantener acotado contra este
+servicio.
+
+### [2026-07-07] Cierre del chunking — upgrade de Neon, bug de conexiones huérfanas, limpieza de Capa 1
+
+**Upgrade de Neon:** decisión con Sebas — plan **Launch** (usage-based, $0.106/CU-hora +
+$0.35/GB-mes, sin los límites del free tier). Verificado con datos reales del dashboard de Neon
+antes de decidir: la cuenta `empresas-ia` consumió 6.13 CU-horas + 0.57 GB en la semana previa
+(mayormente por esta misma sesión) — proyección real ~$2-6/mes para las dos instancias (CRIZA +
+Conflur/eia1) juntas, nada que amerite optimizar por costo. Confirmado además que CRIZA
+(proyecto Neon `empresa-ia`) y Conflur (proyecto `conflur`) son **proyectos separados** dentro
+de la misma cuenta de billing — cumple el aislamiento por instancia (lo que lo violaría es
+compartir el mismo proyecto/DB, no la cuenta).
+
+**Retomado el chunking tras el upgrade:** 672 fichas pendientes. Encontrado un segundo bug en el
+camino: `_procesar_una_ficha` (en `criza/ingest/chunk_corpus.py`) creaba las conexiones
+`chunk_de` de una ficha con `asyncio.gather` **sin límite de concurrencia** — para documentos
+con cientos de fragmentos (ej. una tesis con 734), eso dispara cientos de `guardar_conexion`
+concurrentes, cada uno abriendo su propia sesión de DB, agotando el pool de SQLAlchemy
+(`QueuePool limit of size 5 overflow 10`). Las fichas `fuente_chunk` ya se habían insertado
+(commit hecho) pero la conexión al padre fallaba a mitad de camino — no corrupción, pero sí
+**1.141 chunks huérfanos** acumulados entre esta corrida y la de la noche anterior (algunos del
+episodio de disco lleno también dejaron huérfanos de la misma forma: batch parcial insertado
+antes de que la sesión completa fallara).
+
+**Fix:** `_procesar_una_ficha` ahora acota las conexiones con `asyncio.Semaphore(5)`
+(`_SEM_CONEXIONES`) en vez de un `gather` sin límite.
+
+**Reparación de los 1.141 huérfanos existentes:** sin referencia al padre almacenada en la
+propia ficha `fuente_chunk` (solo `{orden, texto}`), se reconectaron por **matching de
+contenido** — el texto de cada chunk debe ser un substring del `texto_completo` de su fuente.
+Primer intento con matching literal falló casi todo (solo 11/1141) porque `chunk_texto()`
+normaliza espacios (`" ".join(texto.split())`), así que el chunk ya no es substring literal del
+original con sus saltos de línea propios del PDF — la fix fue normalizar el `texto_completo`
+del lado del padre con el mismo criterio antes de comparar. Con eso, 1130/1130 matchearon (4 con
+match ambiguo — boilerplate institucional idéntico de pie de página repetido en 32 documentos
+distintos de la Biblioteca Central UBA, ambigüedad real de contenido, no resoluble por texto;
+se aceptó el primer candidato, impacto nulo sobre la búsqueda del chunk en sí, solo sobre a qué
+padre queda formalmente vinculado). **Resultado final: 1.414/1.414 fuentes con chunks, 34.857
+fragmentos, 0 huérfanos.**
+
+**Limpieza de Capa 1 — `texto_vectorizado` fuera de `ficha`:** verificado (agente de
+investigación, 2026-07-07) que ninguna consulta SQL ni código Python en `knowledge_module`,
+`criza` ni `dpn-normativo` lee esa columna — se escribía en cada INSERT (duplicando el texto ya
+presente en `props`) sin que nada la consultara después; su único propósito documentado
+(`migrations/003_motor_generico.sql:57`) era "transparencia/auditoría" para debug humano.
+`migrations/006_drop_texto_vectorizado.sql` (`ALTER TABLE ficha DROP COLUMN IF EXISTS
+texto_vectorizado`, idempotente) aplicada contra **ambas** bases (CRIZA y `dpn-normativo`, que
+comparten este código de Capa 1 aunque tengan DBs separadas) + `motor/api.py` actualizado
+(`guardar_ficha` y `guardar_fichas_batch` ya no la escriben). 64/64 tests unitarios relevantes
+del módulo siguen pasando tras el cambio.
+
+---
+
 ## Deuda técnica activa
 
 | Item | Descripción | Issue |

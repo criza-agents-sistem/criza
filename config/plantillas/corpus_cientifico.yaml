@@ -42,5 +42,22 @@ tipos_ficha:
     dedup_por: null   # dedup exacto por 'identifier' se maneja en ingest_corpus.py antes de guardar
     dedup_umbral: 0.97
 
-# Sin tipos_conexion en v0.1: el corpus es un pool. Los investigadores crean conexiones fuente↔oportunidad.
-tipos_conexion: []
+  - nombre: fuente_chunk
+    descripcion: >
+      Fragmento del texto_completo de una fuente (ver knowledge_module/motor/chunking.py,
+      ~500 tokens con 50 de overlap — mismo patrón que dpn-normativo/config/plantillas/
+      normativa_dpn.yaml::norma_chunk). Tiene su propio embedding para que la búsqueda
+      semántica encuentre el fragmento exacto que responde una pregunta puntual, no solo el
+      paper entero por título/abstract. Se puebla con criza/ingest/chunk_corpus.py.
+    campos:
+      - orden   # posición del fragmento dentro de la fuente (para reconstruir el orden de lectura)
+      - texto
+    vectorizar: texto
+    dedup_por: null
+    dedup_umbral: 0.97
+
+tipos_conexion:
+  - nombre: chunk_de
+    desde: fuente_chunk
+    hacia: fuente
+    campos: []

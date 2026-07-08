@@ -50,7 +50,11 @@ from plataforma.document_store.store import download_and_extract, pdf_exists, pd
 from db import get_session_factory
 
 # ── constantes ─────────────────────────────────────────────────────────────────
-_MAX_TEXTO = 60_000   # chars máx por documento (≈30 páginas densas)
+# Sin cap de longitud en texto_completo (removido 2026-07-06, hallazgo P13 auditoría
+# 2026-07-05): un cap silencioso descartaba el texto más allá de ~30 páginas sin
+# persistirlo en ningún lado. El texto completo ahora se guarda íntegro; el chunking
+# (criza/ingest/chunk_corpus.py) es lo que lo hace buscable por fragmento en vez de
+# necesitar un límite de tamaño.
 _DELAY_SCRAPE = 0.5   # segundos entre scraping de páginas INTA
 
 
@@ -92,7 +96,7 @@ async def _update_texto(documento_id: str, texto: str) -> bool:
                 WHERE id = :id AND texto_completo IS NULL
                 RETURNING id
             """),
-            {"texto": _sanitize(texto[:_MAX_TEXTO]), "id": documento_id},
+            {"texto": _sanitize(texto), "id": documento_id},
         )
         updated = r.fetchone() is not None
         await s.commit()
