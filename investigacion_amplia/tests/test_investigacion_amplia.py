@@ -556,3 +556,20 @@ def test_fetch_page_text_real():
     result = _fetch_page_text("https://www.argentina.gob.ar/senasa")
     assert result["success"] is True
     assert len(result["text"]) > 100
+
+
+# ── _bloque_instruccion (cable tarea/contexto, 2026-07-22) ────────────────────
+
+from investigacion_amplia.investigacion_amplia import _bloque_instruccion
+
+
+@pytest.mark.unit
+def test_bloque_instruccion_vacio_si_no_hay_nada():
+    assert _bloque_instruccion(None, None) == ""
+
+
+@pytest.mark.unit
+def test_bloque_instruccion_incluye_tarea_y_contexto():
+    bloque = _bloque_instruccion("Mapear el sector", "contexto extra")
+    assert "Mapear el sector" in bloque
+    assert "contexto extra" in bloque

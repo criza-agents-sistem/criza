@@ -454,6 +454,8 @@ INPUT_CONTRACT = {
 OUTPUT_CONTRACT = {
     "agent": "evidencia",
     "version": "1.2",
+    # Ver market_agent.OUTPUT_CONTRACT — contrato de conexión verificado por el auditor.
+    "km_escribe": ["props.evidencia"],
     "fields": {
         "análisis": "{'informe': str, 'evidencia': {'cruce_2': dict, 'especialista_recomendado': dict, 'fuentes_y_cobertura': dict, ...}}",
         "nivel_confianza": "'alto' | 'medio' | 'bajo' — basado en estado_cientifico y brechas de alto impacto",
@@ -504,10 +506,38 @@ def build_input(oportunidad_id: str, oportunidad_dict: dict) -> str:
 
 # ── Agentic loop ──────────────────────────────────────────────────────────────
 
+def _bloque_instruccion(
+    tarea: str | None, contexto_extra: str | None, foco: str | None = None
+) -> str:
+    """Instrucción propia de ESTA invocación — ver market_agent._bloque_instruccion.
+
+    Va en el mensaje de usuario y no en el SYSTEM_PROMPT: el system prompt es lo estable
+    (y lo cacheable), esto es lo que cambia en cada corrida.
+
+    `foco` es el campo `caso` del contrato. En `pipeline_sector` es
+    `{gate.candidato_elegido}` — la respuesta del humano en el gate, que hasta
+    2026-07-22 este agente no leía en absoluto.
+    """
+    partes = []
+    if foco:
+        partes.append(
+            f"FOCO DE ESTA INVOCACIÓN: {foco}\n"
+            "Priorizá este recorte por sobre el alcance general de la oportunidad."
+        )
+    if tarea:
+        partes.append(f"TAREA ESPECÍFICA DE ESTA INVOCACIÓN:\n{tarea}")
+    if contexto_extra:
+        partes.append(f"CONTEXTO ADICIONAL PROVISTO POR QUIEN TE INVOCA:\n{contexto_extra}")
+    return ("\n\n" + "\n\n".join(partes)) if partes else ""
+
+
 async def run_agent(
     oportunidad_id: str,
     verbose: bool = False,
     model: str = DEFAULT_MODEL,
+    tarea: str | None = None,
+    contexto_extra: str | None = None,
+    foco: str | None = None,
 ) -> tuple[str, dict, list[str]]:
     """
     Corre el Evidence Generalista.
@@ -555,8 +585,17 @@ async def run_agent(
         tenant=_TENANT,
     )
     effective_system = SYSTEM_PROMPT + bloque
+    # Prompt caching — ver market_agent.py. El loop reenvía el mismo system+tools en
+    # cada vuelta del turno agéntico.
+    system_blocks = [{
+        "type": "text",
+        "text": effective_system,
+        "cache_control": {"type": "ephemeral"},
+    }]
 
-    user_input = build_input(oportunidad_id, oportunidad_dict)
+    user_input = build_input(oportunidad_id, oportunidad_dict) + _bloque_instruccion(
+        tarea, contexto_extra, foco
+    )
     messages = [{"role": "user", "content": user_input}]
     evidencia_result = None
 
@@ -566,7 +605,7 @@ async def run_agent(
                 response = client.messages.create(
                     model=model,
                     max_tokens=16000,
-                    system=effective_system,
+                    system=system_blocks,
                     tools=TOOLS,
                     messages=messages,
                 )
@@ -586,6 +625,16 @@ async def run_agent(
             print(
                 f"  [{tracker.calls}] stop={response.stop_reason} | "
                 f"tokens in={response.usage.input_tokens} out={response.usage.output_tokens}"
+            )
+
+        # max_tokens NO es terminación normal: la respuesta viene cortada y los
+        # bloques tool_use de este turno nunca se procesan. Si todavía no capturamos
+        # la evidencia, fallar ruidoso — un resultado truncado no se persiste como válido.
+        if response.stop_reason == "max_tokens" and not evidencia_result:
+            raise RuntimeError(
+                "Respuesta truncada por max_tokens antes de submit_evidencia "
+                f"(max_tokens=16000, output={response.usage.output_tokens}). "
+                "La evidencia está incompleta."
             )
 
         if response.stop_reason in ("end_turn", "max_tokens"):
@@ -753,7 +802,14 @@ async def run(
     if not oportunidad_id:
         raise ValueError("Evidence Generalista requiere 'oportunidad_id' en contract_input['conocimiento']")
 
-    informe, evidencia, lecciones = await run_agent(oportunidad_id, verbose=verbose, model=model)
+    informe, evidencia, lecciones = await run_agent(
+        oportunidad_id,
+        verbose=verbose,
+        model=model,
+        tarea=contract_input.get("tarea") or None,
+        contexto_extra=contract_input.get("contexto") or None,
+        foco=contract_input.get("caso") or None,
+    )
 
     cruce_2 = evidencia.get("cruce_2") or {}
     brechas_altas = [

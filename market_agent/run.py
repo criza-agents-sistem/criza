@@ -159,15 +159,10 @@ async def main():
     print("=" * 60 + "\n")
     print(resumen)
 
-    # Write-back al KM (solo si hay oportunidad_id)
-    # Guarda: resultado estructurado (cruces) + informe narrativo completo
+    # El write-back al KM (cruces + informe completo) lo hace run_agent() directamente,
+    # para que ocurra tanto por este runner como por el Motor. No duplicarlo acá.
     if oportunidad_id and cruces:
-        datos_mercado = {**cruces, "informe_completo": resumen}
-        result = await motor_api.actualizar_props(oportunidad_id, {"mercado": datos_mercado}, tenant=_TENANT)
-        if result.get("success"):
-            print(f"\n  KM actualizado: oportunidad {oportunidad_id[:8]}... → cruces 1/3/4 + informe completo escritos.")
-        else:
-            print(f"\n  Error en write-back KM: {result.get('error')}")
+        print(f"\n  KM actualizado: oportunidad {oportunidad_id[:8]}... → cruces 1/3/4 + informe completo escritos.")
 
     # Loop de aprendizaje — guardar lecciones de caso
     for leccion in lecciones_auto:

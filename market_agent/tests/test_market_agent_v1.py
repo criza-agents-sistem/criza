@@ -234,6 +234,17 @@ def test_derive_confidence_sin_gaps():
 
 
 @pytest.mark.unit
+def test_derive_confidence_cruces_vacio_es_bajo():
+    """Corrida fallida (truncada o sin submit_analysis) => cruces={} => 'bajo'.
+
+    Distinto de test_derive_confidence_sin_gaps: ahí el agente SÍ corrió y no
+    encontró gaps ('alto' legítimo). Acá nunca llegó a buscarlos. Sin la guarda,
+    len(gaps)==0 hacía que una corrida fallida reportara confianza 'alto'.
+    """
+    assert ma._derive_confidence({}) == "bajo"
+
+
+@pytest.mark.unit
 def test_derive_confidence_un_gap():
     assert ma._derive_confidence({"gaps_prioritarios": ["uno"]}) == "medio"
 
@@ -456,3 +467,29 @@ async def test_buscar_corpus_contra_km_real():
     for paper in result["papers"]:
         assert "titulo" in paper
         assert "similitud" in paper
+
+
+# ── _bloque_instruccion (cable tarea/contexto/foco, 2026-07-22) ───────────────
+
+@pytest.mark.unit
+def test_bloque_instruccion_vacio_si_no_hay_nada():
+    assert ma._bloque_instruccion(None, None, None) == ""
+
+
+@pytest.mark.unit
+def test_bloque_instruccion_incluye_tarea_y_contexto():
+    bloque = ma._bloque_instruccion("Evaluar cruces 1, 3 y 4", "Consulta CREA", None)
+    assert "Evaluar cruces 1, 3 y 4" in bloque
+    assert "Consulta CREA" in bloque
+
+
+@pytest.mark.unit
+def test_bloque_instruccion_foco_es_la_respuesta_del_gate_humano():
+    """En pipeline_sector el `caso` es {gate.candidato_elegido} — la elección del humano.
+
+    Hasta 2026-07-22 se descartaba (había oportunidad_id, así que texto_libre quedaba
+    en None) y los agentes re-analizaban el sector entero, ignorando la elección.
+    """
+    bloque = ma._bloque_instruccion(None, None, "inhibidores de metanogénesis")
+    assert "inhibidores de metanogénesis" in bloque
+    assert "FOCO DE ESTA INVOCACIÓN" in bloque

@@ -524,7 +524,11 @@ INPUT_CONTRACT = {
 
 OUTPUT_CONTRACT = {
     "agent": "mercado",
-    "version": "1.1",
+    "version": "1.2",
+    # Contrato de conexión (2026-07-22): qué deja este agente en el KM para que otro lo
+    # consuma. Lo verifica `check_km_conexion` del auditor contra el código real de ESTE
+    # módulo — si la escritura vive en un runner, el camino orquestado no la ejecuta.
+    "km_escribe": ["props.mercado"],
     "fields": {
         "análisis": (
             "{'resumen': str, 'cruces': {'cruce_1': dict, 'cruce_3': dict, 'cruce_4': dict, "
@@ -586,12 +590,47 @@ async def _dispatch(name: str, inputs: dict) -> str:
 
 # ── Agentic loop ──────────────────────────────────────────────────────────────
 
+def _bloque_instruccion(
+    tarea: str | None, contexto_extra: str | None, foco: str | None = None
+) -> str:
+    """Instrucción propia de ESTA invocación, para el mensaje de usuario.
+
+    Va en el mensaje de usuario y NO en el SYSTEM_PROMPT a propósito: el system prompt
+    es lo estable (y lo cacheable); esto es lo que cambia en cada corrida.
+
+    Existe porque hasta 2026-07-22 el contrato SEB-115 declaraba `tarea` y `contexto`,
+    los flows los pasaban en cada paso, y ningún agente los leía — así que todo agente
+    corría siempre igual, sin enterarse de qué se le pedía esta vez. Ver
+    `check_contrato_input_no_leido` del auditor.
+
+    `foco` es el campo `caso` cuando además hay `oportunidad_id`. Importa: en
+    `pipeline_sector` el `caso` es `{gate.candidato_elegido}` — la respuesta que da el
+    humano en el gate. Hasta 2026-07-22 se descartaba (había oportunidad_id, así que
+    `texto_libre` quedaba en None), o sea que la elección del humano no llegaba a
+    ningún agente y todos re-analizaban el sector completo.
+    """
+    partes = []
+    if foco:
+        partes.append(
+            f"FOCO DE ESTA INVOCACIÓN: {foco}\n"
+            "Priorizá este recorte por sobre el alcance general de la oportunidad."
+        )
+    if tarea:
+        partes.append(f"TAREA ESPECÍFICA DE ESTA INVOCACIÓN:\n{tarea}")
+    if contexto_extra:
+        partes.append(f"CONTEXTO ADICIONAL PROVISTO POR QUIEN TE INVOCA:\n{contexto_extra}")
+    return ("\n\n" + "\n\n".join(partes)) if partes else ""
+
+
 async def run_agent(
     oportunidad_id: str | None = None,
     texto_libre: str | None = None,
     oportunidad_descripcion: str | None = None,
     verbose: bool = True,
     model: str = DEFAULT_MODEL,
+    tarea: str | None = None,
+    contexto_extra: str | None = None,
+    foco: str | None = None,
 ) -> tuple[str, dict, list[str]]:
     """
     Corre el agente de mercado.
@@ -633,6 +672,8 @@ async def run_agent(
         if verbose:
             print(f"  Modo testing: {contexto_texto[:100]}\n")
 
+    user_message += _bloque_instruccion(tarea, contexto_extra, foco)
+
     # 1.5 Pre-flight: verificar fuentes críticas antes de arrancar el loop agéntico
     #     (objective-first — si lo que controlamos no está listo, frenamos).
     preflight = await run_preflight([
@@ -657,6 +698,16 @@ async def run_agent(
         tenant=_TENANT,
     )
     effective_system = SYSTEM_PROMPT + bloque
+    # Prompt caching (2026-07-22): el loop agéntico reenvía el mismo system+tools en
+    # cada vuelta (mercado hizo 6-7 llamadas en la corrida real) — sin esto, el prefijo
+    # completo se factura a precio pleno todas las veces. El breakpoint en el último
+    # bloque de system cachea tools+system juntos (orden de render: tools -> system ->
+    # messages). ~9.5K chars de system + ~10.5K de tools, arriba del mínimo cacheable.
+    system_blocks = [{
+        "type": "text",
+        "text": effective_system,
+        "cache_control": {"type": "ephemeral"},
+    }]
 
     # 3. Loop agéntico
     messages = [{"role": "user", "content": user_message}]
@@ -670,7 +721,7 @@ async def run_agent(
                 response = client.messages.create(
                     model=model,
                     max_tokens=16000,
-                    system=effective_system,
+                    system=system_blocks,
                     tools=TOOLS,
                     messages=messages,
                 )
@@ -698,6 +749,16 @@ async def run_agent(
                 if verbose:
                     query = (getattr(block, "input", {}) or {}).get("query", "")
                     print(f"-> web_search: {query}")
+
+        # max_tokens NO es terminación normal: la respuesta viene cortada y los
+        # bloques tool_use de este turno nunca se procesan. Si todavía no capturamos
+        # el análisis, fallar ruidoso — un resultado truncado no se persiste como válido.
+        if response.stop_reason == "max_tokens" and not analysis_result:
+            raise RuntimeError(
+                "Respuesta truncada por max_tokens antes de submit_analysis "
+                f"(max_tokens=16000, output={response.usage.output_tokens}). "
+                "El análisis está incompleto."
+            )
 
         if response.stop_reason in ("end_turn", "max_tokens"):
             break
@@ -780,6 +841,21 @@ async def run_agent(
         "modelo":          model,
     }
 
+    # Write-back al KM — resultado estructurado + informe narrativo completo.
+    # Vive ACÁ y no en run.py (donde estaba) para que ocurra en TODOS los caminos:
+    # el Motor llama run() -> run_agent() sin pasar por run.py, así que con la
+    # escritura en el runner el pipeline orquestado nunca dejaba `props.mercado`
+    # y el Armador se bloqueaba con "mercado: ausente". Mismo patrón que
+    # evidence_generalista. Ver "Regla de escritura al KM" en CLAUDE.md.
+    if oportunidad_id:
+        await motor_api.actualizar_props(
+            oportunidad_id,
+            {"mercado": {**cruces_dict, "informe_completo": resumen_markdown}},
+            tenant=_TENANT,
+        )
+        if verbose:
+            print(f"  KM actualizado — cruces 1/3/4 + informe completo escritos.")
+
     await _persist_tokens()
     return resumen_markdown, cruces_dict, lecciones_auto
 
@@ -787,6 +863,13 @@ async def run_agent(
 # ── Interfaz de contrato estándar (SEB-115) ───────────────────────────────────
 
 def _derive_confidence(cruces: dict) -> str:
+    # Sin cruces no hay análisis, y sin análisis no hay confianza. Un dict vacío
+    # significa que el agente no llegó a producir el resultado (truncado, o sin
+    # submit_analysis) — NO que no haya gaps. Sin esta guarda, `len(gaps) == 0`
+    # más abajo devolvía "alto" para una corrida fallida.
+    if not cruces:
+        return "bajo"
+
     # Condición 12 del marco (sustitución de importación) — la única "sin excepción".
     # Estructural: no depende de que el modelo la respete en el resto del análisis.
     sustitucion = cruces.get("sustitucion_importacion") or {}
@@ -819,6 +902,11 @@ async def run(
         texto_libre=texto_libre if not oportunidad_id else None,
         verbose=verbose,
         model=model,
+        tarea=contract_input.get("tarea") or None,
+        contexto_extra=contract_input.get("contexto") or None,
+        # Con oportunidad_id, `caso` no es el input principal (eso sale del KM) pero sí
+        # es el recorte pedido — en pipeline_sector es la respuesta del gate humano.
+        foco=texto_libre if (oportunidad_id and texto_libre) else None,
     )
 
     return {

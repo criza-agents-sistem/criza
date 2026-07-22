@@ -628,6 +628,8 @@ INPUT_CONTRACT = {
 OUTPUT_CONTRACT = {
     "agent": "investigacion_amplia",
     "version": "2.1",
+    # Ver market_agent.OUTPUT_CONTRACT — contrato de conexión verificado por el auditor.
+    "km_escribe": ["props.investigacion_amplia", "props.investigacion_amplia_informe"],
     "fields": {
         "análisis": "{'informe': str, 'resultado': {'cruce_3': dict, 'mapa_candidatos': list, 'gaps_prioritarios': list, 'fuentes_y_cobertura': dict}}",
         "nivel_confianza": "'alto' | 'medio' | 'bajo'",
@@ -664,11 +666,27 @@ def build_input(caso: str, oportunidad_dict: dict | None) -> str:
 
 # ── Agentic loop ──────────────────────────────────────────────────────────────
 
+def _bloque_instruccion(tarea: str | None, contexto_extra: str | None) -> str:
+    """Instrucción propia de ESTA invocación — ver market_agent._bloque_instruccion.
+
+    Acá no hay `foco`: para este agente el `caso` ES el input principal (el sector a
+    mapear) y sí se lee. Solo faltaban `tarea` y `contexto` del contrato.
+    """
+    partes = []
+    if tarea:
+        partes.append(f"TAREA ESPECÍFICA DE ESTA INVOCACIÓN:\n{tarea}")
+    if contexto_extra:
+        partes.append(f"CONTEXTO ADICIONAL PROVISTO POR QUIEN TE INVOCA:\n{contexto_extra}")
+    return ("\n\n" + "\n\n".join(partes)) if partes else ""
+
+
 async def run_agent(
     caso: str,
     oportunidad_id: str | None = None,
     verbose: bool = False,
     model: str = DEFAULT_MODEL,
+    tarea: str | None = None,
+    contexto_extra: str | None = None,
 ) -> tuple[str, dict, list[str]]:
     """
     Corre el Agente de Investigación Amplia v2.0.
@@ -728,7 +746,14 @@ async def run_agent(
         tenant=_TENANT,
     )
     effective_system = SYSTEM_PROMPT + bloque
-    user_input = build_input(caso, oportunidad_dict)
+    # Prompt caching — ver market_agent.py. SYSTEM_PROMPT acá son ~18K chars (carga
+    # marco_blue_ocean + metodologia_busqueda en runtime) reenviados en cada vuelta.
+    system_blocks = [{
+        "type": "text",
+        "text": effective_system,
+        "cache_control": {"type": "ephemeral"},
+    }]
+    user_input = build_input(caso, oportunidad_dict) + _bloque_instruccion(tarea, contexto_extra)
     messages = [{"role": "user", "content": user_input}]
     resultado_final = None
 
@@ -739,7 +764,7 @@ async def run_agent(
                 response = client.messages.create(
                     model=model,
                     max_tokens=16000,
-                    system=effective_system,
+                    system=system_blocks,
                     tools=TOOLS,
                     messages=messages,
                 )
@@ -763,6 +788,16 @@ async def run_agent(
             )
             for name in tool_names:
                 print(f"  -> {name}")
+
+        # max_tokens NO es terminación normal: la respuesta viene cortada y los
+        # bloques tool_use de este turno nunca se procesan. Si todavía no capturamos
+        # el resultado, fallar ruidoso — un mapa truncado no se persiste como válido.
+        if response.stop_reason == "max_tokens" and not resultado_final:
+            raise RuntimeError(
+                "Respuesta truncada por max_tokens antes de submit_investigacion_amplia "
+                f"(max_tokens=16000, output={response.usage.output_tokens}). "
+                "La investigación está incompleta."
+            )
 
         if response.stop_reason in ("end_turn", "max_tokens"):
             break
@@ -985,6 +1020,8 @@ async def run(
         oportunidad_id=oportunidad_id,
         verbose=verbose,
         model=model,
+        tarea=contract_input.get("tarea") or None,
+        contexto_extra=contract_input.get("contexto") or None,
     )
 
     mapa = resultado.get("mapa_candidatos") or []

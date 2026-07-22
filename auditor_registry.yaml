@@ -61,5 +61,13 @@ agentes:
     # lo siga marcando hasta que se cierre — no se declara debe_escribir_km: false porque no
     # hay ninguna decisión real de que este agente no deba escribir al KM, es una deuda.
 
+# Claves del KM producidas para consumo FUERA del sistema de agentes — el humano las lee,
+# no otro agente. Sin esto, el contador de piezas desconectadas marcaría el entregable
+# final del sistema como basura. Declararlas es una decisión explícita, no un default.
+salidas_terminales:
+  - props.expediente          # el expediente de decisión: lo consume Sebas, no un agente
+  - props.pipeline_status     # estado de corrida: lo consume el humano / la consola
+  - props.token_usage         # medición de consumo (principio 7c)
+
 design_gates_glob: "criza/**/DESIGN_GATE.md"
 roadmap_glob: "criza/**/ROADMAP.md"

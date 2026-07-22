@@ -232,7 +232,9 @@ async def test_run_agent_captura_submit_expediente():
     with patch("armador.anthropic.Anthropic") as mock_anthropic, \
          patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
         mock_client = mock_anthropic.return_value
-        mock_client.messages.create.return_value = mock_response
+        # El armador usa messages.stream() (max_tokens=32000 no admite no-streaming),
+        # asi que el mock va sobre el context manager, no sobre .create.
+        mock_client.messages.stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
 
         resumen, expediente, lecciones = await arm.run_agent(
             oportunidad_id=None,
@@ -263,7 +265,9 @@ async def test_run_agent_sin_submit_devuelve_texto():
     with patch("armador.anthropic.Anthropic") as mock_anthropic, \
          patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
         mock_client = mock_anthropic.return_value
-        mock_client.messages.create.return_value = mock_response
+        # El armador usa messages.stream() (max_tokens=32000 no admite no-streaming),
+        # asi que el mock va sobre el context manager, no sobre .create.
+        mock_client.messages.stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
 
         resumen, expediente, lecciones = await arm.run_agent(
             oportunidad_id=None,
@@ -348,7 +352,7 @@ async def test_run_agent_frena_sin_mercado():
                 oportunidad_dict=OPORTUNIDAD_SIN_MERCADO,
                 verbose=False,
             )
-    mock_anthropic.return_value.messages.create.assert_not_called()
+    mock_anthropic.return_value.messages.stream.assert_not_called()
 
 
 @pytest.mark.unit
@@ -382,7 +386,7 @@ async def test_run_agent_inyecta_cobertura_global_en_bloque_3():
 
     with patch("armador.anthropic.Anthropic") as mock_anthropic, \
          patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
-        mock_anthropic.return_value.messages.create.return_value = mock_response
+        mock_anthropic.return_value.messages.stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
 
         _, expediente, _ = await arm.run_agent(
             oportunidad_id=None, oportunidad_dict=oportunidad, verbose=False,
@@ -413,3 +417,117 @@ async def test_run_agent_caso_real():
         assert "bloque_4" in expediente
         assert "bloque_5" in expediente
         assert "bloque_6" in expediente
+
+
+# ── _derive_nivel_confianza (2026-07-22) ──────────────────────────────────────
+
+@pytest.mark.unit
+def test_derive_nivel_confianza_vacio_es_bajo():
+    """Sin bloque_3 (o vacío) no hay nada que contar — 'bajo', no 'alto'.
+
+    Es el caso exacto del bug: antes `run()` devolvía "alto if expediente else bajo",
+    así que un expediente con bloque_3 vacío igual daba "alto".
+    """
+    assert arm._derive_nivel_confianza({}) == "bajo"
+
+
+@pytest.mark.unit
+def test_derive_nivel_confianza_mayoria_establecidos_es_alto():
+    bloque_3 = {
+        "establecidos": [{"dato": "a"}, {"dato": "b"}, {"dato": "c"}],
+        "asumidos": [{"dato": "d"}],
+        "a_confirmar": [],
+    }
+    assert arm._derive_nivel_confianza(bloque_3) == "alto"
+
+
+@pytest.mark.unit
+def test_derive_nivel_confianza_mayoria_a_confirmar_es_bajo():
+    bloque_3 = {
+        "establecidos": [{"dato": "a"}],
+        "asumidos": [],
+        "a_confirmar": [{"dato": "b"}, {"dato": "c"}],
+    }
+    assert arm._derive_nivel_confianza(bloque_3) == "bajo"
+
+
+@pytest.mark.unit
+def test_derive_nivel_confianza_mezcla_pareja_es_medio():
+    bloque_3 = {
+        "establecidos": [{"dato": "a"}],
+        "asumidos": [{"dato": "b"}],
+        "a_confirmar": [{"dato": "c"}],
+    }
+    assert arm._derive_nivel_confianza(bloque_3) == "medio"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_nivel_confianza_no_es_solo_si_hubo_expediente():
+    """Caso testigo de la corrida real de metano: expediente presente con bloque_3
+    mayormente a-confirmar debía dar 'bajo', no 'alto' por el mero hecho de existir."""
+    submit_input = {
+        "bloque_3": {
+            "establecidos": [],
+            "asumidos": [{"dato": "x", "peso": "medio"}],
+            "a_confirmar": [
+                {"dato": "y", "donde_confirmar": "z", "impacto_en_decision": "alto"},
+                {"dato": "w", "donde_confirmar": "z", "impacto_en_decision": "alto"},
+            ],
+            "indice_confianza": "alto",  # autoreporte del modelo — no debe usarse tal cual
+        },
+        "resumen_markdown": "# Expediente",
+    }
+    mock_tool_use = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "submit_expediente", "id": "tool_01", "input": submit_input,
+    })()
+    mock_response = type("Response", (), {
+        "stop_reason": "tool_use", "content": [mock_tool_use],
+        "usage": type("Usage", (), {"input_tokens": 10, "output_tokens": 10})(),
+    })()
+
+    with patch("armador.anthropic.Anthropic") as mock_anthropic, \
+         patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")), \
+         patch("armador.motor_api.obtener", new=AsyncMock(return_value=OPORTUNIDAD_CON_MERCADO)), \
+         patch("armador.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})):
+        mock_anthropic.return_value.messages.stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
+
+        resultado = await arm.run(
+            contract_input={"conocimiento": {"oportunidad_id": "test-oid"}},
+            verbose=False,
+        )
+
+    assert resultado["nivel_confianza"] == "bajo"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_system_prompt_con_cache_control():
+    """Prompt caching (2026-07-22). El SYSTEM_PROMPT del armador es 100% estático
+    (sin lecciones inyectadas ahí) — cachea dentro Y entre corridas."""
+    submit_input = {
+        "bloque_3": {"establecidos": [], "asumidos": [], "a_confirmar": [], "indice_confianza": "bajo"},
+        "resumen_markdown": "# Expediente",
+    }
+    mock_tool_use = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "submit_expediente", "id": "tool_cache", "input": submit_input,
+    })()
+    mock_response = type("Response", (), {
+        "stop_reason": "tool_use", "content": [mock_tool_use],
+        "usage": type("Usage", (), {"input_tokens": 10, "output_tokens": 10})(),
+    })()
+
+    with patch("armador.anthropic.Anthropic") as mock_anthropic, \
+         patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
+        mock_stream = mock_anthropic.return_value.messages.stream
+        mock_stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
+
+        await arm.run_agent(
+            oportunidad_id=None, oportunidad_dict=OPORTUNIDAD_CON_MERCADO, verbose=False,
+        )
+
+    _, kwargs = mock_stream.call_args
+    system = kwargs["system"]
+    assert isinstance(system, list)
+    assert system[0]["cache_control"] == {"type": "ephemeral"}
+    assert system[0]["text"] == arm.SYSTEM_PROMPT

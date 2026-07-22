@@ -39,6 +39,16 @@ from preflight import PreflightResult
 
 DEFAULT_MODEL = os.getenv("ARMADOR_MODEL", "claude-sonnet-4-6")
 
+# El expediente son 5-10 páginas de markdown viajando dentro del input de
+# `submit_expediente`. Con 16.000 no entraba: la primera corrida real cortó
+# exactamente en el techo y devolvió un expediente vacío. Con 32.000 la misma
+# corrida usó 30.718 — quedó justo, así que se sube a 64.000 (el techo real del
+# modelo para requests con streaming) en vez de ajustar al pixel contra una
+# sola muestra. Arriba de ~16k el SDK exige streaming (si no, la request puede
+# morir por timeout HTTP), por eso la llamada usa `messages.stream()` +
+# `get_final_message()`.
+MAX_TOKENS = 64000
+
 
 # ──────────────────────────────────────────────
 # VALIDACIÓN DE COBERTURA AGUAS ARRIBA
@@ -115,6 +125,33 @@ def _derive_cobertura_global(props: dict) -> str:
     if promedio >= 0.5:
         return "medio"
     return "bajo"
+
+
+def _derive_nivel_confianza(bloque_3: dict) -> str:
+    """`nivel_confianza` que devuelve `run()` al Motor — contado, no "¿produje un archivo?".
+
+    Bug encontrado 2026-07-22: `run()` devolvía `"alto" if expediente else "bajo"`. La
+    corrida real de metano calculó internamente `Confianza: MEDIO` en el propio
+    resumen_markdown y `run()` reportó `alto` al Motor, que lo escribió en
+    `pipeline_status` — un dato que miente sobre sí mismo.
+
+    No usa `bloque_3.indice_confianza` tal cual: aunque el modelo lo llena siguiendo una
+    regla explícita (SYSTEM_PROMPT, paso 5), sigue siendo autoreporte. Mismo criterio que
+    ya se aplica acá arriba a `cobertura_global`: establecido > asumido (principio de
+    veracidad por dato) — se cuenta, no se confía.
+    """
+    establecidos = len(bloque_3.get("establecidos") or [])
+    asumidos = len(bloque_3.get("asumidos") or [])
+    a_confirmar = len(bloque_3.get("a_confirmar") or [])
+    total = establecidos + asumidos + a_confirmar
+
+    if total == 0:
+        return "bajo"
+    if a_confirmar / total >= 0.5:
+        return "bajo"
+    if establecidos / total >= 0.5:
+        return "alto"
+    return "medio"
 
 # ──────────────────────────────────────────────
 # SYSTEM PROMPT
@@ -589,16 +626,26 @@ async def run_agent(
     expediente_result: dict | None = None
     tracker = TokenTracker(agent="armador", oportunidad_id=oportunidad_id or "test", model=model)
 
+    # Prompt caching — ver market_agent.py. SYSTEM_PROMPT acá es 100% estático (carga
+    # expediente_decision_SPEC.md, sin lecciones inyectadas — esas van al user_input),
+    # así que además del ahorro dentro del loop, cachea entre corridas distintas.
+    system_blocks = [{
+        "type": "text",
+        "text": SYSTEM_PROMPT,
+        "cache_control": {"type": "ephemeral"},
+    }]
+
     while True:
         for attempt in range(5):
             try:
-                resp = client.messages.create(
+                with client.messages.stream(
                     model=model,
-                    max_tokens=16000,
-                    system=SYSTEM_PROMPT,
+                    max_tokens=MAX_TOKENS,
+                    system=system_blocks,
                     tools=TOOLS,
                     messages=messages,
-                )
+                ) as stream:
+                    resp = stream.get_final_message()
                 break
             except anthropic.RateLimitError:
                 if attempt == 4:
@@ -615,6 +662,19 @@ async def run_agent(
             print(
                 f"  [{tracker.calls}] stop={resp.stop_reason} | "
                 f"tokens in={resp.usage.input_tokens} out={resp.usage.output_tokens}"
+            )
+
+        # max_tokens NO es terminación normal. Va ANTES de procesar los bloques:
+        # un `submit_expediente` que viene en una respuesta truncada trae el JSON
+        # cortado, y más abajo `expediente_result is not None` lo daría por bueno
+        # (fue exactamente lo que pasó: stop=max_tokens + "expediente capturado",
+        # y el expediente salió vacío con nivel_confianza "alto").
+        # Un resultado capturado en un turno ANTERIOR sí es válido — de ahí el `is None`.
+        if resp.stop_reason == "max_tokens" and expediente_result is None:
+            raise RuntimeError(
+                f"Respuesta truncada por max_tokens (MAX_TOKENS={MAX_TOKENS}, "
+                f"output={resp.usage.output_tokens}) antes de completar submit_expediente. "
+                "El expediente está incompleto — no se entrega."
             )
 
         tool_results = []
@@ -690,7 +750,7 @@ async def run(
             "expediente": resumen,  # _extract_expediente en motor.py lee análisis.expediente
             "resultado": expediente,
         },
-        "nivel_confianza": "alto" if expediente else "bajo",
+        "nivel_confianza": _derive_nivel_confianza(expediente.get("bloque_3") or {}),
         "recomendaciones": [],
         "próximo_agente": None,
         "nuevo_conocimiento": lecciones,

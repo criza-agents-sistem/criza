@@ -657,3 +657,50 @@ async def test_run_agent_caso_real():
     assert "cruce_2" in evidencia
     assert "especialista_recomendado" in evidencia
     assert "estado_cientifico" in evidencia.get("cruce_2", {})
+
+
+# ── _bloque_instruccion (cable tarea/contexto/foco, 2026-07-22) ───────────────
+
+@pytest.mark.unit
+def test_bloque_instruccion_vacio_si_no_hay_nada():
+    assert eg._bloque_instruccion(None, None, None) == ""
+
+
+@pytest.mark.unit
+def test_bloque_instruccion_incluye_los_tres_campos():
+    bloque = eg._bloque_instruccion("Llenar cruce 2", "contexto extra", "candidato X")
+    assert "Llenar cruce 2" in bloque
+    assert "contexto extra" in bloque
+    assert "candidato X" in bloque
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_system_prompt_con_cache_control():
+    """Prompt caching (2026-07-22): el loop reenvía el mismo system+tools en cada
+    vuelta — sin cache_control, ese prefijo se factura a precio pleno todas las veces."""
+    mock_tool_use = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "submit_evidencia", "id": "tool_cache", "input": EVIDENCIA_MOCK,
+    })()
+    mock_response = type("Response", (), {
+        "stop_reason": "tool_use", "content": [mock_tool_use],
+        "usage": type("Usage", (), {"input_tokens": 100, "output_tokens": 50})(),
+    })()
+    mock_oportunidad = {"id": "uuid-cache", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
+
+    with patch("evidence_generalista.anthropic.Anthropic") as mock_anthropic, \
+         patch("evidence_generalista.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
+         patch("evidence_generalista.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
+         patch("evidence_generalista.aprendizaje.ensure_area", new=AsyncMock()), \
+         patch("evidence_generalista.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
+         patch("evidence_generalista.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
+        mock_create = mock_anthropic.return_value.messages.create
+        mock_create.return_value = mock_response
+
+        await eg.run_agent("uuid-cache", verbose=False)
+
+    _, kwargs = mock_create.call_args
+    system = kwargs["system"]
+    assert isinstance(system, list)
+    assert system[0]["cache_control"] == {"type": "ephemeral"}
+    assert eg.SYSTEM_PROMPT in system[0]["text"]
