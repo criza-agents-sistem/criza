@@ -12,9 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-_KM = Path(__file__).parent.parent.parent.parent / "knowledge_module"
 _AGENT = Path(__file__).parent.parent
-sys.path.insert(0, str(_KM))
 sys.path.insert(0, str(_AGENT))
 
 import armador as arm
@@ -400,7 +398,7 @@ async def test_run_agent_inyecta_cobertura_global_en_bloque_3():
 async def test_run_agent_caso_real():
     """Corrida real del Armador con caso fitasa (sin KM, usando oportunidad_dict)."""
     from run import CASO_FITASA
-    from db import reset_engine
+    from knowledge_module.db import reset_engine
     reset_engine()
 
     resumen, expediente, lecciones = await arm.run_agent(

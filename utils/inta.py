@@ -9,7 +9,7 @@ Cada función retorna lista de dicts con estructura homogénea (ver _parse_recor
 El llamador decide si persiste en el KM o usa los resultados directamente.
 
 Para descargar PDFs:
-  from plataforma.document_store.store import download_and_extract
+  from knowledge_module.document_store.store import download_and_extract
   path, text = download_and_extract(record["pdf_url"], instance="criza")
 """
 

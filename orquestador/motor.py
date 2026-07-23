@@ -15,14 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-# Asegurar imports del KM
+# Asegurar que criza/ esté en sys.path (para "utils.xxx", "km_tools.xxx", etc. de otros agentes)
 _CRIZA_DIR = Path(__file__).parent.parent
-_KM_PATH = _CRIZA_DIR.parent / "knowledge_module"
-for p in [str(_KM_PATH), str(_CRIZA_DIR)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+if str(_CRIZA_DIR) not in sys.path:
+    sys.path.insert(0, str(_CRIZA_DIR))
 
-from motor import api as motor_api
+from knowledge_module.motor import api as motor_api
 
 try:
     import yaml as _yaml

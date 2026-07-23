@@ -8,13 +8,7 @@ también lo necesita (ver gap: cero tools tocaban CONICET, 2026-07-02) y un agen
 importando del paquete privado de tools/ de otro agente rompe la separación entre agentes.
 """
 
-import sys
-from pathlib import Path
-
-_KM_PATH = Path(__file__).parent.parent.parent / "knowledge_module"
-sys.path.insert(0, str(_KM_PATH))
-
-from motor import api as motor_api
+from knowledge_module.motor import api as motor_api
 
 
 async def buscar_corpus_cientifico(consulta: str, limit: int = 100) -> dict:

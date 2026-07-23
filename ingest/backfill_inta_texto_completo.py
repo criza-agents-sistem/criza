@@ -22,19 +22,15 @@ import logging
 import sys
 from pathlib import Path
 
-_ROOT = Path(__file__).parent.parent.parent
-_KM   = _ROOT / "knowledge_module"
-
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-if str(_KM) not in sys.path:
-    sys.path.insert(0, str(_KM))
+# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM vive en
+# knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
+_KM_ENV = Path(__file__).parent.parent.parent / "knowledge_module" / ".env"
 
 from dotenv import load_dotenv
-load_dotenv(_KM / ".env")
+load_dotenv(_KM_ENV)
 
-from db import get_session_factory, reset_engine
-from motor import api as motor_api
+from knowledge_module.db import get_session_factory, reset_engine
+from knowledge_module.motor import api as motor_api
 from sqlalchemy import text
 
 logging.basicConfig(

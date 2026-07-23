@@ -13,15 +13,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-_KM = Path(__file__).parent.parent.parent.parent / "knowledge_module"
 _CRIZA = Path(__file__).parent.parent.parent
 _AGENT = Path(__file__).parent.parent
-sys.path.insert(0, str(_KM))
 sys.path.insert(0, str(_CRIZA))
 sys.path.insert(0, str(_AGENT))
 
 import evidence_generalista as eg
-from preflight import PreflightResult
+from knowledge_module.preflight import PreflightResult
 
 _PREFLIGHT_OK = PreflightResult(
     ok=True, bloqueantes=[], advertencias=[],
@@ -507,7 +505,7 @@ async def test_check_openalex_caido_es_advertencia():
 @pytest.mark.asyncio
 async def test_run_agent_frena_si_preflight_bloqueante():
     """Pre-flight bloqueante debe abortar antes del loop agéntico (objective-first)."""
-    from preflight import PreflightResult
+    from knowledge_module.preflight import PreflightResult
 
     bloqueado = PreflightResult(ok=False, bloqueantes=["INTA corpus: 0 documentos"], advertencias=[])
     mock_oportunidad = {"id": "uuid-x", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}

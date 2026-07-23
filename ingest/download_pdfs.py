@@ -33,21 +33,20 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── paths ─────────────────────────────────────────────────────────────────────
-_ROOT = Path(__file__).parent.parent.parent
-_KM   = _ROOT / "knowledge_module"
+_CRIZA = Path(__file__).parent.parent
+if str(_CRIZA) not in sys.path:
+    sys.path.insert(0, str(_CRIZA))
 
-for p in [str(_ROOT), str(_KM)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
+# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM vive en
+# knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
 from dotenv import load_dotenv
-load_dotenv(_KM / ".env")
+load_dotenv(_CRIZA.parent / "knowledge_module" / ".env")
 
 from sqlalchemy import text as sa_text
 
-from criza.utils.inta import harvest, get_pdf_url, SETS_BIOTECH
-from plataforma.document_store.store import download_and_extract, pdf_exists, pdf_path
-from db import get_session_factory
+from utils.inta import harvest, get_pdf_url, SETS_BIOTECH
+from knowledge_module.document_store.store import download_and_extract, pdf_exists, pdf_path
+from knowledge_module.db import get_session_factory
 
 # ── constantes ─────────────────────────────────────────────────────────────────
 # Sin cap de longitud en texto_completo (removido 2026-07-06, hallazgo P13 auditoría
@@ -213,7 +212,7 @@ async def run(
             if already:
                 stats["ya_en_disco"] += 1
                 # Extrae de disco (no red)
-                from plataforma.document_store.store import extract_text as _extract
+                from knowledge_module.document_store.store import extract_text as _extract
                 p = pdf_path(pdf_url, "criza")
                 texto = _extract(p) if p else ""
             else:
@@ -251,7 +250,7 @@ def main():
                         help="Para docs open_access sin pdf_url en metadata, scrapea la página INTA")
     args = parser.parse_args()
 
-    from db import reset_engine
+    from knowledge_module.db import reset_engine
     reset_engine()
 
     if sys.platform == "win32":

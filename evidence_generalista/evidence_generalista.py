@@ -27,20 +27,18 @@ import anthropic
 
 _AGENT_DIR = Path(__file__).parent
 _CRIZA_DIR = _AGENT_DIR.parent
-_KM_PATH = _CRIZA_DIR.parent / "knowledge_module"
-sys.path.insert(0, str(_KM_PATH))
 sys.path.insert(0, str(_CRIZA_DIR))
 sys.path.insert(0, str(_AGENT_DIR))
 
 from utils.openalex import search_literature as _search_literature_fn
-from tools.search import get_sector_corpus as _get_sector_corpus_fn
+from km_tools.search import get_sector_corpus as _get_sector_corpus_fn
 from utils.agrovoc import expand_term as _expand_agrovoc_fn
 from utils.corpus import buscar_corpus_cientifico as _buscar_corpus_cientifico_fn
-from motor import api as motor_api
-import aprendizaje
+from knowledge_module.motor import api as motor_api
+import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
-from preflight import FuenteCheck, FuenteCheckResult, run_preflight
-from db import get_session_factory
+from knowledge_module.preflight import FuenteCheck, FuenteCheckResult, run_preflight
+from knowledge_module.db import get_session_factory
 from sqlalchemy import text as _sql_text
 
 DEFAULT_MODEL = os.getenv("EVIDENCE_MODEL", "claude-sonnet-4-6")

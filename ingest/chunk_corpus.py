@@ -31,28 +31,26 @@ import asyncio
 import sys
 from pathlib import Path
 
-_ROOT  = Path(__file__).parent.parent.parent
-_KM    = _ROOT / "knowledge_module"
-_CRIZA = _ROOT / "criza"
-
-for p in [str(_ROOT), str(_KM)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+_CRIZA = Path(__file__).parent.parent
+if str(_CRIZA) not in sys.path:
+    sys.path.insert(0, str(_CRIZA))
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM vive en
+# knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
 from dotenv import load_dotenv
-load_dotenv(_KM / ".env")
+load_dotenv(_CRIZA.parent / "knowledge_module" / ".env")
 
 from sqlalchemy import text as sa_text
 
-from db import get_session_factory, reset_engine
-from motor import api as motor_api
-from motor.loader import load_plantilla
-from motor.chunking import chunk_texto
-from ingesta.download_corpus_pdfs import _sanitize
-from plataforma.document_store.store import pdf_path, extract_text
+from knowledge_module.db import get_session_factory, reset_engine
+from knowledge_module.motor import api as motor_api
+from knowledge_module.motor.loader import load_plantilla
+from knowledge_module.motor.chunking import chunk_texto
+from knowledge_module.ingesta.download_corpus_pdfs import _sanitize
+from knowledge_module.document_store.store import pdf_path, extract_text
 
 _PLANTILLA = _CRIZA / "config" / "plantillas" / "corpus_cientifico.yaml"
 _TENANT = "criza"
@@ -103,7 +101,7 @@ async def _resolver_pdf_url_inta(fichas: list[dict], set_id: str = "civcya") -> 
     Devuelve {ficha_id: pdf_url} solo para las que se pudieron resolver.
     """
     import time
-    from criza.utils.inta import harvest, get_pdf_url
+    from utils.inta import harvest, get_pdf_url
 
     print(f"  Re-cosechando metadata INTA ('{set_id}') para resolver pdf_url faltantes...")
     records = harvest(set_id)

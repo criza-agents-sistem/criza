@@ -17,8 +17,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 _CRIZA = Path(__file__).parent.parent.parent
-_KM = _CRIZA.parent / "knowledge_module"
-sys.path.insert(0, str(_KM))
 sys.path.insert(0, str(_CRIZA))
 
 from investigacion_amplia.investigacion_amplia import (

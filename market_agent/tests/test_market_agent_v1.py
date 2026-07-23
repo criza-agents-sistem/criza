@@ -11,10 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-_KM = Path(__file__).parent.parent.parent.parent / "knowledge_module"
 _AGENT = Path(__file__).parent.parent
-# KM primero, luego directorio del agente — agente queda en 0 (toma precedencia sobre KM/tools)
-sys.path.insert(0, str(_KM))
 sys.path.insert(0, str(_AGENT))
 
 import market_agent as ma
@@ -456,7 +453,7 @@ async def test_run_agent_frena_si_preflight_bloqueante():
 @pytest.mark.asyncio
 async def test_buscar_corpus_contra_km_real():
     """Buscar en el corpus real de Neon — verifica que la función conecta y devuelve lista."""
-    from db import reset_engine
+    from knowledge_module.db import reset_engine
     reset_engine()
 
     result = await buscar_corpus_cientifico("fitasa enzima fósforo", limit=3)

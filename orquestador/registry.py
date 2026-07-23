@@ -9,19 +9,18 @@ import sys
 from pathlib import Path
 
 _CRIZA_DIR = Path(__file__).parent.parent
-_KM_PATH = _CRIZA_DIR.parent / "knowledge_module"
 
 _REGISTRY: dict | None = None
 
 
 def _build_registry() -> dict:
-    for p in [str(_KM_PATH), str(_CRIZA_DIR)]:
-        if p not in sys.path:
-            sys.path.insert(0, p)
+    if str(_CRIZA_DIR) not in sys.path:
+        sys.path.insert(0, str(_CRIZA_DIR))
 
-    # Cada agente tiene su propio tools.py / tools/ local con el mismo nombre.
-    # Limpiar sys.modules["tools"] antes de cada import evita que el tools/ del
-    # agente anterior sea re-usado por el siguiente (colisión de caché).
+    # Solo market_agent/ tiene su propio tools/ local (los demás agentes usan km_tools, el
+    # tools genérico del KM, ya renombrado — no colisiona con el paquete propio de market_agent).
+    # Limpiar sys.modules["tools"] antes de importarlo evita que quede cacheado el de una corrida
+    # anterior en el mismo proceso.
     sys.path.insert(0, str(_CRIZA_DIR / "market_agent"))
     sys.modules.pop("tools", None)
     import market_agent as _market_mod

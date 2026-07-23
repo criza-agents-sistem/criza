@@ -24,16 +24,12 @@ import anthropic
 
 _AGENT_DIR = Path(__file__).parent
 _CRIZA_DIR = _AGENT_DIR.parent
-_KM_PATH = _AGENT_DIR.parent.parent / "knowledge_module"
-# KM primero, criza/ segundo, luego el directorio local — local queda en posición 0 para que
-# 'from tools import ...' encuentre market_agent/tools/ y no knowledge_module/tools/
-sys.path.insert(0, str(_KM_PATH))
 sys.path.insert(0, str(_CRIZA_DIR))
 sys.path.insert(0, str(_AGENT_DIR))
 
-# Importar tools ANTES de motor/aprendizaje: motor/api.py hace sys.path.insert(0, KM) al
-# importarse, lo que empujaría KM delante de AGENT_DIR. Importando tools primero, Python
-# cachea sys.modules['tools'] = market_agent/tools/ antes de que motor altere el orden.
+# `tools` acá es SIEMPRE market_agent/tools/ (paquete propio de este agente) — desde que el KM
+# se empaquetó, ya no existe ningún `knowledge_module.tools` a secas con el que pudiera
+# colisionar (se renombró a km_tools al separar lo genérico de lo específico de CRIZA).
 from tools import (
     buscar_corpus_cientifico,
     search_official_stats,
@@ -43,11 +39,11 @@ from tools import (
     draft_outreach_email,
 )
 
-from motor import api as motor_api
-import aprendizaje
+from knowledge_module.motor import api as motor_api
+import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
-from preflight import FuenteCheck, FuenteCheckResult, run_preflight
-from db import get_session_factory
+from knowledge_module.preflight import FuenteCheck, FuenteCheckResult, run_preflight
+from knowledge_module.db import get_session_factory
 from sqlalchemy import text as _sql_text
 
 client = anthropic.Anthropic()

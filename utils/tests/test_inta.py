@@ -5,12 +5,18 @@ Unit tests: sin red, mock de _get.
 Integration tests: requieren acceso a repositorio.inta.gob.ar. Correr con: pytest -m integration
 """
 
+import sys
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
 
-import criza.utils.inta as inta
+_CRIZA = Path(__file__).parent.parent.parent
+if str(_CRIZA) not in sys.path:
+    sys.path.insert(0, str(_CRIZA))
+
+import utils.inta as inta
 
 
 # ── fixtures de XML OAI-PMH mock ─────────────────────────────────────────────

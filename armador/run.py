@@ -19,12 +19,8 @@ if sys.stdout.encoding != "utf-8":
 if sys.stderr.encoding != "utf-8":
     sys.stderr = open(sys.stderr.fileno(), mode="w", encoding="utf-8", buffering=1)
 
-_ARMADOR_DIR = Path(__file__).parent
-_KM_PATH = _ARMADOR_DIR.parent.parent / "knowledge_module"
-sys.path.insert(0, str(_KM_PATH))
-
-from motor import api as motor_api
-import aprendizaje
+from knowledge_module.motor import api as motor_api
+import knowledge_module.aprendizaje as aprendizaje
 
 from armador import run_agent
 

@@ -28,20 +28,18 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── paths ──────────────────────────────────────────────────────────────────
-_ROOT = Path(__file__).parent.parent.parent
-_KM   = _ROOT / "knowledge_module"
+_CRIZA = Path(__file__).parent.parent
+if str(_CRIZA) not in sys.path:
+    sys.path.insert(0, str(_CRIZA))
 
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-if str(_KM) not in sys.path:
-    sys.path.insert(0, str(_KM))
-
+# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM vive en
+# knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
 from dotenv import load_dotenv
-load_dotenv(_KM / ".env")
+load_dotenv(_CRIZA.parent / "knowledge_module" / ".env")
 
-from criza.utils.inta import harvest, get_pdf_url, SETS_BIOTECH
-from plataforma.document_store.store import download_and_extract, pdf_exists
-from tools.store import store_fuente_externa, batch_store_fuentes_externas
+from utils.inta import harvest, get_pdf_url, SETS_BIOTECH
+from knowledge_module.document_store.store import download_and_extract, pdf_exists
+from km_tools.store import store_fuente_externa, batch_store_fuentes_externas
 
 # ── constantes ─────────────────────────────────────────────────────────────
 SECTOR_DEFAULT = "Biotecnología agrícola"
@@ -229,7 +227,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Simular sin escribir al KM")
     args = parser.parse_args()
 
-    from db import reset_engine
+    from knowledge_module.db import reset_engine
     reset_engine()  # necesario en standalone para evitar event loop collision con SQLAlchemy async
     stats = asyncio.run(harvest_y_persistir(
         set_id=args.set,

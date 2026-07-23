@@ -21,18 +21,19 @@ from pathlib import Path
 # ── Path setup (mismo orden que conftest.py del motor) ────────────────────────
 _ORCH_DIR = Path(__file__).parent
 _CRIZA_DIR = _ORCH_DIR.parent
-_KM_PATH = _CRIZA_DIR.parent / "knowledge_module"
+# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM (DATABASE_URL)
+# vive en knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
+_KM_ENV = _CRIZA_DIR.parent / "knowledge_module" / ".env"
 
-sys.path.insert(0, str(_KM_PATH))   # knowledge_module/ — para db, motor.api
-sys.path.insert(0, str(_CRIZA_DIR)) # criza/ — para orquestador.motor (evita colisión con km/motor/)
+sys.path.insert(0, str(_CRIZA_DIR))  # criza/ — para orquestador.motor, utils.xxx, km_tools, etc.
 
 from dotenv import load_dotenv
-load_dotenv(_KM_PATH / ".env")
+load_dotenv(_KM_ENV)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from db import reset_engine
+from knowledge_module.db import reset_engine
 from orquestador.motor import ejecutar_flow, reanudar
 from orquestador.registry import get_registry
 

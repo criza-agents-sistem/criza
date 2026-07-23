@@ -20,11 +20,8 @@ if sys.stdout.encoding != "utf-8":
 if sys.stderr.encoding != "utf-8":
     sys.stderr = open(sys.stderr.fileno(), mode="w", encoding="utf-8", buffering=1)
 
-_KM_PATH = Path(__file__).parent.parent.parent / "knowledge_module"
-sys.path.insert(0, str(_KM_PATH))
-
-from motor import api as motor_api
-import aprendizaje
+from knowledge_module.motor import api as motor_api
+import knowledge_module.aprendizaje as aprendizaje
 
 from market_agent import run_agent
 

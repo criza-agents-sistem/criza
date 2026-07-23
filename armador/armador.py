@@ -16,7 +16,6 @@ Ver docs/DESIGN_GATE.md — decisiones A–F (2026-06-16).
 
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
@@ -26,16 +25,10 @@ load_dotenv(Path(__file__).parent / ".env", override=True)
 
 import anthropic
 
-_ARMADOR_DIR = Path(__file__).parent
-_CRIZA_DIR = _ARMADOR_DIR.parent
-_KM_PATH = _CRIZA_DIR.parent / "knowledge_module"
-sys.path.insert(0, str(_KM_PATH))
-sys.path.insert(0, str(_CRIZA_DIR))
-
-from motor import api as motor_api
-import aprendizaje
+from knowledge_module.motor import api as motor_api
+import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
-from preflight import PreflightResult
+from knowledge_module.preflight import PreflightResult
 
 DEFAULT_MODEL = os.getenv("ARMADOR_MODEL", "claude-sonnet-4-6")
 

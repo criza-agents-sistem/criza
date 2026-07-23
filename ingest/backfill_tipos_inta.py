@@ -22,20 +22,20 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-_ROOT = Path(__file__).parent.parent.parent
-_KM   = _ROOT / "knowledge_module"
-for p in [str(_ROOT), str(_KM)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+_CRIZA_DIR = Path(__file__).parent.parent
+if str(_CRIZA_DIR) not in sys.path:
+    sys.path.insert(0, str(_CRIZA_DIR))
 
+# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM vive en
+# knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
 from dotenv import load_dotenv
-load_dotenv(_KM / ".env")
+load_dotenv(_CRIZA_DIR.parent / "knowledge_module" / ".env")
 
 from sqlalchemy import text as sa_text
 
-from criza.utils.inta import harvest
-from criza.ingest.harvest_inta import _tipo
-from db import get_session_factory
+from utils.inta import harvest
+from ingest.harvest_inta import _tipo
+from knowledge_module.db import get_session_factory
 
 
 async def run(set_id: str = "civcya", dry_run: bool = False) -> dict:
@@ -101,7 +101,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    from db import reset_engine
+    from knowledge_module.db import reset_engine
     reset_engine()
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

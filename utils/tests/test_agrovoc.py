@@ -9,10 +9,17 @@ La API de AGROVOC (Skosmos REST) está en:
 Rate limit: ~1 req/segundo. Los unit tests no tocan la red.
 """
 
+import sys
+from pathlib import Path
+
 import pytest
 from unittest.mock import patch, call
 
-import criza.utils.agrovoc as agrovoc
+_CRIZA = Path(__file__).parent.parent.parent
+if str(_CRIZA) not in sys.path:
+    sys.path.insert(0, str(_CRIZA))
+
+import utils.agrovoc as agrovoc
 
 
 # ──────────────────────────────────────────────
