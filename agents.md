@@ -147,7 +147,12 @@ pendientes, no tareas ejecutables):
       auditoría, no es un plan paralelo nuevo. **Primer paso recomendado de esa sesión:** correr
       `python -m knowledge_module.auditor --registry auditor_registry.yaml --root .` (ya
       reconectado hoy) para tener una foto estructurada y actual de gaps antes de entrar
-      hallazgo por hallazgo.
+      hallazgo por hallazgo. Esa corrida ya se hizo hoy (5 ALTO, 10 MEDIO, 46 BAJO, detalle en
+      `docs/progress/2026-08-13.md` §5) — incluye un hallazgo MEDIO **nuevo, causado por la
+      independización de hoy**: el auditor genérico (Capa 1) tiene hardcodeado que busca
+      `docs/NEW_INSTANCE_PROTOCOL.md`/`docs/platform-boundary.md` relativos al `--root`,
+      asumiendo un monorepo — ya no existen ahí desde que `criza/` es su propio repo. Mismo
+      patrón que C25, visto del otro lado. Sin resolver — decisión de diseño del auditor.
 - [ ] Rotar password Neon (acción manual de Sebas, no una tarea de desarrollo)
 - [ ] Renombrar carpeta `EMPRESAS-IA/` (hoy `KRIZA/`) — pendiente migración de memoria de Claude
 - [ ] **Auditoría objective-first "qué falta para que todo funcione"** — absorbida y ampliada por
