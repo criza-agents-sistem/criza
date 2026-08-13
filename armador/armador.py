@@ -19,9 +19,12 @@ import os
 import time
 from pathlib import Path
 
+_ARMADOR_DIR = Path(__file__).parent
+_CRIZA_DIR = _ARMADOR_DIR.parent
+
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent / ".env", override=True)
+load_dotenv(_ARMADOR_DIR / ".env", override=True)
 
 import anthropic
 

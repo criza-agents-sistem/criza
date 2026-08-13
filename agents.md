@@ -134,6 +134,20 @@ pendientes, no tareas ejecutables):
       **Pendiente, no de hoy:** conectar `criza/` para que instale el paquete desde el repo nuevo
       (`pip install`, todavía no se tocó nada de `criza/` en este trabajo) — es tarea de la
       conversación de CRIZA, no de la del KM.
+- [ ] **Deuda de tests encontrada al independizar CRIZA (2026-08-13), deliberadamente NO resuelta
+      hoy — sesión dedicada aparte.** Al verificar la instalación de `knowledge_module` por pip se
+      corrió la suite completa por primera vez de punta a punta y aparecieron: `km_tools/tests`
+      6/28 verde (22 fallos) + `utils/tests` que cuelga (probablemente llamadas reales a
+      AGROVOC/INTA sin timeout) — causa exacta de cada fallo sin confirmar, podrían ser bugs
+      reales, tests desactualizados, o dependencia del estado real del Neon (que cambia con el
+      tiempo). Detalle completo: `docs/progress/2026-08-13.md` sección 4. **Criterio explícito de
+      Sebas para avanzar:** no forzarlo al costado de otra tarea — mismo motivo por el que la
+      auditoría de cumplimiento de abajo dice "no resolver nada de esto sin Sebas, ya se corrigió
+      mal una vez por apurar la lectura". Se suma al mismo tipo de sesión dedicada que esa
+      auditoría, no es un plan paralelo nuevo. **Primer paso recomendado de esa sesión:** correr
+      `python -m knowledge_module.auditor --registry auditor_registry.yaml --root .` (ya
+      reconectado hoy) para tener una foto estructurada y actual de gaps antes de entrar
+      hallazgo por hallazgo.
 - [ ] Rotar password Neon (acción manual de Sebas, no una tarea de desarrollo)
 - [ ] Renombrar carpeta `EMPRESAS-IA/` (hoy `KRIZA/`) — pendiente migración de memoria de Claude
 - [ ] **Auditoría objective-first "qué falta para que todo funcione"** — absorbida y ampliada por

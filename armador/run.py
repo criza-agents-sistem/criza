@@ -24,6 +24,7 @@ import knowledge_module.aprendizaje as aprendizaje
 
 from armador import run_agent
 
+_ARMADOR_DIR = Path(__file__).parent
 OUTPUTS_DIR = _ARMADOR_DIR / "outputs"
 _AGENTE = "armador"
 _TENANT = "criza"

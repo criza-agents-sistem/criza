@@ -144,7 +144,7 @@ def test_km_ingest_documento_guardado():
     """
     import asyncio
     from km_models import Documento
-from knowledge_module.db import reset_engine, get_session_factory
+    from knowledge_module.db import reset_engine, get_session_factory
     from sqlalchemy import select
     from ingest_corrida import km_ingest
 

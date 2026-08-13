@@ -438,7 +438,7 @@ async def test_check_web_search_sin_api_key_bloquea():
 @pytest.mark.asyncio
 async def test_run_agent_frena_si_preflight_bloqueante():
     """Pre-flight bloqueante debe abortar antes del loop agéntico (objective-first)."""
-    from preflight import PreflightResult
+    from knowledge_module.preflight import PreflightResult
 
     bloqueado = PreflightResult(ok=False, bloqueantes=["corpus_cientifico: 0 fichas"], advertencias=[])
     with (

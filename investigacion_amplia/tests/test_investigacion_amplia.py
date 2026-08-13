@@ -529,7 +529,7 @@ async def test_check_openalex_caido_es_advertencia_no_bloqueante():
 async def test_run_preflight_ok_cuando_inta_y_conicet_suficientes():
     """Integración de los 3 checks vía run_preflight — reproduce el comportamiento agregado
     que antes tenía _preflight_check (migrado a preflight.py genérico, 2026-07-02)."""
-    from preflight import FuenteCheck, run_preflight
+    from knowledge_module.preflight import FuenteCheck, run_preflight
 
     inta_ok = {"success": True, "data": {"total": 341, "docs_con_texto_completo": 198, "documentos": []}}
     with (
