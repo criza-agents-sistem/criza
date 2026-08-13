@@ -1,7 +1,7 @@
 """
 Ingesta masiva de outputs históricos y aprendizajes al Knowledge Module.
 
-Corre desde: EMPRESAS-IA/knowledge_module/
+Corre desde: criza/
     python ingest_historico.py
 
 Ingesta:
@@ -18,8 +18,7 @@ if sys.stdout.encoding != "utf-8":
     sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
 
 from dotenv import load_dotenv
-# Transicional: mientras CRIZA siga en el árbol, la conexión al KM vive en knowledge_module/.env
-load_dotenv(Path(__file__).parent.parent / "knowledge_module" / ".env", override=True)
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 from ingest_corrida import km_ingest
 from km_tools.store import store_learning

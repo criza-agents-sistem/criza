@@ -23,10 +23,8 @@ from pathlib import Path
 
 _CRIZA = Path(__file__).parent.parent
 
-# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM vive en
-# knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
 from dotenv import load_dotenv
-load_dotenv(_CRIZA.parent / "knowledge_module" / ".env")
+load_dotenv(_CRIZA / ".env")
 
 from knowledge_module.db import get_session_factory, reset_engine
 from knowledge_module.motor import api as motor_api

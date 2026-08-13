@@ -1,7 +1,8 @@
 # architecture.md — CRIZA-biotech
 
 Decisiones técnicas del sistema. No es un historial de sesiones (eso va en `progress/`).
-Para arquitectura de plataforma → `KRIZA_Foundation_Document.md` (carpeta padre EMPRESAS-IA/).
+Para arquitectura de plataforma → `KRIZA_Foundation_Document.md` en el repo `EMPRESAS-IA/docs/`
+(plataforma, repo separado — CRIZA ya no vive dentro de ese árbol).
 
 ---
 
@@ -746,7 +747,7 @@ Start command: `bash -c "bash /workspace/startup.sh; sleep infinity"`
 
 ## Decisiones de plataforma relevantes para CRIZA
 
-*(Detalle completo en `KRIZA_Foundation_Document.md`)*
+*(Detalle completo en `KRIZA_Foundation_Document.md`, repo `EMPRESAS-IA/docs/`)*
 
 | Decisión | Impacto en CRIZA |
 |---|---|

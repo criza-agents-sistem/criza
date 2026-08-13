@@ -23,9 +23,7 @@ from pathlib import Path
 # ── Path setup (mismo orden que run_sector.py) ────────────────────────────────
 _ORCH_DIR = Path(__file__).parent
 _CRIZA_DIR = _ORCH_DIR.parent
-# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM (DATABASE_URL)
-# vive en knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
-_KM_ENV = _CRIZA_DIR.parent / "knowledge_module" / ".env"
+_KM_ENV = _CRIZA_DIR / ".env"
 
 sys.path.insert(0, str(_CRIZA_DIR))  # criza/ — para orquestador.motor, utils.xxx, km_tools, etc.
 

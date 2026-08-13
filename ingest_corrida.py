@@ -23,27 +23,10 @@ from datetime import date
 
 from dotenv import load_dotenv
 
-# Config del KM: transicional, mientras CRIZA siga en el árbol de EMPRESAS-IA carga el .env de
-# knowledge_module/ (donde vive la conexión al Neon de CRIZA hoy). Cuando CRIZA salga del árbol
-# tendrá su propio .env con DATABASE_URL — el paquete knowledge_module ya no lee ninguno propio.
+# Config: DATABASE_URL/EMBEDDING_* del KM + ANTHROPIC_API_KEY, todo en el .env propio de criza/
+# (el paquete knowledge_module no lee ningún .env propio — ver knowledge_module/auditor/__main__.py).
 _criza_dir = Path(__file__).parent
-_km_dir = _criza_dir  # los .env de fallback (ANTHROPIC_API_KEY) se buscan desde acá
-load_dotenv(_criza_dir.parent / "knowledge_module" / ".env", override=True)
-
-# Si ANTHROPIC_API_KEY no está en el .env local, buscarlo en los .env de directorios padre
-# (el agente divergente lo tiene en criza/divergent_agent/.env)
-if not os.environ.get("ANTHROPIC_API_KEY"):
-    for _parent in _km_dir.parents:
-        _candidate = _parent / ".env"
-        if _candidate.exists():
-            load_dotenv(_candidate, override=False)  # override=False: no pisar vars ya seteadas
-            if os.environ.get("ANTHROPIC_API_KEY"):
-                break
-        _candidate2 = _parent / "criza" / "divergent_agent" / ".env"
-        if _candidate2.exists():
-            load_dotenv(_candidate2, override=False)
-            if os.environ.get("ANTHROPIC_API_KEY"):
-                break
+load_dotenv(_criza_dir / ".env", override=True)
 
 import anthropic
 from km_tools.store import store_corrida, store_document, store_opportunity, store_learning

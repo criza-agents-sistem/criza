@@ -2,7 +2,9 @@
 
 > Contexto activo para Claude. Máximo ~200 líneas.
 > Detalle técnico profundo → `ROADMAP.md` de cada componente.
-> Arquitectura de plataforma → `../KRIZA_Foundation_Document.md`
+> Arquitectura de plataforma → `KRIZA_Foundation_Document.md` en el repo `EMPRESAS-IA/docs/`
+> (plataforma, repo separado — no hay path relativo válido entre `criza/` y `EMPRESAS-IA/` desde
+> que CRIZA es su propio repo)
 
 ---
 
@@ -43,7 +45,7 @@ el humano decide. (El pipeline viejo Scout→Especialista→Mercado quedó super
 | Armador | `armador/armador.py` | v1.4 | ✅ SEB-145 | ENSAMBLADOR (no sintetizador); carga `expediente_decision_SPEC.md` en runtime; expediente 5-10 págs; 8 secciones; valida cobertura aguas arriba (sin mercado → bloqueante); `bloque_3.cobertura_global` calculado (no autoreportado); v1.3 (2026-07-22): `MAX_TOKENS` 16000 → 32000 + `messages.stream()` + guarda de truncado ANTES de procesar bloques `tool_use`; **v1.4 (2026-07-22): `nivel_confianza` ahora es `_derive_nivel_confianza(bloque_3)`** — contado (establecidos/asumidos/a_confirmar), no `"alto" if expediente else "bajo"` (la corrida real calculó `Confianza: MEDIO` internamente y `run()` reportaba `alto` al Motor); `MAX_TOKENS` 32000 → 64000 (había quedado justo: usó 30.718); `system` con `cache_control` (SYSTEM_PROMPT 100% estático acá, cachea también entre corridas); **31/31 unit tests**. |
 | Especialista proteínas | `scientific_agent/specialist_proteins.py` | v1.4.1 | ✅ | `scientific_agent/ROADMAP.md` |
 | Motor v2 | `orquestador/motor.py` + `registry.py` + `flows/*.yaml` | v2.0 | ✅ SEB-197 | ejecuta flows YAML sin LLM; km_write / agent / gate_humano; routing declarativo; **28/28 unit tests**. |
-| **Auditor** | `knowledge_module/auditor/` (Capa 1) + `criza/auditor_registry.yaml` (Capa 2, config) | v1.3 | ✅ 2026-07-22 | **Nuevo.** Verificador determinístico (no LLM — decisión A del gate) contra datos reales del KM y código fuente: **9 checks**. Los 7 originales: población de campos, cobertura de fuentes entre agentes hermanos, sampling no declarado, decisiones diferidas, contrato `fuentes_y_cobertura`, `km_write_ausente`, instancias no registradas. **v1.3 (2026-07-22) agregó 2 checks de contrato de conexión (RACI con dientes):** `check_contrato_input_no_leido` (campo declarado en INPUT_CONTRACT que el agente no lee = cable cortado; atrapó `tarea`/`contexto`/`caso` sin leer en los 3 agentes) y `check_km_conexion` (verifica que `km_escribe`/`km_lee` de los contratos cuadren, que la escritura esté en el módulo del agente y no en su runner —el bug del 22/07—, y cuenta piezas desconectadas). Uso: `cd knowledge_module && python -m auditor --registry ../criza/auditor_registry.yaml --root ..`. **32/32 unit tests**. `knowledge_module/docs/AUDITOR_DESIGN_GATE.md` |
+| **Auditor** | `knowledge_module/auditor/` (Capa 1) + `criza/auditor_registry.yaml` (Capa 2, config) | v1.3 | ✅ 2026-07-22 | **Nuevo.** Verificador determinístico (no LLM — decisión A del gate) contra datos reales del KM y código fuente: **9 checks**. Los 7 originales: población de campos, cobertura de fuentes entre agentes hermanos, sampling no declarado, decisiones diferidas, contrato `fuentes_y_cobertura`, `km_write_ausente`, instancias no registradas. **v1.3 (2026-07-22) agregó 2 checks de contrato de conexión (RACI con dientes):** `check_contrato_input_no_leido` (campo declarado en INPUT_CONTRACT que el agente no lee = cable cortado; atrapó `tarea`/`contexto`/`caso` sin leer en los 3 agentes) y `check_km_conexion` (verifica que `km_escribe`/`km_lee` de los contratos cuadren, que la escritura esté en el módulo del agente y no en su runner —el bug del 22/07—, y cuenta piezas desconectadas). Uso (desde la raíz de `criza/`, con `knowledge_module` instalado en el entorno activo — el paquete no lee ningún `.env` propio, cargar `criza/.env` antes de invocar): `python -m knowledge_module.auditor --registry auditor_registry.yaml --root .`. **32/32 unit tests**. `knowledge_module/docs/AUDITOR_DESIGN_GATE.md` |
 
 ## Borrado (histórico)
 
@@ -114,22 +116,24 @@ pendientes, no tareas ejecutables):
       dientes" en vez de tabla en prosa. **Queda 1 punto, no es plomería:** `objetivo` decorativo
       del motor — es la pregunta de fondo del rediseño del conductor, documentada como decisión
       abierta, no un bug. Detalle completo: `docs/progress/2026-07-22.md`. Diseño abierto (NO
-      decidido): `../docs/PROPUESTA_CONDUCTOR.md`.
-- [ ] **⚠️ BLOQUEADOR ACTIVO — reestructuración del KM en curso, empezar preguntando por esto.**
-      Sebas está reestructurando `knowledge_module/` en un worktree separado (`km/packaging` —
-      carpeta `EMPRESAS-IA-km-packaging/`, ver `docs/km-aislamiento-diagnostico.md`): DB física
-      propia por instancia + empaquetado como paquete Python instalable (necesario porque las
-      instancias van a salir del árbol de `EMPRESAS-IA/`). Bloqueó con hallazgo G1: la mayoría de
-      `criza/` no está bajo control de versiones del repo raíz, así que el worktree no puede
-      migrar esos archivos con seguridad. **Mientras tanto, el repo raíz (`master`) tiene 4
-      archivos sin commitear dentro de `knowledge_module/auditor/`** (`checks.py`, `registry.py`,
-      `tests/test_checks.py`, `docs/AUDITOR_DESIGN_GATE.md` — los 2 checks nuevos del auditor de
-      la sesión 2026-07-22, ver abajo). Decisión explícita de Sebas: no tocar nada de esto, no
-      commitear nada, hasta que `km/packaging` cierre. **Antes de tocar cualquier cosa dentro de
-      `knowledge_module/`: preguntar si esa reestructuración ya terminó.** Si terminó, portar esos
-      2 checks al layout `src/` nuevo (son aditivos, sin overlap con la parte ORM/CRIZA-específica
-      que se está separando). Detalle completo: `docs/progress/2026-07-22.md` (sección "Pausa de
-      sesión").
+      decidido): `EMPRESAS-IA/docs/PROPUESTA_CONDUCTOR.md` (repo plataforma, separado).
+- [x] **Reestructuración del KM — CERRADA 2026-07-24, fue más lejos de lo planeado.** No solo se
+      empaquetó como paquete Python instalable (`src/` layout, `pyproject.toml`, extras opcionales
+      `[local-embeddings]`/`[ingesta]`/`[espacio]`/`[servidor]`/`[dev]`) — se separó a su **propio
+      repo privado**, `github.com/sebasbizzi/km-knowledge-module`, sin historial previo (commit
+      único, tag `v0.1.0`), para que el paquete no arrastre ninguna referencia a las instancias
+      que lo consumen (barrido exhaustivo de referencias a CRIZA/DPN/etc. en código y docs). Local:
+      `EMPRESAS-IA/knowledge_module/` sigue siendo el working directory, pero ahora es un repo
+      anidado gitignorado por el padre (mismo patrón que `criza/`/`dpn-normativo/`), ya NO
+      trackeado por el repo raíz de `EMPRESAS-IA`. Sumó capacidades nuevas al motor genérico:
+      `detectar_clusters`, `detectar_huecos`/`validar_huecos` (extra `[espacio]`), coordenadas 3D
+      persistidas + cola de jobs de refresco (`motor/proyeccion.py`), y un servidor HTTP opcional
+      server-to-server (`server.py`, extra `[servidor]`) con auth de 2 niveles, rate limit y HTTPS
+      exigido. Los 2 checks del auditor pendientes de portar ya viajaron dentro del split. Detalle
+      completo y verificación real contra Neon: `knowledge_module/docs/KM_MOTOR_GENERICO_GATE.md`.
+      **Pendiente, no de hoy:** conectar `criza/` para que instale el paquete desde el repo nuevo
+      (`pip install`, todavía no se tocó nada de `criza/` en este trabajo) — es tarea de la
+      conversación de CRIZA, no de la del KM.
 - [ ] Rotar password Neon (acción manual de Sebas, no una tarea de desarrollo)
 - [ ] Renombrar carpeta `EMPRESAS-IA/` (hoy `KRIZA/`) — pendiente migración de memoria de Claude
 - [ ] **Auditoría objective-first "qué falta para que todo funcione"** — absorbida y ampliada por
@@ -143,9 +147,9 @@ pendientes, no tareas ejecutables):
       2026-07-22, ver el bloqueador activo más arriba.** También:
       chunking nunca construido para CRIZA + truncado a 60k caracteres con pérdida de datos (P13),
       criterio de Capa 1 corregido ("Capa Estructural" = solo lo operativo, no lo genérico-parece).
-      Detalle completo: `../docs/AUDITORIA_CUMPLIMIENTO_2026-07-05.md`. Panel:
-      `../plataforma/control_panel/`. **No resolver nada de esto sin Sebas — varios ítems ya
-      fueron corregidos una vez por apurar la lectura.**
+      Detalle completo: `EMPRESAS-IA/docs/AUDITORIA_CUMPLIMIENTO_2026-07-05.md` (repo plataforma).
+      Panel: `EMPRESAS-IA/plataforma/control_panel/`. **No resolver nada de esto sin Sebas —
+      varios ítems ya fueron corregidos una vez por apurar la lectura.**
 
 ---
 
@@ -173,19 +177,14 @@ pendientes, no tareas ejecutables):
 
 ## Dónde están las cosas
 
+CRIZA es su propio repo (`Plataformas/criza/`), independiente de `EMPRESAS-IA/` (plataforma,
+repo separado) y de `knowledge_module` (instalado por pip, no es carpeta hermana — ver
+`pip install -e` en la sección de abajo).
+
 ```
-EMPRESAS-IA/                     ← carpeta raíz (hoy nombrada KRIZA/)
-├── KRIZA_Foundation_Document.md ← arquitectura de 4 capas de la plataforma
-├── docs/playbook.md             ← norma Capa 0 para todos los repos
-├── STATUS.md                    ← decisiones de la fase de diseño inicial
-│
-├── plataforma/                  ← Capa 0-1 genérica (reutilizable por CRIZA, DPN, futuras)
-│   └── document_store/
-│       ├── store.py             ← descarga PDFs + extrae texto; keyed por instance
-│       └── data/{instance}/     ← PDFs en disco (ignorados en git)
-│
-└── criza/                       ← este repo: CRIZA-biotech (Capa 2)
+criza/                          ← este repo: CRIZA-biotech (Capa 2)
     ├── agents.md                ← este archivo
+    ├── .env                     ← DATABASE_URL, EMBEDDING_*, ANTHROPIC_API_KEY (propio, no versionado)
     ├── docs/
     │   ├── architecture.md      ← decisiones técnicas del sistema CRIZA
     │   └── progress/            ← logs de sesión (YYYY-MM-DD.md)
@@ -231,16 +230,16 @@ EMPRESAS-IA/                     ← carpeta raíz (hoy nombrada KRIZA/)
         ├── armador.py · run.py
         └── tests/               ← 14 unit
 
-EMPRESAS-IA/knowledge_module/    ← Capa 1 — memoria semántica compartida
-    ├── README.md · ROADMAP.md · schema.sql
-    ├── db.py · embeddings.py · server.py
-    ├── ingest_corrida.py · ingest_historico.py
-    ├── tools/store.py           ← store_fuente_externa (papers, normas, etc.)
-    ├── migrate_documento_v03.py ← migración DB: columnas nuevas + constraints expandidos
-    ├── migrations/001_v02_tenant_documento.sql
-    ├── tests/ (14 tests)
-    └── docs/ KM_DESIGN_GATE.md · architecture.md
+knowledge_module (Capa 1 — memoria semántica compartida): repo propio, `github.com/sebasbizzi/
+km-knowledge-module`, instalado por pip (`pip install -e "<ruta a EMPRESAS-IA/knowledge_module>"`
+en dev). Detalle de su estructura interna: `knowledge_module/docs/KM_DESIGN_GATE.md` en ese repo,
+no acá.
 ```
+
+> Nota: el árbol de arriba (dentro de `criza/`) quedó desactualizado en algunos puntos antes de
+> esta migración (menciona `divergent_agent/`, `convergent_agent/` — ya borrados, ver sección
+> "Borrado" abajo) — no se resincronizó entero en este cambio, solo se corrigió que `criza/` deje
+> de mostrarse como subcarpeta de `EMPRESAS-IA/`.
 
 ---
 

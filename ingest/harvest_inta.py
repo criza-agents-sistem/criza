@@ -32,10 +32,8 @@ _CRIZA = Path(__file__).parent.parent
 if str(_CRIZA) not in sys.path:
     sys.path.insert(0, str(_CRIZA))
 
-# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM vive en
-# knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
 from dotenv import load_dotenv
-load_dotenv(_CRIZA.parent / "knowledge_module" / ".env")
+load_dotenv(_CRIZA / ".env")
 
 from utils.inta import harvest, get_pdf_url, SETS_BIOTECH
 from knowledge_module.document_store.store import download_and_extract, pdf_exists

@@ -38,10 +38,8 @@ if str(_CRIZA) not in sys.path:
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM vive en
-# knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
 from dotenv import load_dotenv
-load_dotenv(_CRIZA.parent / "knowledge_module" / ".env")
+load_dotenv(_CRIZA / ".env")
 
 from sqlalchemy import text as sa_text
 

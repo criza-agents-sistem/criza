@@ -23,38 +23,38 @@ fuentes_propias:
     nombres_tool_posibles: [buscar_corpus_cientifico, search_corpus_cientifico]
     default_minimo_esperado: 50
     agentes_que_deberian_cubrirla:
-      - criza/market_agent/market_agent.py
-      - criza/evidence_generalista/evidence_generalista.py
-      - criza/investigacion_amplia/investigacion_amplia.py
+      - market_agent/market_agent.py
+      - evidence_generalista/evidence_generalista.py
+      - investigacion_amplia/investigacion_amplia.py
 
   - clave: inta_legacy
     descripcion: "Corpus INTA vía tabla documento legacy — FTS exhaustivo (OR sin límite)"
     nombres_tool_posibles: [search_corpus_inta, get_sector_corpus]
     default_minimo_esperado: 500
     agentes_que_deberian_cubrirla:
-      - criza/evidence_generalista/evidence_generalista.py
-      - criza/investigacion_amplia/investigacion_amplia.py
+      - evidence_generalista/evidence_generalista.py
+      - investigacion_amplia/investigacion_amplia.py
 
 agentes:
-  - archivo: criza/market_agent/market_agent.py
+  - archivo: market_agent/market_agent.py
     tools_var: TOOLS
     submit_tool: submit_analysis
 
-  - archivo: criza/evidence_generalista/evidence_generalista.py
+  - archivo: evidence_generalista/evidence_generalista.py
     tools_var: TOOLS
     submit_tool: submit_evidencia
 
-  - archivo: criza/investigacion_amplia/investigacion_amplia.py
+  - archivo: investigacion_amplia/investigacion_amplia.py
     tools_var: TOOLS
     submit_tool: submit_investigacion_amplia
 
-  - archivo: criza/armador/armador.py
+  - archivo: armador/armador.py
     tools_var: TOOLS
     # sin submit_tool: armador no tiene fuentes propias, agrega — valida fuentes_y_cobertura
     # de mercado/evidencia aguas arriba (_validar_cobertura_upstream), no declara la suya.
     # El check de contrato no aplica acá; declararlo produciría un falso positivo.
 
-  - archivo: criza/scientific_agent/specialist_proteins.py
+  - archivo: scientific_agent/specialist_proteins.py
     tools_var: TOOLS
     # Agregado 2026-07-06 (AUDIT-C16/C17): agente más viejo del proyecto, nunca migrado al
     # contrato SEB-115 ni al KM write. Se registra a propósito para que check_km_write_ausente
@@ -69,5 +69,5 @@ salidas_terminales:
   - props.pipeline_status     # estado de corrida: lo consume el humano / la consola
   - props.token_usage         # medición de consumo (principio 7c)
 
-design_gates_glob: "criza/**/DESIGN_GATE.md"
-roadmap_glob: "criza/**/ROADMAP.md"
+design_gates_glob: "**/DESIGN_GATE.md"
+roadmap_glob: "**/ROADMAP.md"

@@ -26,10 +26,8 @@ _CRIZA_DIR = Path(__file__).parent.parent
 if str(_CRIZA_DIR) not in sys.path:
     sys.path.insert(0, str(_CRIZA_DIR))
 
-# Transicional: mientras CRIZA siga en el árbol de EMPRESAS-IA, la conexión al KM vive en
-# knowledge_module/.env — cuando CRIZA salga del árbol tendrá su propio .env.
 from dotenv import load_dotenv
-load_dotenv(_CRIZA_DIR.parent / "knowledge_module" / ".env")
+load_dotenv(_CRIZA_DIR / ".env")
 
 from sqlalchemy import text as sa_text
 
