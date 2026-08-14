@@ -11,6 +11,10 @@ scientific_agent/
 outputs/
 *.log
 
+# PDFs descargados por knowledge_module.document_store (KM_DOCUMENT_STORE_DIR) — binarios, no
+# se versionan; el texto extraído ya vive en el KM (Neon), esto es solo caché local
+document_store_data/
+
 # Python
 __pycache__/
 *.pyc

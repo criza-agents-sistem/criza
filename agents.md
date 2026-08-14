@@ -78,7 +78,12 @@ el repo) y **borrado definitivamente el 2026-07-02**. Ya no existe en el filesys
 - **Default:** `claude-sonnet-4-6` para todos. Cambiar a Opus para análisis profundos.
 - **Literatura:** OpenAlex API (250M+ papers, sin key) — fallback Semantic Scholar
 - **INTA Digital:** OAI-PMH (`repositorio.inta.gob.ar/oai/request`) + discover scraping — `criza/utils/inta.py`; AGROVOC tesauro — `criza/utils/agrovoc.py`
-- **Document Store (Capa 0-1):** `plataforma/document_store/store.py` — descarga PDFs + extrae texto (pypdf)
+- **Document Store (Capa 1):** `knowledge_module.document_store.store` (parte del paquete pip
+  desde 2026-07-22, antes vivía en `plataforma/document_store/`) — descarga PDFs + extrae texto
+  (pypdf). Datos propios de CRIZA en `document_store_data/` (raíz de este repo, gitignored,
+  `KM_DOCUMENT_STORE_DIR` en `.env`) — movidos acá el 2026-08-14 desde
+  `EMPRESAS-IA/plataforma/document_store/data/criza/`, donde habían quedado huérfanos (1.455
+  PDFs) desde antes de la migración del código al paquete.
 - **GPU / Compute:** Modal serverless — ESMFold en `criza-esmfold`, BGE-m3 en `criza-bge-m3`
 - **RunPod:** pod `qruo50jffhrgze` (H200 SXM) — **REEMPLAZADO por Modal. Mantener apagado.**
 - **Tests:** pytest con markers `unit` / `integration`
@@ -153,6 +158,26 @@ pendientes, no tareas ejecutables):
       `docs/NEW_INSTANCE_PROTOCOL.md`/`docs/platform-boundary.md` relativos al `--root`,
       asumiendo un monorepo — ya no existen ahí desde que `criza/` es su propio repo. Mismo
       patrón que C25, visto del otro lado. Sin resolver — decisión de diseño del auditor.
+- [x] **Fase D del plan de independización — repo GitHub propio + push, CERRADA 2026-08-14 (ya
+      estaba hecha desde el 2026-08-13, solo faltaba verificar y documentar).** `sebasbizzi/criza`
+      existe en GitHub, privado, remote `origin` configurado, local `master` y `origin/master` en
+      el mismo commit (0 ahead/0 behind).
+- [x] **Fase E del plan de independización — move físico de la carpeta, CERRADA 2026-08-14.**
+      `C:\Users\sebab\Documents\Plataformas\criza` es ahora hermana de `EMPRESAS-IA\`, mismo
+      patrón que `Conflur\`. Verificado: `EMPRESAS-IA\criza` ya no existe (no quedó duplicado ni
+      carpeta vieja colgando).
+- [x] **Fase F del plan de independización — reflejar la salida en `EMPRESAS-IA/CLAUDE.md`,
+      CERRADA 2026-08-14.** Casi todo ya estaba hecho desde un commit del 2026-08-13
+      (`3d058db`); hoy se cerró el bullet de "pendiente operativo" que seguía diciendo "falta el
+      Move-Item" + se cortó la herencia stale de CRIZA en 4 secciones que instruían leer/escribir
+      `criza/...` por path relativo roto (commits `139c170` + `a80303d` en `EMPRESAS-IA`, sin
+      push todavía).
+- [x] **Fase G del plan de independización — verificación post-move, CERRADA 2026-08-14.**
+      5/5 puntos verificados reales (no mock): `pip install -e` a ruta correcta, `motor_api.
+      buscar()` real contra Neon, auditor (61 hallazgos, idéntico a la foto del 2026-08-13, sin
+      regresión), suite de tests por módulo (todo lo verde sigue verde, la deuda conocida de
+      `km_tools`/`utils` sigue igual). **Plan de independización de CRIZA (Fases A-G) completo.**
+      Detalle completo: `docs/progress/2026-08-14.md`.
 - [ ] Rotar password Neon (acción manual de Sebas, no una tarea de desarrollo)
 - [ ] Renombrar carpeta `EMPRESAS-IA/` (hoy `KRIZA/`) — pendiente migración de memoria de Claude
 - [ ] **Auditoría objective-first "qué falta para que todo funcione"** — absorbida y ampliada por
@@ -250,9 +275,10 @@ criza/                          ← este repo: CRIZA-biotech (Capa 2)
         └── tests/               ← 14 unit
 
 knowledge_module (Capa 1 — memoria semántica compartida): repo propio, `github.com/sebasbizzi/
-km-knowledge-module`, instalado por pip (`pip install -e "<ruta a EMPRESAS-IA/knowledge_module>"`
-en dev). Detalle de su estructura interna: `knowledge_module/docs/KM_DESIGN_GATE.md` en ese repo,
-no acá.
+km-knowledge-module`, instalado por pip en modo editable. Comando exacto verificado post-move
+(2026-08-14, `criza/` y `knowledge_module/` ya no son carpetas hermanas):
+`pip install -e "C:\Users\sebab\Documents\Plataformas\EMPRESAS-IA\knowledge_module"`. Detalle de
+su estructura interna: `knowledge_module/docs/KM_DESIGN_GATE.md` en ese repo, no acá.
 ```
 
 > Nota: el árbol de arriba (dentro de `criza/`) quedó desactualizado en algunos puntos antes de
