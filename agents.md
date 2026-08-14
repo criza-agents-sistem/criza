@@ -3,81 +3,77 @@
 > Este archivo contiene solo lo que importa HOY. No es un historial.
 > Para historial de decisiones → `docs/ARCHITECTURE.md` y `docs/progress/`
 > Para roadmap completo → `ROADMAP.md`
-> Para arquitectura de plataforma → `KRIZA_Foundation_Document.md`
+> Para arquitectura de plataforma → `CLAUDE.md` y `agents.md` en `criza/` (repo padre)
 
 ---
 
 ## Contexto del proyecto
 
-CRIZA es la primera instancia de la plataforma EMPRESAS-IA (codename) — vertical de venture-building en biotecnología. El pipeline tiene dos niveles: Scout multidominio (primer filtro, ancho) + Especialistas de dominio (análisis profundo). El usuario actúa como orquestador-colaborador hasta que exista el Orquestador-agente formal.
+CRIZA es la primera instancia de la plataforma EMPRESAS-IA — vertical de venture-building en
+biotecnología. El **Scout multidominio quedó jubilado** (`scout.py`/`run_scouting.py` borrados,
+ver `criza/agents.md` § Borrado histórico) — este repo hoy es solo el **especialista en
+proteínas** (`specialist_proteins.py`), invocado por el Orquestador de `criza/` o de forma
+standalone vía `run.py`.
 
-Etapa actual: **scout v1.1 + especialista proteínas v1.4.1** — construyendo Agente de Mercado (SEB-96).
+Etapa actual: **especialista proteínas v1.4.1**.
 
 ---
 
 ## Stack activo
 
-- **Scout:** `scout.py` — OpenAlex + razonamiento, modelo claude-sonnet-4-6
-- **Especialista proteínas:** `specialist_proteins.py` (ex agent.py) — ESMFold/ProteinMPNN/FoldX, modelo configurable
-- **Runners:** `run_scouting.py` (scout) · `run.py` (especialista proteínas)
-- **Literatura:** OpenAlex API (250M+ papers) — fallback Semantic Scholar
-- **GPU:** RunPod pod `qruo50jffhrgze` (H200 SXM, US-CA-2) — **APAGADO por defecto**
-- **Tests:** pytest, 110 unit tests pasando
-- **CI:** GitHub Actions en cada PR
-- **Modelos:** SCOUT_MODEL + SPECIALIST_MODEL en `.env` (configurable por agente)
-
----
-
-## Linear
-
-- **Proyecto:** CRIZA
-- **Equipo:** Sebabizz._dev
-- **Cycle activo:** Cycle 3 (junio 2026)
-- **Milestone actual:** M1 — Base sólida → M2 Knowledge Module (próximo)
+- **Especialista proteínas:** `specialist_proteins.py` — ESMFold/ProteinMPNN/FoldX, modelo
+  configurable (`SPECIALIST_MODEL` en `.env`)
+- **Runner:** `run.py`
+- **Literatura:** OpenAlex API (250M+ papers, primaria desde v1.4.1) — fallback Semantic Scholar
+- **ESMFold:** Modal serverless — `ESMFOLD_POD_URL` en `.env`, leído en runtime por
+  `tools/esmfold_local.py::_get_pod_url()`. **Servicio movido el 2026-08-14** de
+  `EMPRESAS-IA/services/esmfold/` a `criza/services/esmfold/` (repo padre, carpeta hermana de
+  los agentes) — mismo nombre de app Modal (`criza-esmfold`) y mismo workspace (`criza-dev`) →
+  la URL no cambió, cero acción necesaria acá. Deploy/redeploy se corre desde la raíz de
+  `criza/`, no desde este repo: `modal deploy services/esmfold/modal_app.py`.
+- **RunPod: JUBILADO.** El pod `qruo50jffhrgze` (H200 SXM) fue reemplazado por Modal — no
+  volver a levantarlo. La sección "Protocolo RunPod" de `ROADMAP.md` describe el flujo viejo,
+  queda como historia hasta que se limpie ese doc (fuera de alcance de hoy).
+- **Tests:** pytest, 110 unit tests pasando (`pytest -m "not integration"`), 32 integration
+- **Modelo:** `SPECIALIST_MODEL` en `.env`, configurable por agente
 
 ---
 
 ## Pendientes / flags abiertos
 
-- [ ] **SEB-96** — Agente de Mercado v0 (próximo a construir)
-- [ ] **Tests de scout.py** — faltan unit tests (gap de playbook, pendiente)
-- [ ] **SEB-115** — Contrato estándar de agentes (costura, adoptar con Científico + Mercado)
-- [ ] **SEB-118** — Embeddings BGE-m3 — DEADLINE antes de ingest DPN
-- [ ] **SEB-121** — Knowledge Module ligero (con loop de aprendizaje)
-- [ ] **SEB-94** — FoldX: registrarse en foldxsuite.crg.eu y descargar binario
-- [ ] **SEB-95** — Serverless GPU (RunPod Serverless o Modal)
-- [ ] Naming de la plataforma (codename EMPRESAS-IA — pasada de naming pendiente)
-- [ ] Pod RunPod `qruo50jffhrgze` debe estar STOPPED cuando no se usa
+Documentados también en `criza/auditor_registry.yaml` (comentario 2026-07-06, AUDIT-C16/C17) —
+se dejan a propósito para que el auditor determinístico del KM los siga marcando hasta que se
+cierren:
 
----
-
-## Protocolo RunPod
-
-Pod **APAGADO por defecto**. Iniciarlo solo para análisis con proteínas largas (>200aa):
-1. cloud.runpod.io → Pods → Start (`mighty_brown_lark`)
-2. Esperar ~3-5 min → verificar: `curl https://qruo50jffhrgze-8000.proxy.runpod.net/health`
-3. Al terminar → **Stop** (nunca Terminate)
+- [ ] **C16 (ALTO):** `specialist_proteins.py` no implementa el contrato estándar de agentes
+  SEB-115 (`INPUT_CONTRACT`/`OUTPUT_CONTRACT`/`run()` async) — es síncrono, devuelve texto
+  plano, y está registrado como stub (`"cientifico_especialista": None`) en
+  `criza/orquestador/registry.py`. No lo puede invocar el Orquestador todavía.
+- [ ] **C17 (ALTO):** `specialist_proteins.py` no escribe nada al Knowledge Module — solo
+  persiste un `.md` local en `outputs/`. Viola la regla de escritura al KM (todo output de un
+  agente debe quedar en el KM, sin excepción). Es el agente más viejo del proyecto, nunca
+  migrado.
+- [ ] **C5 (MEDIO):** falta `docs/DESIGN_GATE.md` propio de este módulo — los demás agentes de
+  CRIZA lo tienen, este no.
+- [ ] **Repo nested sin destino decidido** — este repo (`scientific_agent/`) es un git repo
+  independiente (`github.com/CRIZA-ia/scientific`), ignorado por `criza/.gitignore` con el
+  comentario "decisión pendiente: ¿submódulo? ¿fusionar historia?". Sigue sin resolver.
+- [ ] **Cambios sin commitear en este repo** (detectados 2026-08-14, no son de esta sesión):
+  borrado de `scout.py`/`run_scouting.py`/`tests/test_scout.py`/`agents.md` viejo (jubilación
+  del scout, ya reflejada en `criza/agents.md`), y actualización de `.env.example`/`ROADMAP.md`/
+  `tools/esmfold_local.py` con la migración RunPod→Modal. Nada de esto se commiteó todavía en
+  este repo — revisar y commitear cuando corresponda (no se tocó hoy, es un repo aparte).
 
 ---
 
 ## Reglas específicas
 
-### Definition of Done — código (no negociable)
-Todo módulo nuevo (agente, tool, runner) está Done cuando tiene:
-1. **Tests unitarios** — casos críticos cubiertos con pytest
-2. **`agents.md` actualizado** — refleja la nueva estructura
-3. **`docs/progress/`** — sesión documentada al cierre
-No mover a Done en Linear sin estos tres puntos. Si no hay tiempo para tests,
-el issue queda In Progress y se crea un issue de deuda técnica explícito.
-
 - `load_dotenv()` corre **antes** de importar tools — bug histórico resuelto, no revertir
 - `ESMFOLD_POD_URL` se lee en runtime con `_get_pod_url()`, nunca al importar
 - Tests de integración excluidos por defecto: `pytest -m "not integration"`
 - Outputs y PDB en `.gitignore` — se regeneran, no van al repo
-- `ROADMAP.md` = fuente de verdad del estado de desarrollo del agente
-- Modelo por agente: SCOUT_MODEL (Sonnet) · SPECIALIST_MODEL (configurable, puede ser Opus para deep-dive)
-- Scout v1.1: GMO+peletizado es CONTEXTO HABILITADOR, no criterio. Sectores sin restricción.
-- `specialist_proteins.py` reemplazó a `agent.py` — no existe más `agent.py`
+- `ROADMAP.md` = fuente de verdad del estado de desarrollo del agente (desactualizado en la
+  sección RunPod, ver Pendientes)
 
 ---
 
@@ -85,10 +81,8 @@ el issue queda In Progress y se crea un issue de deuda técnica explícito.
 
 ```
 scientific_agent/
-├── scout.py                  ← Scout multidominio v1.1 (primer filtro)
-├── specialist_proteins.py    ← Especialista proteínas (ex agent.py)
-├── run_scouting.py           ← Runner del scout
-├── run.py                    ← Runner del especialista proteínas
+├── specialist_proteins.py    ← único agente activo (especialista proteínas)
+├── run.py                    ← runner standalone
 ├── agents.md                 ← este archivo
 ├── ROADMAP.md                ← versiones y estado (fuente de verdad dev)
 │
@@ -96,16 +90,16 @@ scientific_agent/
 │   ├── openalex.py           ← search_literature (PRIMARIA desde v1.4.1)
 │   ├── semantic_scholar.py   ← fallback si OpenAlex falla
 │   ├── uniprot.py            ← get_protein_sequence
-│   ├── esmfold_local.py      ← predict_structure_local (RunPod)
-│   ├── esmfold.py            ← predict_structure (fallback 200aa)
+│   ├── esmfold_local.py      ← predict_structure_local (Modal, ver Stack activo)
+│   ├── esmfold.py            ← predict_structure (fallback API pública, 200aa)
 │   ├── stability.py          ← analyze_stability
 │   ├── variants.py           ← design_variants (rule-based)
-│   ├── mpnn.py               ← design_variants_mpnn (opcional)
-│   ├── foldx.py              ← predict_tm_change (opcional)
+│   ├── mpnn.py                ← design_variants_mpnn (opcional)
+│   ├── foldx.py               ← predict_tm_change (opcional)
 │   └── compare.py            ← compare_variants
 │
 ├── tests/                    ← 110 unit tests + 32 integration
-├── docs/                     ← ARCHITECTURE.md, DECISIONS.md, progress/
-├── outputs/                  ← briefs y scouting generados (no en git)
+├── docs/                     ← ARCHITECTURE.md, DECISIONS.md, ONBOARDING.md (falta DESIGN_GATE.md — C5)
+├── outputs/                  ← briefs generados (no en git)
 └── structures/               ← PDB generados (no en git)
 ```

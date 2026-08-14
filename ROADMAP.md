@@ -37,12 +37,20 @@ Cualquier tarea que involucre ESMFold en proteínas completas (>200 aa):
 
 ---
 
-## Estado actual: v1.4 ✅
+## Contexto de plataforma
+
+> Este repo es el **especialista en proteínas** de CRIZA — una instancia de Capa 2 de la plataforma **EMPRESAS-IA**. Ver `KRIZA_Foundation_Document.md` para la estructura completa (4 capas, costuras, principios). Estándares según `docs/playbook.md`.
+>
+> La función científica se separó en **scout multidominio** (primer filtro, ancho — a construir, SEB-124) + **especialistas de dominio** (profundo — este repo cubre proteínas; química/materiales se agregan on-demand vía contrato estándar). El Knowledge Module (memoria que aprende) y las costuras (contrato de agentes, tenancy, abstracción de proveedor) son piezas de plataforma — ver Linear SEB-114 a SEB-124.
+
+---
+
+## Estado actual: v1.4.1 ✅
 
 **Fecha de entrega:** Mayo 2026  
 **Pipeline completo:**
 ```
-Semantic Scholar (literatura) → UniProt (secuencia) → ESMFold local (estructura completa + PDB)
+OpenAlex (literatura) → UniProt (secuencia) → ESMFold local (estructura completa + PDB)
 → analyze_stability (regiones débiles) → design_variants (candidatas rule-based)
 → [design_variants_mpnn] (ML, opcional) → [predict_tm_change] (FoldX, opcional)
 → compare_variants (validación computacional) → Brief técnico
@@ -72,8 +80,8 @@ Semantic Scholar (literatura) → UniProt (secuencia) → ESMFold local (estruct
 
 | Suite | Tests | Estado |
 |---|---|---|
-| Unit tests | 95 tests | ✅ Todos pasando (`pytest`) |
-| Integration tests | 24 tests | ✅ Disponibles (`pytest -m integration`) |
+| Unit tests | 110 tests | ✅ Todos pasando (`pytest`) |
+| Integration tests | 32 tests | ✅ Disponibles (`pytest -m integration`) |
 
 ---
 
@@ -113,13 +121,13 @@ Semantic Scholar (literatura) → UniProt (secuencia) → ESMFold local (estruct
 
 ## v2 — Backlog 🗂️
 
-### [v2-A] Integración con Knowledge Module
+### [v2-A] Integración con Knowledge Module (pieza de plataforma)
 
-**Qué es:** Cargar documentación de laboratorios socios (protocolos, experimentos fallidos, condiciones optimizadas localmente) en la capa de conocimiento del agente.
+**Qué es:** El agente consume el Knowledge Module (memoria que aprende) de Capa 1 — guarda y reutiliza aprendizajes de cada caso (protocolos, experimentos fallidos, condiciones optimizadas localmente).
 
-**Impacto:** El agente aprende calibraciones y condiciones específicas del laboratorio socio. Crea ventaja competitiva no replicable — ningún modelo global tiene esa información.
+**Impacto:** El agente aprende del proceso (errores y aciertos) y reutiliza en casos nuevos. Ventaja no replicable — ningún modelo global tiene esa experiencia vivida.
 
-**Prerequisito:** Diseño del Knowledge Module (tarea SEB-7 en Linear, en Backlog)
+**Nota:** El Knowledge Module ya no es backlog del agente — es pieza de plataforma. Versión **ligera** primero (RAG + memoria + loop de aprendizaje), completa después (3D + UMAP). Ver Linear SEB-121 (ligero), SEB-62 (completo), SEB-61 (schema).
 
 ---
 

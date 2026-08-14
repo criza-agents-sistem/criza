@@ -65,10 +65,13 @@ def _fallback_response(protein_name: str, error: str, extra: dict = None) -> dic
         "error":              error,
         "setup_instructions": (
             "Opciones para ESMFold sin límite de longitud:\n\n"
-            "1. Pod RunPod (recomendado):\n"
-            "   - Verificar ESMFOLD_POD_URL en .env\n"
-            "   - Levantar el pod en cloud.runpod.io (pod djds4c7vfo8m47)\n"
-            "   - El servidor arranca automáticamente vía startup.sh\n\n"
+            "1. Modal (recomendado — serverless, sin gestión de pods):\n"
+            "   - Ver services/esmfold/README.md\n"
+            "   - pip install modal && modal setup\n"
+            "   - modal run services/esmfold/modal_app.py::download_model\n"
+            "   - modal deploy services/esmfold/modal_app.py\n"
+            "   - Copiar la URL a ESMFOLD_POD_URL en .env\n"
+            "   - Cold start ~30-60s | ~$0.03 por predicción | sin idle cost\n\n"
             "2. Instalación local:\n"
             "   pip install fair-esm torch\n"
             "   GPU: ~45s/proteína | CPU: ~25 min para >400 aa\n\n"
