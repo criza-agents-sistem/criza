@@ -11,6 +11,10 @@ outputs/
 # se versionan; el texto extraído ya vive en el KM (Neon), esto es solo caché local
 document_store_data/
 
+# Casos reales de terceros (nombres, empresas, términos de negociación) — decisión 2026-08-14,
+# fuera de git por ahora
+casos/
+
 # Python
 __pycache__/
 *.pyc

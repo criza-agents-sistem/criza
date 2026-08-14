@@ -120,6 +120,15 @@ viceversa) y creciera muy por encima de su propio límite de ~200 líneas.
 Bloqueadores estructurales que **no** tienen equivalente en Linear (decisiones de arquitectura
 pendientes, no tareas ejecutables):
 
+- [ ] **🔴 EN CURSO — redefinición del objetivo de CRIZA (arrancada 2026-08-14).** El Norte
+      global de `CLAUDE.md` ("CRIZA = encontrar blue oceans") está desactualizado — el objetivo
+      real está cambiando a "equipo de agentes de IA asesores" (blue-ocean-discovery pasa a ser
+      una capacidad invocable, no el propósito central). Documento vivo de la discusión, todavía
+      **borrador sin cerrar**: `docs/PROPUESTA_DESTINO.md`. **Leer ese documento antes que nada
+      más al arrancar la próxima sesión** — tiene el estado completo de qué se acordó y qué
+      sigue abierto. No tocar código de agentes/pipeline sin haber cerrado esta conversación
+      primero (§11 de ese doc lista lo que falta decidir).
+
 - [ ] **Plomería del pipeline orquestado (2026-07-22) — CERRADA salvo 1 punto.** La primera
       corrida real de punta a punta destapó que `pipeline_dolor`/`pipeline_sector` **nunca habían
       producido un expediente** (el write al KM de mercado vivía en `run.py`, invisible para el
