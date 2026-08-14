@@ -78,13 +78,25 @@ el repo) y **borrado definitivamente el 2026-07-02**. Ya no existe en el filesys
 - **Default:** `claude-sonnet-4-6` para todos. Cambiar a Opus para análisis profundos.
 - **Literatura:** OpenAlex API (250M+ papers, sin key) — fallback Semantic Scholar
 - **INTA Digital:** OAI-PMH (`repositorio.inta.gob.ar/oai/request`) + discover scraping — `criza/utils/inta.py`; AGROVOC tesauro — `criza/utils/agrovoc.py`
+- **CONICET Digital:** OAI-PMH genérico — `utils/oai_pmh.py` (`OAIPMHHarvester`) +
+  `ingest/harvest_conicet.py` (driver, antes `knowledge_module.ingesta.ingest_corpus`) +
+  `config/connectors/conicet.yaml`. Movidos de `knowledge_module/` a acá el 2026-08-14 — código
+  genérico sin hardcodeo de CRIZA, pero único consumidor real siempre fue CONICET/CRIZA.
 - **Document Store (Capa 1):** `knowledge_module.document_store.store` (parte del paquete pip
   desde 2026-07-22, antes vivía en `plataforma/document_store/`) — descarga PDFs + extrae texto
   (pypdf). Datos propios de CRIZA en `document_store_data/` (raíz de este repo, gitignored,
   `KM_DOCUMENT_STORE_DIR` en `.env`) — movidos acá el 2026-08-14 desde
   `EMPRESAS-IA/plataforma/document_store/data/criza/`, donde habían quedado huérfanos (1.455
   PDFs) desde antes de la migración del código al paquete.
-- **GPU / Compute:** Modal serverless — ESMFold en `criza-esmfold`, BGE-m3 en `criza-bge-m3`
+- **GPU / Compute (`services/`):** Modal serverless, apps propias de CRIZA (workspace
+  `criza-dev`) — `services/esmfold/` (app `criza-esmfold`) y `services/bge-m3/` (app
+  `criza-bge-m3`). Movidos de `EMPRESAS-IA/services/` acá el 2026-08-14 (mismo motivo que
+  CONICET arriba: nada corre compartido en runtime, cada instancia despliega lo suyo). Mismos
+  nombres de app y workspace → mismas URLs, sin cambios en `.env`. DPN sigue apuntando a
+  `criza-bge-m3` por ahora (pendiente de su propio deploy — ver
+  `EMPRESAS-IA/docs/km-aislamiento-diagnostico.md` §12.2-12.5, fuera de esta sesión). Cualquier
+  agente puede conectarse a cualquier servicio — son hermanos, no están anidados en ningún
+  agente.
 - **RunPod:** pod `qruo50jffhrgze` (H200 SXM) — **REEMPLAZADO por Modal. Mantener apagado.**
 - **Tests:** pytest con markers `unit` / `integration`
 
