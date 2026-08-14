@@ -1,0 +1,6 @@
+# Dependencias de desarrollo y testing
+# No se instalan en producción (no están en requirements.txt)
+# Instalar con: pip install -r requirements-dev.txt
+
+pytest>=8.0.0
+pytest-mock>=3.12.0

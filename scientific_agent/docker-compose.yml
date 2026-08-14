@@ -1,0 +1,16 @@
+services:
+  scientific-agent:
+    build: .
+    image: criza/scientific-agent:dev
+    container_name: scientific-agent
+    env_file:
+      - .env
+    volumes:
+      # Hot reload: cambios en código se reflejan sin rebuild
+      - .:/app
+      # Outputs persistentes fuera del contenedor
+      - ./outputs:/app/outputs
+      - ./structures:/app/structures
+    stdin_open: true
+    tty: true
+    command: python run.py

@@ -1,0 +1,24 @@
+from .openalex import search_literature          # primaria: OpenAlex (mejor rate limits)
+# from .semantic_scholar import search_literature  # fallback manual si se necesita
+from .pubmed import search_pubmed          # mantenido como fallback / referencia
+from .uniprot import get_protein_sequence
+from .esmfold import predict_structure
+from .stability import analyze_stability
+from .variants import design_variants
+from .compare import compare_variants
+from .mpnn import design_variants_mpnn
+from .foldx import predict_tm_change
+from .esmfold_local import predict_structure_local
+
+__all__ = [
+    "search_literature",
+    "search_pubmed",
+    "get_protein_sequence",
+    "predict_structure",
+    "predict_structure_local",
+    "analyze_stability",
+    "design_variants",
+    "compare_variants",
+    "design_variants_mpnn",
+    "predict_tm_change",
+]
