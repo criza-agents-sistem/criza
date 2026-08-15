@@ -218,12 +218,27 @@ login/permisos reales queda para cuando haga falta de verdad.
   agente tenga que acordarse — resuelve el riesgo estructural que se discutió el 14/08). Los 4
   agentes actuales se normalizaron para que esto funcione. Verificado real contra Neon, 218/218
   tests. Detalle: `docs/progress/2026-08-15.md`, fila "Motor v2" en `agents.md`.
-- La captura de decisiones como eventos (§4.3 de `PROPUESTA_CONDUCTOR.md`) — sin construir. Ya
-  existe el punto de enganche (`invocador.py::_registrar_evento`, placeholder explícito) — es el
-  siguiente ítem lógico, ver orden acordado el 14/08.
+- **Captura de decisiones (§4.3 de `PROPUESTA_CONDUCTOR.md`) — resuelta en dos partes distintas,
+  15/08.** Se separó en Caso A (decisiones sobre el sistema — arquitectura de CRIZA) y Caso B
+  (decisiones dentro de un caso — lo que decide el Conductor sobre una oportunidad puntual):
+  - **Caso B: cubierto por la costura de hoy** (`pipeline_status` + `props` por agente, siempre
+    persistido). Sebas señaló un matiz importante: que quede bien registrado en el KM no alcanza
+    — importa igual de qué lee el Conductor cuando "se despierta" o le preguntan por un caso
+    puntual. **Eso es diseño del Conductor mismo (su protocolo de lectura/recuperación) y no se
+    puede resolver en el aire sin el Conductor construido.** Queda como requisito explícito para
+    cuando se diseñe el Conductor (no antes): definir qué consulta, en qué orden, y cómo arma
+    contexto antes de responder — no asumir que "estar bien estructurado en el KM" es suficiente.
+  - ~~Caso A~~ — **hecho el 15/08.** Área KM `decisiones_sistema` + `scripts/km_decisiones.py` +
+    `scripts/generar_agents_md.py` (regenera "Agentes activos" y "Estado operativo" de
+    `agents.md` desde decisiones vigentes + escaneo real del repo, ya no prosa a mano). DoD de
+    `CLAUDE.md` y de `agents.md` actualizado: decisión nueva → registrar + correr el generador,
+    no editar esas dos secciones a mano. Verificado real contra Neon, 218/218 tests, auditor sin
+    hallazgos nuevos. Detalle: `docs/progress/2026-08-15.md`.
 - El Conductor conversacional en sí — sin construir. Confirmado con Sebas (14/08): el Conductor
   **asesora** sobre qué especialistas hacen falta y cómo, pero no codea — construir sigue siendo
   tarea de Sebas + Claude Code. No cambia la secuencia sugerida en `PROPUESTA_CONDUCTOR.md` §10.
+  **Cuando se diseñe: incluir explícitamente el protocolo de lectura/recuperación** (ver Caso B
+  arriba) — no es un detalle de implementación menor, es parte del diseño central.
 - El tercer arquetipo (empresa con tecnología/maquinaria buscando nuevo uso) — sin caso real
   todavía. No diseñar el patrón en abstracto hasta que aparezca uno.
 - **Nuevo, de hoy:** diseño concreto de la app Next.js — estructura de páginas, cómo conviven

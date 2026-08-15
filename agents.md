@@ -8,44 +8,32 @@
 
 ---
 
-## ⚠️ ESTADO — estructura redefinida (rethink, cerrada a nivel diseño 2026-06-13)
-
-El sistema fue **rediseñado**. **Fuente de verdad del diseño nuevo:** `docs/architecture.md` [2026-06-13]
-(decisiones D1–D10) + épico Linear **SEB-143** + `docs/progress/2026-06-13.md` + memoria
-`project_rethink_convergente`. Cambios de fondo:
-- **Entregable = "expediente de decisión"** (el sistema ARMA, el humano ELIGE) — no una recomendación/embudo.
-- **Múltiples puertas de entrada** (sector / dolor / tecnología / planta-recurso / empresario) → un mismo expediente.
-- **Set de agentes nuevo:** Descubrimiento de Demanda (divergente redefinido) · Evidencia Científica (amplía
-  el científico) · Mercado (repotenciado) · Investigación Amplia (NUEVO) · Armador (convergente transformado,
-  sin embudo). Fase 2 = familia Diseño y Desarrollo. Orquestador = **motor dirigido por objetivo (semilla del CEO)**.
-- **Transversal:** KM como sustrato (seam) + loop de aprendizaje (lecciones, SEB-156) + veracidad por dato.
-- **Próximo = construcción:** SEB-150 (conector CONICET) + SEB-145 (Armador). Design Gate antes de cada agente.
-
-> La tabla "Agentes activos" de abajo describe el **código que existe HOY** (punto de partida), que el
-> rethink va a transformar. Leerla como estado actual, NO como diseño objetivo (ese está en architecture.md).
-
----
-
 ## Qué es CRIZA
 
 Primera empresa agéntica de la plataforma EMPRESAS-IA (Capa 2). Sistema de transferencia de tecnología
 ciencia-industria, foco biotech agro argentino. **Diseño vigente:** múltiples puertas de entrada →
 Orquestador (motor dirigido por objetivo) → agentes investigadores → Armador → **expediente de decisión** →
-el humano decide. (El pipeline viejo Scout→Especialista→Mercado quedó superado por el rethink — ver banner.)
+el humano decide. El pipeline viejo Scout→Especialista→Mercado quedó superado (rethink cerrado a nivel
+diseño 2026-06-13, `docs/architecture.md` decisiones D1–D10). **Redefinición en curso desde 2026-08-14**
+de qué es CRIZA de acá en más — ver "Estado operativo" abajo y `docs/PROPUESTA_DESTINO.md`.
 
 ---
 
 ## Agentes activos
 
-| Agente | Archivo | Versión | Estado | Detalle |
+> Generado por `python scripts/generar_agents_md.py` — no editar a mano entre los marcadores.
+> Fuente: `orquestador/agents_registry.yaml` + suite de tests real + última decisión vigente en
+> `decisiones_sistema` (KM) para ese componente.
+
+<!-- GENERADO:AGENTES_ACTIVOS:INICIO -->
+| Agente | Módulo | Tests | Registrado | Última decisión |
 |---|---|---|---|---|
-| Investigación Amplia | `investigacion_amplia/investigacion_amplia.py` | v2.2 | ✅ SEB-146+204 | análisis EXHAUSTIVO del sector (no muestrea); 7 tools (expand_agrovoc + get_sector_corpus + search_corpus_cientifico + fetch_paper_full_text + search_literature + fetch_page_text + submit); marco_blue_ocean_CRIZA.md + metodologia_busqueda_AGENTE.md cargados en runtime (mismo patrón que armador); pre-flight INTA+CONICET **ahora vía `knowledge_module/preflight.py` genérico** (era inline, migrado 2026-07-02 — era el origen del patrón pero había quedado sin migrar); `fetch_paper_full_text` unificado (INTA `documento` + CONICET `ficha`); TRL obligatorio para TODO candidato alta prioridad, `cobertura_texto_completo` estructural (ya no discrecional); `fuentes_y_cobertura` obligatorio (gap encontrado por el auditor 2026-07-02, no lo tenía); contrato SEB-115 v2.1; + guarda de truncado por `max_tokens` (2026-07-22); **v2.2 (2026-07-22): lee `tarea`/`contexto` del contrato** (antes se descartaban — cable cortado, ver `check_contrato_input_no_leido`) + `system` con `cache_control` (prompt caching, verificado con llamada real: cache_read=8408 en la 2ª llamada); **39/39 unit tests**. `investigacion_amplia/docs/DESIGN_GATE.md` |
-| Mercado | `market_agent/market_agent.py` | v1.3 | ✅ SEB-148+115 | demand-first; cruces 1/3/4; corpus_cientifico exhaustivo (limit=100) + series + SENASA + **web_search nativo Anthropic** (Cruce 3 ya no depende de URLs conocidas); marco_blue_ocean_CRIZA.md cargado en runtime; campos estructurales `sustitucion_importacion` (condición 12) + `valor_cliente` (6 dimensiones) + `fuentes_y_cobertura`; pre-flight bloqueante; loop aprendizaje; contrato estándar; `buscar_corpus_cientifico` movido a `criza/utils/corpus.py` (compartido con evidence_generalista); **v1.2 (2026-07-22): el write-back de `props.mercado` al KM se movió de `run.py` al agente** — vivía en el runner, así que el camino orquestado (Motor → `run()`) nunca escribía y el Armador bloqueaba con "mercado: ausente"; + guarda de truncado por `max_tokens`; + `_derive_confidence({})` ahora da "bajo" (daba "alto"); **v1.3 (2026-07-22): lee `tarea`/`contexto`/`foco` del contrato** — `foco` es `caso` cuando además hay `oportunidad_id`: en `pipeline_sector` es `{gate.candidato_elegido}`, la respuesta del humano en el gate, que se descartaba entera + `system` con `cache_control`; **67/67 unit tests**. `market_agent/ROADMAP.md` |
-| Evidence Generalista | `evidence_generalista/evidence_generalista.py` | v1.3 | ✅ 2026-07-02 | technology-agnostic; cruce 2; corpus INTA exhaustivo (vía get_sector_corpus, no FTS con LIMIT) + **corpus_cientifico/CONICET vía `buscar_corpus_cientifico`** (gap cerrado 2026-07-02 — antes tenía CERO acceso a CONICET pese a estar documentado como deuda desde 2026-06-16) + AGROVOC; marco_blue_ocean_CRIZA.md cargado en runtime; `fuentes_y_cobertura` obligatorio; pre-flight bloqueante (INTA + corpus_cientifico); contrato estándar v1.2; + guarda de truncado por `max_tokens` (2026-07-22); **v1.3 (2026-07-22): lee `tarea`/`contexto`/`foco`** (antes ni siquiera leía `caso` — cable cortado más grave de los tres agentes) + `system` con `cache_control`; **48/48 unit tests** (medido — este renglón declaraba 47, era incorrecto). `evidence_generalista/docs/DESIGN_GATE.md` |
-| Armador | `armador/armador.py` | v1.4 | ✅ SEB-145 | ENSAMBLADOR (no sintetizador); carga `expediente_decision_SPEC.md` en runtime; expediente 5-10 págs; 8 secciones; valida cobertura aguas arriba (sin mercado → bloqueante); `bloque_3.cobertura_global` calculado (no autoreportado); v1.3 (2026-07-22): `MAX_TOKENS` 16000 → 32000 + `messages.stream()` + guarda de truncado ANTES de procesar bloques `tool_use`; **v1.4 (2026-07-22): `nivel_confianza` ahora es `_derive_nivel_confianza(bloque_3)`** — contado (establecidos/asumidos/a_confirmar), no `"alto" if expediente else "bajo"` (la corrida real calculó `Confianza: MEDIO` internamente y `run()` reportaba `alto` al Motor); `MAX_TOKENS` 32000 → 64000 (había quedado justo: usó 30.718); `system` con `cache_control` (SYSTEM_PROMPT 100% estático acá, cachea también entre corridas); **31/31 unit tests**. |
-| Especialista proteínas | `scientific_agent/specialist_proteins.py` | v1.4.1 | 🟡 C16/C17 | **Fusionado a este repo el 2026-08-14** (era `github.com/CRIZA-ia/scientific`, repo separado — historial completo preservado vía `git subtree`). Scout multidominio jubilado en el mismo move (`scout.py`/`run_scouting.py` borrados). Sin contrato SEB-115 ni escritura al KM (C16/C17, deuda vieja, sin resolver hoy) — por eso no está enganchado al Orquestador (`registry.py` lo tiene como stub `None`). `scientific_agent/ROADMAP.md` |
-| Motor v2 | `orquestador/motor.py` + `registry.py` + `agents_registry.yaml` + `invocador.py` + `flows/*.yaml` | v2.1 | ✅ | ejecuta flows YAML sin LLM; km_write / agent / gate_humano; routing declarativo. **v2.1 (2026-08-15): registry data-driven** — `registry.py` ya no tiene imports hardcodeados ni el hack `sys.modules.pop("tools")`; lee `agents_registry.yaml` y hace `importlib.import_module` por agente (los 4 activos + `market_agent/`, `evidence_generalista/`, `armador/`, `scientific_agent/` ganaron `__init__.py` para ser paquetes reales, sin ambigüedad de nombres). **Costura nueva (`orquestador/invocador.py::invocar_agente`)**: la persistencia al KM deja de ser responsabilidad del agente — el invocador escribe `props[prop_key] = output["análisis"]` de forma genérica, siempre, para cualquier camino (Motor o directo desde un `run.py`). Resuelve dos gaps reales: Armador nunca había persistido su propio expediente (solo vivía en memoria durante la corrida), e Investigación Amplia duplicaba su informe en dos props (`investigacion_amplia` + `investigacion_amplia_informe`) — ahora es una sola escritura. Los 4 agentes normalizaron su `análisis` para incluir siempre `informe_completo` (convención nueva para cualquier especialista futuro). Verificado real contra Neon (no mock): crear oportunidad → invocar con agente de prueba → releer `props` desde la DB. **33/33 unit tests** (motor) + **5/5** (`test_invocador.py`, nuevo) — suite completa de los 5 componentes afectados: **218/218**. |
-| **Auditor** | `knowledge_module/auditor/` (Capa 1) + `criza/auditor_registry.yaml` (Capa 2, config) | v1.3 | ✅ 2026-07-22 | **Nuevo.** Verificador determinístico (no LLM — decisión A del gate) contra datos reales del KM y código fuente: **9 checks**. Los 7 originales: población de campos, cobertura de fuentes entre agentes hermanos, sampling no declarado, decisiones diferidas, contrato `fuentes_y_cobertura`, `km_write_ausente`, instancias no registradas. **v1.3 (2026-07-22) agregó 2 checks de contrato de conexión (RACI con dientes):** `check_contrato_input_no_leido` (campo declarado en INPUT_CONTRACT que el agente no lee = cable cortado; atrapó `tarea`/`contexto`/`caso` sin leer en los 3 agentes) y `check_km_conexion` (verifica que `km_escribe`/`km_lee` de los contratos cuadren, que la escritura esté en el módulo del agente y no en su runner —el bug del 22/07—, y cuenta piezas desconectadas). Uso (desde la raíz de `criza/`, con `knowledge_module` instalado en el entorno activo — el paquete no lee ningún `.env` propio, cargar `criza/.env` antes de invocar): `python -m knowledge_module.auditor --registry auditor_registry.yaml --root .`. **32/32 unit tests**. `knowledge_module/docs/AUDITOR_DESIGN_GATE.md` |
+| Mercado | `market_agent/` | 67/67 ✅ (+6 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
+| Evidence Generalista | `evidence_generalista/` | 48/48 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
+| Investigación Amplia | `investigacion_amplia/` | 39/39 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
+| Armador | `armador/` | 31/31 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
+| Especialista Proteínas | `scientific_agent/` | sin tests unit (todos integration/deselected) | 🟡 registrado, inactivo, sin DESIGN_GATE.md | — |
+<!-- GENERADO:AGENTES_ACTIVOS:FIN -->
 
 ## Borrado (histórico)
 
@@ -118,106 +106,23 @@ que este archivo se desactualizara (alguien actualiza Linear, se olvida de actua
 viceversa) y creciera muy por encima de su propio límite de ~200 líneas.
 
 Bloqueadores estructurales que **no** tienen equivalente en Linear (decisiones de arquitectura
-pendientes, no tareas ejecutables):
+pendientes, no tareas ejecutables) — generado desde `decisiones_sistema` (KM), todas con
+`estado=vigente`. Una decisión resuelta o superada deja de aparecer acá — el historial completo
+sigue en el KM (`scripts/km_decisiones.listar_decisiones_vigentes` solo trae las vigentes) y en
+`docs/progress/*.md`. Fases D-G del plan de independización (2026-08-14) y la reestructuración
+del KM (2026-07-24) ya cerraron y por eso no se migraron acá — su detalle completo sigue en
+`docs/progress/2026-08-14.md` y `knowledge_module/docs/KM_MOTOR_GENERICO_GATE.md`.
 
-- [ ] **🔴 EN CURSO — redefinición del objetivo de CRIZA (arrancada 2026-08-14).** El Norte
-      global de `CLAUDE.md` ("CRIZA = encontrar blue oceans") está desactualizado — el objetivo
-      real está cambiando a "equipo de agentes de IA asesores" (blue-ocean-discovery pasa a ser
-      una capacidad invocable, no el propósito central). Documento vivo de la discusión, todavía
-      **borrador sin cerrar**: `docs/PROPUESTA_DESTINO.md`. **Leer ese documento antes que nada
-      más al arrancar la próxima sesión** — tiene el estado completo de qué se acordó y qué
-      sigue abierto. **2026-08-15: primer ítem técnico del §11 ya se construyó** (registry
-      data-driven + la costura que garantiza persistencia al KM — ver fila "Motor v2" arriba) —
-      fue una decisión explícita de Sebas de arrancar por ahí, no un desvío de la regla. Quedan
-      3 ítems más del §11 sin tocar (captura de decisiones, diseño de la app Next.js, modelo de
-      datos de usuarios) — seguir ese orden, no adelantarse a diseñar agentes nuevos todavía.
-
-- [ ] **Plomería del pipeline orquestado (2026-07-22) — CERRADA salvo 1 punto.** La primera
-      corrida real de punta a punta destapó que `pipeline_dolor`/`pipeline_sector` **nunca habían
-      producido un expediente** (el write al KM de mercado vivía en `run.py`, invisible para el
-      Motor). De los 5 hallazgos de plomería, **4 arreglados en la sesión**: cable cortado
-      `tarea`/`contexto`/`caso` (los 3 agentes no leían nada de eso — en `pipeline_sector` esto
-      incluía la respuesta del humano en el gate, que se descartaba), `nivel_confianza` del
-      armador (contado, no "¿produje un archivo?"), `MAX_TOKENS` del armador (64000), prompt
-      caching en los 4 agentes (verificado con llamada real a la API, no mock: cache_read=8408
-      en la 2ª llamada). El auditor ganó 2 checks nuevos (`check_contrato_input_no_leido`,
-      `check_km_conexion`) que verifican estas conexiones contra el código real — "RACI con
-      dientes" en vez de tabla en prosa. **Queda 1 punto, no es plomería:** `objetivo` decorativo
-      del motor — es la pregunta de fondo del rediseño del conductor, documentada como decisión
-      abierta, no un bug. Detalle completo: `docs/progress/2026-07-22.md`. Diseño abierto (NO
-      decidido): `EMPRESAS-IA/docs/PROPUESTA_CONDUCTOR.md` (repo plataforma, separado).
-- [x] **Reestructuración del KM — CERRADA 2026-07-24, fue más lejos de lo planeado.** No solo se
-      empaquetó como paquete Python instalable (`src/` layout, `pyproject.toml`, extras opcionales
-      `[local-embeddings]`/`[ingesta]`/`[espacio]`/`[servidor]`/`[dev]`) — se separó a su **propio
-      repo privado**, `github.com/sebasbizzi/km-knowledge-module`, sin historial previo (commit
-      único, tag `v0.1.0`), para que el paquete no arrastre ninguna referencia a las instancias
-      que lo consumen (barrido exhaustivo de referencias a CRIZA/DPN/etc. en código y docs). Local:
-      `EMPRESAS-IA/knowledge_module/` sigue siendo el working directory, pero ahora es un repo
-      anidado gitignorado por el padre (mismo patrón que `criza/`/`dpn-normativo/`), ya NO
-      trackeado por el repo raíz de `EMPRESAS-IA`. Sumó capacidades nuevas al motor genérico:
-      `detectar_clusters`, `detectar_huecos`/`validar_huecos` (extra `[espacio]`), coordenadas 3D
-      persistidas + cola de jobs de refresco (`motor/proyeccion.py`), y un servidor HTTP opcional
-      server-to-server (`server.py`, extra `[servidor]`) con auth de 2 niveles, rate limit y HTTPS
-      exigido. Los 2 checks del auditor pendientes de portar ya viajaron dentro del split. Detalle
-      completo y verificación real contra Neon: `knowledge_module/docs/KM_MOTOR_GENERICO_GATE.md`.
-      **Pendiente, no de hoy:** conectar `criza/` para que instale el paquete desde el repo nuevo
-      (`pip install`, todavía no se tocó nada de `criza/` en este trabajo) — es tarea de la
-      conversación de CRIZA, no de la del KM.
-- [ ] **Deuda de tests encontrada al independizar CRIZA (2026-08-13), deliberadamente NO resuelta
-      hoy — sesión dedicada aparte.** Al verificar la instalación de `knowledge_module` por pip se
-      corrió la suite completa por primera vez de punta a punta y aparecieron: `km_tools/tests`
-      6/28 verde (22 fallos) + `utils/tests` que cuelga (probablemente llamadas reales a
-      AGROVOC/INTA sin timeout) — causa exacta de cada fallo sin confirmar, podrían ser bugs
-      reales, tests desactualizados, o dependencia del estado real del Neon (que cambia con el
-      tiempo). Detalle completo: `docs/progress/2026-08-13.md` sección 4. **Criterio explícito de
-      Sebas para avanzar:** no forzarlo al costado de otra tarea — mismo motivo por el que la
-      auditoría de cumplimiento de abajo dice "no resolver nada de esto sin Sebas, ya se corrigió
-      mal una vez por apurar la lectura". Se suma al mismo tipo de sesión dedicada que esa
-      auditoría, no es un plan paralelo nuevo. **Primer paso recomendado de esa sesión:** correr
-      `python -m knowledge_module.auditor --registry auditor_registry.yaml --root .` (ya
-      reconectado hoy) para tener una foto estructurada y actual de gaps antes de entrar
-      hallazgo por hallazgo. Esa corrida ya se hizo hoy (5 ALTO, 10 MEDIO, 46 BAJO, detalle en
-      `docs/progress/2026-08-13.md` §5) — incluye un hallazgo MEDIO **nuevo, causado por la
-      independización de hoy**: el auditor genérico (Capa 1) tiene hardcodeado que busca
-      `docs/NEW_INSTANCE_PROTOCOL.md`/`docs/platform-boundary.md` relativos al `--root`,
-      asumiendo un monorepo — ya no existen ahí desde que `criza/` es su propio repo. Mismo
-      patrón que C25, visto del otro lado. Sin resolver — decisión de diseño del auditor.
-- [x] **Fase D del plan de independización — repo GitHub propio + push, CERRADA 2026-08-14 (ya
-      estaba hecha desde el 2026-08-13, solo faltaba verificar y documentar).** `sebasbizzi/criza`
-      existe en GitHub, privado, remote `origin` configurado, local `master` y `origin/master` en
-      el mismo commit (0 ahead/0 behind).
-- [x] **Fase E del plan de independización — move físico de la carpeta, CERRADA 2026-08-14.**
-      `C:\Users\sebab\Documents\Plataformas\criza` es ahora hermana de `EMPRESAS-IA\`, mismo
-      patrón que `Conflur\`. Verificado: `EMPRESAS-IA\criza` ya no existe (no quedó duplicado ni
-      carpeta vieja colgando).
-- [x] **Fase F del plan de independización — reflejar la salida en `EMPRESAS-IA/CLAUDE.md`,
-      CERRADA 2026-08-14.** Casi todo ya estaba hecho desde un commit del 2026-08-13
-      (`3d058db`); hoy se cerró el bullet de "pendiente operativo" que seguía diciendo "falta el
-      Move-Item" + se cortó la herencia stale de CRIZA en 4 secciones que instruían leer/escribir
-      `criza/...` por path relativo roto (commits `139c170` + `a80303d` en `EMPRESAS-IA`, sin
-      push todavía).
-- [x] **Fase G del plan de independización — verificación post-move, CERRADA 2026-08-14.**
-      5/5 puntos verificados reales (no mock): `pip install -e` a ruta correcta, `motor_api.
-      buscar()` real contra Neon, auditor (61 hallazgos, idéntico a la foto del 2026-08-13, sin
-      regresión), suite de tests por módulo (todo lo verde sigue verde, la deuda conocida de
-      `km_tools`/`utils` sigue igual). **Plan de independización de CRIZA (Fases A-G) completo.**
-      Detalle completo: `docs/progress/2026-08-14.md`.
-- [ ] Rotar password Neon (acción manual de Sebas, no una tarea de desarrollo)
-- [ ] Renombrar carpeta `EMPRESAS-IA/` (hoy `KRIZA/`) — pendiente migración de memoria de Claude
-- [ ] **Auditoría objective-first "qué falta para que todo funcione"** — absorbida y ampliada por
-      la auditoría de cumplimiento de plataforma 2026-07-05/06 (bullet siguiente). No generar un
-      tercer plan paralelo.
-- [ ] **Auditoría de cumplimiento de plataforma (2026-07-05/06, en revisión activa con Sebas)** —
-      51 hallazgos totales, revisión hallazgo por hallazgo en curso. Temas 1-2 (git, docs
-      desactualizados) y parte del Tema 3 (tenant hardcodeado) ya resueltos. **Hallazgo central
-      nuevo: el KM comparte una sola base entre instancias, sin RLS, contradiciendo su propio
-      diseño (P11) — decidido volver a base separada por instancia. **En ejecución desde
-      2026-07-22, ver el bloqueador activo más arriba.** También:
-      chunking nunca construido para CRIZA + truncado a 60k caracteres con pérdida de datos (P13),
-      criterio de Capa 1 corregido ("Capa Estructural" = solo lo operativo, no lo genérico-parece).
-      Detalle completo: `EMPRESAS-IA/docs/AUDITORIA_CUMPLIMIENTO_2026-07-05.md` (repo plataforma).
-      Panel: `EMPRESAS-IA/plataforma/control_panel/`. **No resolver nada de esto sin Sebas —
-      varios ítems ya fueron corregidos una vez por apurar la lectura.**
+<!-- GENERADO:ESTADO_OPERATIVO:INICIO -->
+- [ ] **Registry data-driven + la costura de persistencia al KM** (2026-08-15, Sebas + Claude). orquestador/agents_registry.yaml (nuevo) reemplaza los imports hardcodeados de registry.py. orquestador/invocador.py (nuevo, 'la costura') persiste el resultado de cualquier agente al KM de forma genérica, sin que el agente tenga que acordarse. Los 4 agentes actuales se normalizaron a este contrato. Cerró dos gaps reales: Armador nunca había persistido su propio expediente, e Investigación Amplia duplicaba su informe en dos props. **Motivo:** Persistir el resultado dependía de que cada agente se acordara — causa exacta del bug real del 22/07 (Mercado corrió, costó plata, y su escritura era invisible para el Motor). Sin garantía estructural, cualquier especialista nuevo podía repetir el mismo error. **Alternativas consideradas:** Seguir con imports hardcodeados y persistencia por agente; Solo agregar tests que detecten el bug de nuevo, sin cambiar la arquitectura
+- [ ] **Redefinición del objetivo de CRIZA: de blue-ocean-discovery a equipo asesor** (2026-08-14, Sebas). CRIZA deja de tener como propósito central 'encontrar blue oceans' — pasa a ser un equipo de agentes de IA asesores, con blue-ocean-discovery como capacidad invocable cuando el caso la amerita. Ver docs/PROPUESTA_DESTINO.md — borrador todavía sin cerrar, no reemplaza el Norte global de CLAUDE.md hasta que cierre. **Motivo:** El objetivo original ya cumplió su función — de ahí salieron proyectos reales (biogás vía Andrés, MicroBigs vía Pablo) que ahora necesitan acompañamiento continuo, no un expediente de inversión único. **Alternativas consideradas:** Mantener el objetivo original y tratar estos casos como excepción; Redefinir el propósito central del sistema
+- [ ] **Rotar password de Neon** (2026-08-13, Sebas). Acción manual pendiente de Sebas — no es una tarea de desarrollo. **Motivo:** Buena práctica de seguridad tras la independización del repo. **Alternativas consideradas:** —
+- [ ] **Deuda de tests encontrada al independizar CRIZA — sesión dedicada aparte** (2026-08-13, Sebas). km_tools/tests 6/28 verde (22 fallos) + utils/tests cuelga. Causa exacta sin confirmar (podrían ser bugs reales, tests desactualizados, o dependencia del estado real del Neon). Detalle: docs/progress/2026-08-13.md §4. **Motivo:** No forzarlo al costado de otra tarea — mismo criterio que la auditoría de cumplimiento: ya se corrigió mal una vez por apurar la lectura. **Alternativas consideradas:** Arreglarlo ahora, al costado de otra tarea; Sesión dedicada aparte
+- [ ] **Auditor determinístico — 9 checks contra datos reales del KM y código fuente** (2026-07-22, Sebas + Claude). knowledge_module/auditor/ (Capa 1) + criza/auditor_registry.yaml (Capa 2, config). Verifica población de campos, cobertura de fuentes entre agentes hermanos, sampling no declarado, decisiones diferidas, contrato fuentes_y_cobertura, km_write_ausente, instancias no registradas, contrato_input_no_leido, km_conexion. 32/32 unit tests. **Motivo:** Verificación determinística, no LLM, contra el código y el KM reales — para no depender de que un humano se acuerde de revisar cada conexión a mano. **Alternativas consideradas:** Revisión manual periódica; Verificador determinístico
+- [ ] **objetivo del Motor sigue decorativo — depende del diseño del Conductor** (2026-07-22, Sebas + Claude). El campo `objetivo` que arma el Motor al crear una oportunidad se guarda como texto pero no influye en ninguna decisión de ruteo — todo el ruteo real está pre-declarado en el YAML del flow. No se resuelve todavía. **Motivo:** Es la pregunta de fondo del diseño del Conductor (PROPUESTA_CONDUCTOR.md) — resolverla aislada, sin el Conductor definido, sería adivinar la forma final. **Alternativas consideradas:** Resolverlo ahora de forma aislada; Esperar a diseñar el Conductor completo
+- [ ] **Auditoría de cumplimiento de plataforma — 51 hallazgos, revisión activa** (2026-07-05, Sebas). Revisión hallazgo por hallazgo en curso con Sebas. Temas 1-2 (git, docs desactualizados) y parte del Tema 3 (tenant hardcodeado) ya resueltos. Hallazgo central: el KM comparte una sola base entre instancias sin RLS (P11) — decidido volver a base separada por instancia. Detalle: EMPRESAS-IA/docs/AUDITORIA_CUMPLIMIENTO_2026-07-05.md. **Motivo:** No resolver nada de esto sin Sebas — varios ítems ya se corrigieron mal una vez por apurar la lectura. **Alternativas consideradas:** Resolver todo de una vez; Revisión hallazgo por hallazgo con Sebas
+- [ ] **Renombrar carpeta EMPRESAS-IA/ (hoy KRIZA/ en disco)** (2026-07-01, Sebas). Pendiente — requiere migración de memoria de Claude antes de renombrar. **Motivo:** El nombre de carpeta quedó desactualizado tras sucesivos cambios de naming de la plataforma. **Alternativas consideradas:** —
+<!-- GENERADO:ESTADO_OPERATIVO:FIN -->
 
 ---
 
@@ -386,10 +291,14 @@ Una tarea de código está Done cuando:
 - [ ] El código funciona según lo especificado
 - [ ] Tiene tests para funciones críticas
 - [ ] No hay credenciales expuestas en el código
-- [ ] **`agents.md` — tabla "Agentes activos" actualizada si el módulo cambió de versión/estado.
-      Obligatorio, no discrecional — mismo criterio que `architecture.md` ("registrar en el
-      momento de la decisión", no "después"). Si terminaste la sesión y esta tabla no refleja
-      lo que cambiaste, la sesión no está cerrada.**
+- [ ] **Si la tarea generó una decisión de arquitectura/desarrollo de CRIZA → registrada en
+      `decisiones_sistema` (KM) vía `scripts/km_decisiones.registrar_decision(...)` y
+      `python scripts/generar_agents_md.py` corrido para que "Agentes activos" y "Estado
+      operativo" la reflejen. Obligatorio, no discrecional — mismo criterio que
+      `architecture.md` ("registrar en el momento de la decisión", no "después"). Esas dos
+      secciones **no se editan a mano** (decisión 2026-08-15, ver `docs/progress/2026-08-15.md`
+      — la edición manual fue la causa de que se desactualizaran). Si terminaste la sesión y no
+      corriste el generador tras una decisión nueva, la sesión no está cerrada.**
 - [ ] La sesión está documentada en `docs/progress/YYYY-MM-DD.md`
 
 Verificar esta lista ANTES de mover un issue a Done en Linear.

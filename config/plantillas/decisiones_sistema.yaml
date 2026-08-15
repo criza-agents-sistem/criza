@@ -1,0 +1,52 @@
+# Plantilla del área de decisiones de sistema — instancia CRIZA
+# Capa 2 (específica de CRIZA — decisiones sobre la arquitectura y el desarrollo de CRIZA
+# mismo, no sobre un caso ni aprendizaje de dominio).
+#
+# Por qué existe (PROPUESTA_CONDUCTOR.md §4.3, PROPUESTA_DESTINO.md §11, decisión 2026-08-15):
+# "agents.md" es prosa a mano que se desactualiza con el tiempo — nadie vuelve a corregir un
+# párrafo viejo cuando la realidad cambió. Acá se registra CADA decisión como evento, en el
+# momento en que se toma, y agents.md se GENERA a partir de esto + un escaneo real del repo
+# (ver scripts/generar_agents_md.py). No se edita una decisión existente para "corregirla" —
+# se crea una decisión nueva que SUPERA a la vieja (tipo_conexion `supera`), así queda historial
+# real de cómo cambió el pensamiento, no una edición silenciosa.
+#
+# Distinto de:
+#   - área `lecciones` (KM genérico): qué APRENDIÓ el sistema sobre el DOMINIO (biotech/agro)
+#   - `pipeline_status` / `props` por agente: qué pasó en una CORRIDA — eso ya lo persiste
+#     la costura (orquestador/invocador.py), no hace falta duplicarlo acá
+#
+# Acá específicamente: decisiones sobre CÓMO ESTÁ HECHO CRIZA — arquitectura, agentes, contratos.
+
+area: decisiones_sistema
+tenant: criza
+objetivo: >
+  Registro de decisiones de arquitectura y desarrollo de CRIZA, con su motivo y las
+  alternativas consideradas — la fuente real de la que se genera agents.md. Nunca lo escriben
+  los agentes especialistas (Mercado, Evidencia, futuros científicos): es de la capa
+  Sebas+Claude construyendo CRIZA, no de la capa de asesoramiento de casos.
+descripcion: Una decisión por ficha. Estado vigente/superada — nunca se edita in-place.
+
+tipos_ficha:
+  - nombre: decision
+    descripcion: >
+      Una decisión de arquitectura o desarrollo de CRIZA. `texto_busqueda` es el campo
+      vectorizado (título + decisión + motivo) para poder preguntar semánticamente
+      "¿por qué hicimos X así?" más adelante.
+    campos:
+      - componente               # ej: "orquestador", "market_agent", "knowledge_module"
+      - titulo                   # resumen corto, ej: "Registry data-driven + la costura"
+      - decision                 # qué se decidió, en prosa
+      - alternativas_consideradas  # lista de strings — qué otras opciones se pensaron
+      - motivo                   # por qué se eligió esta sobre las alternativas
+      - quien                    # "Sebas" | "Sebas + Claude" | "Claude (técnica, sin objeción)"
+      - estado                   # "vigente" | "superada"
+      - fecha                    # YYYY-MM-DD
+      - texto_busqueda           # computado: titulo + ". " + decision + ". " + motivo
+    vectorizar: texto_busqueda
+    dedup_por: null              # cada decisión es un evento distinto, no se fusionan
+
+tipos_conexion:
+  - nombre: supera
+    desde: decision
+    hacia: decision
+    campos: []                   # la decisión nueva (desde) reemplaza a la vieja (hacia)

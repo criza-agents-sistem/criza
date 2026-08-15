@@ -159,7 +159,14 @@ desarrollo. El gate es un issue en Linear que bloquea los issues de desarrollo.
      una corrida real verifica las costuras (agregado 2026-07-22 tras encontrar 3 piezas
      desconectadas en una corrida real con 199 tests unitarios en verde — detalle en
      `docs/progress/2026-07-22.md`)
-  4. `agents.md` actualizado
+  4. Si la tarea generó una decisión de arquitectura/desarrollo (no una decisión de negocio,
+     esas van a `docs/architecture.md` normal) → registrarla en `decisiones_sistema` (KM) con
+     `scripts/km_decisiones.registrar_decision(...)` y correr
+     `python scripts/generar_agents_md.py` para que "Agentes activos" y "Estado operativo" de
+     `agents.md` reflejen la decisión. **Ya no se edita esas dos secciones a mano** — es lo que
+     las desactualizaba (decisión 2026-08-15, `docs/progress/2026-08-15.md`). El resto de
+     `agents.md` (Stack activo, Dónde están las cosas, Convención, REGLAS OPERATIVAS) sigue
+     siendo edición manual normal si la tarea lo justifica.
   5. `docs/progress/YYYY-MM-DD.md` — sesión documentada
 - Al tomar una decisión técnica → registrar en `docs/architecture.md` en ese momento
 - Si surge un bloqueador → label **Bloqueado** + nota en Linear con el motivo
