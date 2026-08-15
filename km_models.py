@@ -1,117 +1,39 @@
 """
-Modelos ORM legacy de CRIZA (Capa 2) — tablas `corrida`, `oportunidad`, `aprendizaje`,
-`documento` y sus aristas.
+Modelo ORM legacy de CRIZA (Capa 2) — tabla `documento`.
 
-Se movieron acá desde `knowledge_module/db.py` al empaquetar el KM (2026-07-22): son conceptos
-específicos de CRIZA (blue oceans, corridas divergente/convergente), no de la plataforma. Se
-declaran sobre la `Base` genérica del paquete (`knowledge_module.db.Base`) y comparten su engine.
+Se movió acá desde `knowledge_module/db.py` al empaquetar el KM (2026-07-22): es un concepto
+específico de CRIZA, no de la plataforma. Se declara sobre la `Base` genérica del paquete
+(`knowledge_module.db.Base`) y comparte su engine.
 
 El motor genérico (`knowledge_module.motor`, tablas `ficha`/`conexion`) es el sustrato de
-plataforma; estos modelos son el esquema legacy que CRIZA todavía usa vía `criza/km_tools/`.
+plataforma; este modelo es el esquema legacy que CRIZA todavía usa vía `criza/km_tools/`
+(`store_fuente_externa`, `batch_store_fuentes_externas`, `get_sector_corpus`,
+`search_fuentes_externas`, `get_paper_full_text`, `get_ficha_full_text`).
+
+Archivado el 2026-08-15 (`_archivo_temporal/`, ver `docs/progress/2026-08-15.md`): las clases
+`Corrida`, `Oportunidad`, `Aprendizaje`, `CorridaOportunidad`, `CorridaDocumento` — eran el
+esquema del pipeline scout/agente divergente/convergente, borrado el 2026-07-02. Las tablas
+correspondientes siguen existiendo en Neon (no se tocaron datos), solo se archivó el código que
+las escribía/exponía — ya no tenían ningún consumidor real.
 """
 
-import os
 from uuid import uuid4
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CheckConstraint,
     Column,
     Computed,
     Date,
     DateTime,
-    Float,
-    ForeignKey,
     Index,
-    Integer,
     String,
     Text,
-    UniqueConstraint,
     func,
     text,
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR, UUID as PG_UUID
-from sqlalchemy.orm import relationship
 
 from knowledge_module.db import Base
-
-
-class Corrida(Base):
-    __tablename__ = "corrida"
-
-    id            = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    tenant_id     = Column(String, nullable=False, default="criza")
-    sector        = Column(String, nullable=False)
-    agente        = Column(String, nullable=False)
-    modo          = Column(String, nullable=False)
-    fecha         = Column(Date, nullable=False)
-    modelo        = Column(String, nullable=False)
-    tokens_input  = Column(Integer)
-    tokens_output = Column(Integer)
-    costo_usd     = Column(Float)
-    notas         = Column(Text)
-    created_at    = Column(DateTime, default=func.now())
-    updated_at    = Column(DateTime, default=func.now(), onupdate=func.now())
-
-    oportunidades = relationship(
-        "Oportunidad", secondary="corrida_oportunidad", back_populates="corridas"
-    )
-    documentos    = relationship(
-        "Documento", secondary="corrida_documento", back_populates="corridas"
-    )
-
-
-class Oportunidad(Base):
-    __tablename__ = "oportunidad"
-
-    id              = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    tenant_id       = Column(String, nullable=False, default="criza")
-    sector          = Column(String, nullable=False)
-    idea            = Column(Text, nullable=False)
-    prioridad       = Column(String, nullable=False)
-    estado_analisis = Column(String, nullable=False, default="detectada")
-    origen          = Column(String, nullable=False, default="agente")
-    veces_detectada = Column(Integer, nullable=False, default=1)
-    validaciones    = Column(Text)
-    gaps_pendientes = Column(Text)
-    razon_descarte  = Column(Text)
-    embedding       = Column(Vector(int(os.getenv("EMBEDDING_DIM", "384"))))
-    created_at      = Column(DateTime, default=func.now())
-    updated_at      = Column(DateTime, default=func.now(), onupdate=func.now())
-
-    corridas = relationship(
-        "Corrida", secondary="corrida_oportunidad", back_populates="oportunidades"
-    )
-
-
-class Aprendizaje(Base):
-    __tablename__ = "aprendizaje"
-
-    id                   = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    tenant_id            = Column(String, nullable=False, default="criza")
-    contenido            = Column(Text, nullable=False)
-    tipo                 = Column(String, nullable=False)
-    nivel_confianza      = Column(Float, nullable=False, default=0.5)
-    veces_confirmado     = Column(Integer, nullable=False, default=1)
-    ultima_vez_relevante = Column(Date)
-    fuente               = Column(String, nullable=False)
-    origen_nombre        = Column(String)
-    embedding            = Column(Vector(int(os.getenv("EMBEDDING_DIM", "384"))))
-    created_at           = Column(DateTime, default=func.now())
-    updated_at           = Column(DateTime, default=func.now(), onupdate=func.now())
-
-
-class CorridaOportunidad(Base):
-    """Arista PRODUCE: Corrida → Oportunidad."""
-    __tablename__ = "corrida_oportunidad"
-
-    id               = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    corrida_id       = Column(PG_UUID(as_uuid=True), ForeignKey("corrida.id", ondelete="CASCADE"), nullable=False)
-    oportunidad_id   = Column(PG_UUID(as_uuid=True), ForeignKey("oportunidad.id", ondelete="CASCADE"), nullable=False)
-    prioridad_corrida = Column(String)
-    created_at       = Column(DateTime, default=func.now())
-
-    __table_args__ = (UniqueConstraint("corrida_id", "oportunidad_id"),)
 
 
 class Documento(Base):
@@ -124,7 +46,9 @@ class Documento(Base):
       - agente     = "harvest" | "ingest"
       - modelo     = "n/a"
 
-    Para outputs de corridas internas:
+    Para outputs de corridas internas (agente="divergente"/"convergente" — pipeline archivado
+    el 2026-08-15, valores del CHECK constraint que se mantienen por compatibilidad con filas
+    históricas, no porque algo los siga escribiendo):
       - contenido  = markdown completo del análisis
       - texto_completo = null
       - agente     = nombre del agente que lo generó
@@ -169,19 +93,3 @@ class Documento(Base):
         Index("uq_documento_fuente_url", "fuente_url", unique=True,
               postgresql_where=text("fuente_url IS NOT NULL")),
     )
-
-    corridas    = relationship(
-        "Corrida", secondary="corrida_documento", back_populates="documentos"
-    )
-
-
-class CorridaDocumento(Base):
-    """Arista GENERA: Corrida → Documento."""
-    __tablename__ = "corrida_documento"
-
-    id           = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    corrida_id   = Column(PG_UUID(as_uuid=True), ForeignKey("corrida.id", ondelete="CASCADE"), nullable=False)
-    documento_id = Column(PG_UUID(as_uuid=True), ForeignKey("documento.id", ondelete="CASCADE"), nullable=False)
-    created_at   = Column(DateTime, default=func.now())
-
-    __table_args__ = (UniqueConstraint("corrida_id", "documento_id"),)

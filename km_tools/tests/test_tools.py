@@ -48,80 +48,12 @@ def test_embedding_singleton():
 
 # ─────────────────────────────────────────
 # INTEGRATION TESTS — requieren DB de Neon
+#
+# test_store_and_search_opportunity / test_store_learning_reinforcement /
+# test_store_corrida_and_link / test_get_opportunity_history (pipeline scout/agente
+# divergente/convergente) se sacaron el 2026-08-15 al archivar ese subsistema — ver
+# _archivo_temporal/ y docs/progress/2026-08-15.md.
 # ─────────────────────────────────────────
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_store_and_search_opportunity():
-    """Guarda una oportunidad y la encuentra por búsqueda semántica."""
-    from km_tools.store import store_opportunity
-    from km_tools.search import search_knowledge
-
-    result = await store_opportunity(
-        sector="Ganadería bovina, Córdoba",
-        idea="Control de moscas en feedlot con avispas parasitoides de pupa",
-        prioridad="alta",
-        origen="agente",
-        gaps_pendientes="Confirmar con operadores si perciben el dolor",
-    )
-    assert result["success"], result["error"]
-    op_id = result["data"]["id"]
-
-    # Buscar por similaridad semántica
-    search = await search_knowledge(
-        query="control biológico de moscas en ganadería",
-        tipo="oportunidades",
-        limit=5,
-    )
-    assert search["success"]
-    ids = [r["id"] for r in search["data"]["results"]]
-    assert op_id in ids
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_store_learning_reinforcement():
-    """Guardar el mismo aprendizaje dos veces refuerza el existente."""
-    from km_tools.store import store_learning
-
-    contenido = "COMTRADE actúa como zanahoria hacia sustitución de importación en el agente divergente"
-
-    r1 = await store_learning(contenido=contenido, tipo="patron_error")
-    assert r1["success"]
-
-    r2 = await store_learning(contenido=contenido, tipo="patron_error")
-    assert r2["success"]
-    assert r2["data"]["action"] == "reinforced"
-    assert r2["data"]["veces_confirmado"] >= 2
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_store_corrida_and_link():
-    """Guarda una corrida y la asocia a una oportunidad."""
-    from km_tools.store import store_corrida, store_opportunity
-
-    corrida_result = await store_corrida(
-        sector="Avicultura, Córdoba",
-        agente="divergente",
-        modo="C",
-        fecha="2026-06-08",
-        modelo="claude-sonnet-4-6",
-        tokens_input=285134,
-        tokens_output=9634,
-        costo_usd=1.00,
-    )
-    assert corrida_result["success"]
-    corrida_id = corrida_result["data"]["id"]
-
-    op_result = await store_opportunity(
-        sector="Avicultura, Córdoba",
-        idea="Consorcio microbiano para tratamiento de cama aviar reutilizada",
-        prioridad="alta",
-        corrida_id=corrida_id,
-    )
-    assert op_result["success"]
-
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -156,33 +88,3 @@ async def test_store_fuente_externa_create_and_dedup():
     assert r2["success"]
     assert r2["data"]["action"] == "skipped"
     assert r2["data"]["id"] == doc_id
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_get_opportunity_history():
-    """get_opportunity_history devuelve corridas asociadas."""
-    from km_tools.store import store_corrida, store_opportunity
-    from km_tools.retrieve import get_opportunity_history
-
-    corrida_r = await store_corrida(
-        sector="Porcicultura, Córdoba",
-        agente="divergente",
-        modo="C",
-        fecha="2026-06-08",
-        modelo="claude-sonnet-4-6",
-    )
-    corrida_id = corrida_r["data"]["id"]
-
-    op_r = await store_opportunity(
-        sector="Porcicultura, Córdoba",
-        idea="Probiótico para reducir diarrea post-destete en lechones",
-        prioridad="media",
-        corrida_id=corrida_id,
-    )
-    op_id = op_r["data"]["id"]
-
-    history = await get_opportunity_history(op_id)
-    assert history["success"]
-    assert len(history["data"]["corridas"]) >= 1
-    assert history["data"]["corridas"][0]["corrida_id"] == corrida_id

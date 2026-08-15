@@ -1,9 +1,13 @@
 """
 Tools de búsqueda sobre el Knowledge Module:
-  - search_knowledge: búsqueda semántica (oportunidades + aprendizajes)
   - search_fuentes_externas: búsqueda FTS sobre documentos cosechados (papers INTA, normas, etc.)
   - get_sector_corpus: OR FTS exhaustivo (sin límite) para análisis de sector completo
   - get_paper_full_text: texto completo de un paper del corpus INTA por ID
+  - get_ficha_full_text: texto completo de una ficha de corpus_cientifico (motor genérico)
+
+`search_knowledge` (búsqueda semántica sobre oportunidad/aprendizaje — pipeline scout/agente
+divergente/convergente) se archivó el 2026-08-15 — ver `_archivo_temporal/` y
+`docs/progress/2026-08-15.md`.
 """
 
 import json
@@ -11,11 +15,9 @@ import re
 import unicodedata
 from typing import Optional
 
-from sqlalchemy import select, or_, text
+from sqlalchemy import text
 
-from km_models import Aprendizaje, Documento, Oportunidad
 from knowledge_module.db import get_session_factory
-from knowledge_module.embeddings import get_embedder
 
 
 def _build_or_tsquery(terminos: list[str]) -> str | None:
@@ -40,101 +42,6 @@ def _build_or_tsquery(terminos: list[str]) -> str | None:
     if not tokens:
         return None
     return " | ".join(sorted(tokens))
-
-
-async def search_knowledge(
-    query: str,
-    tipo: str = "all",        # "oportunidades" | "aprendizajes" | "all"
-    sector: Optional[str] = None,
-    limit: int = 5,
-) -> dict:
-    """
-    Busca en el Knowledge Module por similitud semántica.
-
-    - query: texto libre (dolor, sector, concepto)
-    - tipo: qué buscar — oportunidades, aprendizajes, o ambos
-    - sector: filtro opcional por sector
-    - limit: máximo de resultados por tipo
-
-    Retorna los resultados más relevantes con su similitud y contexto.
-    """
-    try:
-        embedder = get_embedder()
-        embedding = embedder.embed(query)
-
-        results = []
-
-        async with get_session_factory()() as session:
-
-            # ── Oportunidades ───────────────────────────────────────────
-            if tipo in ("oportunidades", "all"):
-                q = (
-                    select(Oportunidad)
-                    .where(Oportunidad.embedding.is_not(None))
-                    .where(Oportunidad.estado_analisis != "descartada")
-                )
-                if sector:
-                    q = q.where(Oportunidad.sector.ilike(f"%{sector}%"))
-
-                q = q.order_by(Oportunidad.embedding.cosine_distance(embedding)).limit(limit)
-
-                rows = (await session.execute(q)).scalars().all()
-                for op in rows:
-                    import numpy as np
-                    v1 = np.array(op.embedding)
-                    v2 = np.array(embedding)
-                    sim = float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
-                    results.append({
-                        "tipo": "oportunidad",
-                        "id": str(op.id),
-                        "sector": op.sector,
-                        "idea": op.idea,
-                        "prioridad": op.prioridad,
-                        "estado": op.estado_analisis,
-                        "veces_detectada": op.veces_detectada,
-                        "gaps_pendientes": op.gaps_pendientes,
-                        "similitud": round(sim, 3),
-                    })
-
-            # ── Aprendizajes ────────────────────────────────────────────
-            if tipo in ("aprendizajes", "all"):
-                q = (
-                    select(Aprendizaje)
-                    .where(Aprendizaje.embedding.is_not(None))
-                    .order_by(Aprendizaje.embedding.cosine_distance(embedding))
-                    .limit(limit)
-                )
-                rows = (await session.execute(q)).scalars().all()
-                for ap in rows:
-                    import numpy as np
-                    v1 = np.array(ap.embedding)
-                    v2 = np.array(embedding)
-                    sim = float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
-                    results.append({
-                        "tipo": "aprendizaje",
-                        "id": str(ap.id),
-                        "contenido": ap.contenido,
-                        "tipo_aprendizaje": ap.tipo,
-                        "nivel_confianza": ap.nivel_confianza,
-                        "veces_confirmado": ap.veces_confirmado,
-                        "similitud": round(sim, 3),
-                    })
-
-        # Ordenar todos los resultados por similitud
-        results.sort(key=lambda x: x["similitud"], reverse=True)
-
-        return {
-            "success": True,
-            "data": {
-                "query": query,
-                "total": len(results),
-                "results": results,
-            },
-            "error": None,
-        }
-
-    except Exception as e:
-        return {"success": False, "data": None, "error": str(e)}
 
 
 async def get_sector_corpus(
