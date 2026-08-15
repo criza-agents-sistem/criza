@@ -1,0 +1,62 @@
+# Plantilla del área de usuarios/roles — instancia CRIZA
+# Capa 2 (específica de CRIZA — quién es quién en el sistema, no plataforma: el mecanismo
+# genérico que esto usa —área/tipo_ficha/ficha/conexion— ya es de knowledge_module, igual que
+# decisiones_sistema.yaml).
+#
+# Por qué existe (PROPUESTA_DESTINO.md §9, decisión 2026-08-15): modelo de datos de
+# usuarios/roles/accesos, SIN implementar autenticación real todavía (eso queda para cuando
+# haga falta de verdad). Uso actual: solo Sebas. El modelo deja preparado sumar a Pablo, Andrés
+# u otros más adelante sin rediseñar.
+#
+# Alcance de HOY, acotado a propósito: `usuario` + `rol` (catálogo de personas + catálogo de
+# roles). NO incluye todavía una conexión tipada `usuario → caso` — el motor genérico exige que
+# ambos extremos de una `tipo_conexion` se declaren en la MISMA plantilla (`loader.py`, valida
+# `desde`/`hacia` contra los `tipos_ficha` de este mismo YAML, no contra el registro global de
+# tipos). Hoy el único nodo real de "caso" es `oportunidad` (área `descubrimiento`, otra
+# plantilla) — y es flaco, con sabor a descubrimiento; el ítem 3 (diseño de la app + modelo de
+# datos de caso) todavía no definió qué es un "caso" de verdad. Inventar acá un nodo `caso`
+# provisorio solo para poder conectar hoy habría creado un segundo concepto de "caso" que
+# compite con lo que defina el ítem 3. **Cuando el ítem 3 declare esa ficha, se agrega la
+# conexión `participa_en` (usuario → esa ficha) en la plantilla correspondiente — no hay que
+# rediseñar nada de lo de acá.**
+#
+# Tampoco resuelve (a propósito) si Pablo/Andrés van a tener login directo algún día
+# (PROPUESTA_DESTINO.md §4, "abierto — no decidido") — hoy pueden existir como `usuario` con
+# `rol_global=referente` y `estado=invitado`, sin `email` ni acceso; el día que lo tengan, es la
+# misma fila, solo se completa el email y pasa a `estado=activo`. Ese sí es el momento de
+# implementar auth real.
+
+area: usuarios
+tenant: criza
+objetivo: >
+  Quién es quién en CRIZA y qué rol tiene por default — el modelo de datos que permite sumar
+  colaboradores más adelante sin rediseñar. No implementa autenticación: es la forma del dato,
+  no el mecanismo de login.
+descripcion: Catálogo de personas + catálogo de roles.
+
+tipos_ficha:
+  - nombre: usuario
+    descripcion: >
+      Una persona que interactúa con CRIZA, con o sin acceso directo al sistema hoy.
+    campos:
+      - nombre        # "Sebas", "Pablo", "Andrés"
+      - email          # null si todavía no tiene acceso directo (ej. Pablo, Andrés hoy)
+      - rol_global      # nombre de un rol del catálogo — el rol por default de esta persona
+      - estado          # "activo" (usa el sistema hoy) | "invitado" (registrado, sin acceso directo) | "inactivo"
+      - notas
+    vectorizar: null     # catálogo de personas, no hace falta búsqueda semántica
+    dedup_por: nombre
+    dedup_umbral: 0.95
+
+  - nombre: rol
+    descripcion: >
+      Catálogo abierto de roles. Informativo hoy — no hay enforcement en código todavía (sin
+      login real). Sirve para no inventar nombres de rol distintos cada vez, y para que
+      `usuario.rol_global` y el futuro `participa_en.rol_en_caso` (ítem 3) usen el mismo
+      vocabulario.
+    campos:
+      - nombre         # "admin" | "colaborador" | "referente" | "observador"
+      - descripcion     # qué implica este rol, en prosa
+    vectorizar: null
+    dedup_por: nombre
+    dedup_umbral: 0.95

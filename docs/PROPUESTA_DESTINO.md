@@ -244,6 +244,14 @@ login/permisos reales queda para cuando haga falta de verdad.
 - **Nuevo, de hoy:** diseño concreto de la app Next.js — estructura de páginas, cómo conviven
   modo chat y modo documento (§7), y el modelo de datos de caso (frentes, pendientes, estadío,
   artefactos vinculados) que la va a alimentar.
-- **Nuevo, de hoy:** el modelo de datos de usuarios/roles (§9) — a diseñar, sin login todavía.
+- ~~El modelo de datos de usuarios/roles (§9)~~ — **hecho el 15/08, sin login real (según lo
+  decidido).** Área KM `usuarios`: `tipo_ficha usuario` (nombre, email, rol_global, estado
+  activo/invitado/inactivo, notas) + `tipo_ficha rol` (catálogo abierto: admin, colaborador,
+  referente, observador). Sembrado real: Sebas (admin, activo), Pablo y Andrés (referente,
+  invitado, sin email — dueños de MicroBigs y Biogás). **Deliberadamente sin la conexión
+  `usuario → caso` todavía** — el motor exige que ambos extremos de una conexión tipada se
+  declaren en la misma plantilla, y hoy no existe un nodo real de "caso" (`oportunidad` es de
+  otra área y muy flaco). Se agrega cuando el ítem 3 defina esa ficha. Detalle:
+  `docs/progress/2026-08-15.md`.
 - **Nuevo, de hoy:** capa de abstracción de proveedor de modelo por agente (§8) — a diseñar,
   siguiendo el mismo patrón que `EMBEDDING_PROVIDER` en `knowledge_module.embeddings`.
