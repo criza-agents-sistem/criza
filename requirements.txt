@@ -1,0 +1,38 @@
+# Dependencias de CRIZA (Capa 2) — raíz del repo.
+#
+# No existía este archivo hasta el 2026-08-15: las dependencias se instalaban a mano en el
+# entorno global de desarrollo, sin manifiesto que las fijara — riesgo real de que un clon
+# nuevo del repo no supiera qué instalar. Armado a partir de un escaneo real de imports en todo
+# el código (no de memoria), versiones = las instaladas hoy en este entorno.
+#
+# `knowledge_module` NO está acá — es un paquete separado (repo propio
+# github.com/sebasbizzi/km-knowledge-module), instalado en editable:
+#   pip install -e "C:\Users\sebab\Documents\Plataformas\EMPRESAS-IA\knowledge_module"
+# (ver agents.md § Dónde están las cosas). knowledge_module trae sus propias dependencias vía
+# su propio pyproject.toml — no hace falta duplicarlas acá.
+#
+# Excluidas a propósito (no son del runtime local de los agentes):
+#   - torch, esm, fastapi, uvicorn — solo usadas en scientific_agent/pod_server.py, el servidor
+#     RunPod ya reemplazado por Modal (agents.md: "REEMPLAZADO por Modal. Mantener apagado.").
+#   - FlagEmbedding — solo usada en services/bge-m3/modal_app.py, corre dentro del contenedor
+#     de Modal (su propia imagen declara sus dependencias), no en esta máquina.
+
+anthropic==0.102.0        # market_agent, scientific_agent, ingest_corrida.py (Evidence/Investigación
+                           # Amplia/Armador ya migraron a utils/ai_client.py + litellm, 2026-08-15)
+litellm==1.90.2            # utils/ai_client.py — capa de abstracción de proveedor de modelo (2026-08-15)
+python-dotenv==1.0.1
+requests==2.34.2
+pyyaml==6.0.3
+pydantic==2.10.3
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+pgvector==0.4.2            # km_models.py — capa legacy INTA/CONICET (distinta del motor genérico del KM)
+modal==1.4.3                # solo para `modal deploy` de services/esmfold y services/bge-m3 — no es
+                             # una dependencia de runtime de los agentes
+pytest==9.0.3
+pytest-asyncio==1.4.0
+
+# mcp — server.py (KM legacy MCP server, Capa 2) lo importa pero el paquete NO está instalado
+# hoy en este entorno — server.py está roto tal cual (hallazgo del 2026-08-15, sin resolver).
+# Descomentar y fijar versión real cuando se retome ese server.
+# mcp
