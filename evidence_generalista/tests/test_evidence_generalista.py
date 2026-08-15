@@ -264,13 +264,12 @@ async def test_run_agent_captura_submit_evidencia():
         "props": {"nombre": "Test", "descripcion": "desc"}
     }
 
-    with patch("evidence_generalista.anthropic.Anthropic") as mock_anthropic, \
+    with patch("evidence_generalista._ai_complete", new=AsyncMock(return_value=mock_response)), \
          patch("evidence_generalista.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
          patch("evidence_generalista.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
          patch("evidence_generalista.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("evidence_generalista.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
          patch("evidence_generalista.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
-        mock_anthropic.return_value.messages.create.return_value = mock_response
 
         informe, evidencia, lecciones = await eg.run_agent("test-uuid-1234", verbose=False)
 
@@ -300,13 +299,12 @@ async def test_run_agent_devuelve_evidencia_lista_para_persistir():
     mock_oportunidad = {"id": "uuid-km", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
     mock_actualizar = AsyncMock(return_value={"success": True})
 
-    with patch("evidence_generalista.anthropic.Anthropic") as mock_anthropic, \
+    with patch("evidence_generalista._ai_complete", new=AsyncMock(return_value=mock_response)), \
          patch("evidence_generalista.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
          patch("evidence_generalista.motor_api.actualizar_props", new=mock_actualizar), \
          patch("evidence_generalista.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("evidence_generalista.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
          patch("evidence_generalista.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
-        mock_anthropic.return_value.messages.create.return_value = mock_response
 
         informe, evidencia_dict, _ = await eg.run_agent("uuid-km", verbose=False)
 
@@ -342,14 +340,13 @@ async def test_run_agent_despacha_expand_agrovoc():
     mock_oportunidad = {"id": "uuid-agrovoc", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
     agrovoc_result = {"uri": "c_b9625ac6", "prefLabel_es": "Garrapata", "prefLabel_en": "ticks"}
 
-    with patch("evidence_generalista.anthropic.Anthropic") as mock_anthropic, \
+    with patch("evidence_generalista._ai_complete", new=AsyncMock(side_effect=[mock_r1, mock_r2])), \
          patch("evidence_generalista.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
          patch("evidence_generalista.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
          patch("evidence_generalista.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("evidence_generalista.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")), \
          patch("evidence_generalista.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
          patch("evidence_generalista._expand_agrovoc_fn", return_value=agrovoc_result) as mock_agrovoc:
-        mock_anthropic.return_value.messages.create.side_effect = [mock_r1, mock_r2]
 
         await eg.run_agent("uuid-agrovoc", verbose=False)
 
@@ -374,14 +371,13 @@ async def test_run_agent_despacha_search_corpus_inta():
     mock_oportunidad = {"id": "uuid-inta", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
     inta_mock_result = {"success": True, "data": {"query": "garrapata biocontrol", "total": 2, "results": []}}
 
-    with patch("evidence_generalista.anthropic.Anthropic") as mock_anthropic, \
+    with patch("evidence_generalista._ai_complete", new=AsyncMock(side_effect=[mock_r1, mock_r2])), \
          patch("evidence_generalista.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
          patch("evidence_generalista.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
          patch("evidence_generalista.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("evidence_generalista.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")), \
          patch("evidence_generalista.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
          patch("evidence_generalista._search_inta_fn", new=AsyncMock(return_value=inta_mock_result)) as mock_inta:
-        mock_anthropic.return_value.messages.create.side_effect = [mock_r1, mock_r2]
 
         await eg.run_agent("uuid-inta", verbose=False)
 
@@ -399,13 +395,12 @@ async def test_run_agent_sin_submit_devuelve_texto():
     })()
     mock_oportunidad = {"id": "uuid-test", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
 
-    with patch("evidence_generalista.anthropic.Anthropic") as mock_anthropic, \
+    with patch("evidence_generalista._ai_complete", new=AsyncMock(return_value=mock_response)), \
          patch("evidence_generalista.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
          patch("evidence_generalista.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
          patch("evidence_generalista.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("evidence_generalista.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
          patch("evidence_generalista.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
-        mock_anthropic.return_value.messages.create.return_value = mock_response
 
         informe, evidencia, lecciones = await eg.run_agent("uuid-test", verbose=False)
 
@@ -701,18 +696,17 @@ async def test_run_agent_system_prompt_con_cache_control():
     })()
     mock_oportunidad = {"id": "uuid-cache", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
 
-    with patch("evidence_generalista.anthropic.Anthropic") as mock_anthropic, \
+    mock_complete = AsyncMock(return_value=mock_response)
+    with patch("evidence_generalista._ai_complete", new=mock_complete), \
          patch("evidence_generalista.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
          patch("evidence_generalista.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
          patch("evidence_generalista.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("evidence_generalista.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
          patch("evidence_generalista.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
-        mock_create = mock_anthropic.return_value.messages.create
-        mock_create.return_value = mock_response
 
         await eg.run_agent("uuid-cache", verbose=False)
 
-    _, kwargs = mock_create.call_args
+    _, kwargs = mock_complete.call_args
     system = kwargs["system"]
     assert isinstance(system, list)
     assert system[0]["cache_control"] == {"type": "ephemeral"}

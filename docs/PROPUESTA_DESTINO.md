@@ -261,5 +261,12 @@ login/permisos reales queda para cuando haga falta de verdad.
   declaren en la misma plantilla, y hoy no existe un nodo real de "caso" (`oportunidad` es de
   otra área y muy flaco). Se agrega cuando el ítem 3 defina esa ficha. Detalle:
   `docs/progress/2026-08-15.md`.
-- **Nuevo, de hoy:** capa de abstracción de proveedor de modelo por agente (§8) — a diseñar,
-  siguiendo el mismo patrón que `EMBEDDING_PROVIDER` en `knowledge_module.embeddings`.
+- ~~Capa de abstracción de proveedor de modelo por agente (§8)~~ — **hecha el 15/08.**
+  `utils/ai_client.py` (nuevo) — `complete()`/`complete_streaming()` traducen entre la forma
+  nativa de Anthropic (que ya usan los 5 agentes) y LiteLLM (decisión de plataforma, ver
+  `platform-boundary.md`). Migrados Evidence Generalista, Investigación Amplia y Armador
+  (streaming). **Mercado excluido a propósito** — depende de la tool nativa `web_search` de
+  Anthropic, sin equivalente portable todavía; se migra el día que haga falta de verdad elegir
+  otro proveedor para ese agente puntual. Verificado con corridas reales completas de los 3
+  agentes migrados (tool-use, truncado, prompt caching, streaming — no mockeado). Detalle:
+  `docs/progress/2026-08-15.md`.

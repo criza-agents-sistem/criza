@@ -227,12 +227,8 @@ async def test_run_agent_captura_submit_expediente():
     })()
 
     # Segunda respuesta: end_turn (no se alcanza porque el loop ya rompió)
-    with patch("armador.anthropic.Anthropic") as mock_anthropic, \
+    with patch("armador._ai_complete_streaming", new=AsyncMock(return_value=mock_response)), \
          patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
-        mock_client = mock_anthropic.return_value
-        # El armador usa messages.stream() (max_tokens=32000 no admite no-streaming),
-        # asi que el mock va sobre el context manager, no sobre .create.
-        mock_client.messages.stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
 
         resumen, expediente, lecciones = await arm.run_agent(
             oportunidad_id=None,
@@ -260,12 +256,8 @@ async def test_run_agent_sin_submit_devuelve_texto():
         "usage": type("Usage", (), {"input_tokens": 50, "output_tokens": 20})(),
     })()
 
-    with patch("armador.anthropic.Anthropic") as mock_anthropic, \
+    with patch("armador._ai_complete_streaming", new=AsyncMock(return_value=mock_response)), \
          patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
-        mock_client = mock_anthropic.return_value
-        # El armador usa messages.stream() (max_tokens=32000 no admite no-streaming),
-        # asi que el mock va sobre el context manager, no sobre .create.
-        mock_client.messages.stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
 
         resumen, expediente, lecciones = await arm.run_agent(
             oportunidad_id=None,
@@ -343,14 +335,14 @@ def test_derive_cobertura_global_medio_mezcla():
 @pytest.mark.asyncio
 async def test_run_agent_frena_sin_mercado():
     """Sin mercado, el armador no debe ni siquiera llamar al modelo (objective-first)."""
-    with patch("armador.anthropic.Anthropic") as mock_anthropic:
+    with patch("armador._ai_complete_streaming", new=AsyncMock()) as mock_complete:
         with pytest.raises(RuntimeError, match="Validación de cobertura bloqueante"):
             await arm.run_agent(
                 oportunidad_id=None,
                 oportunidad_dict=OPORTUNIDAD_SIN_MERCADO,
                 verbose=False,
             )
-    mock_anthropic.return_value.messages.stream.assert_not_called()
+    mock_complete.assert_not_called()
 
 
 @pytest.mark.unit
@@ -382,9 +374,8 @@ async def test_run_agent_inyecta_cobertura_global_en_bloque_3():
         "usage": type("Usage", (), {"input_tokens": 10, "output_tokens": 10})(),
     })()
 
-    with patch("armador.anthropic.Anthropic") as mock_anthropic, \
+    with patch("armador._ai_complete_streaming", new=AsyncMock(return_value=mock_response)), \
          patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
-        mock_anthropic.return_value.messages.stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
 
         _, expediente, _ = await arm.run_agent(
             oportunidad_id=None, oportunidad_dict=oportunidad, verbose=False,
@@ -484,11 +475,10 @@ async def test_run_nivel_confianza_no_es_solo_si_hubo_expediente():
         "usage": type("Usage", (), {"input_tokens": 10, "output_tokens": 10})(),
     })()
 
-    with patch("armador.anthropic.Anthropic") as mock_anthropic, \
+    with patch("armador._ai_complete_streaming", new=AsyncMock(return_value=mock_response)), \
          patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")), \
          patch("armador.motor_api.obtener", new=AsyncMock(return_value=OPORTUNIDAD_CON_MERCADO)), \
          patch("armador.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})):
-        mock_anthropic.return_value.messages.stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
 
         resultado = await arm.run(
             contract_input={"conocimiento": {"oportunidad_id": "test-oid"}},
@@ -515,16 +505,15 @@ async def test_run_agent_system_prompt_con_cache_control():
         "usage": type("Usage", (), {"input_tokens": 10, "output_tokens": 10})(),
     })()
 
-    with patch("armador.anthropic.Anthropic") as mock_anthropic, \
+    mock_complete = AsyncMock(return_value=mock_response)
+    with patch("armador._ai_complete_streaming", new=mock_complete), \
          patch("armador.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
-        mock_stream = mock_anthropic.return_value.messages.stream
-        mock_stream.return_value.__enter__.return_value.get_final_message.return_value = mock_response
 
         await arm.run_agent(
             oportunidad_id=None, oportunidad_dict=OPORTUNIDAD_CON_MERCADO, verbose=False,
         )
 
-    _, kwargs = mock_stream.call_args
+    _, kwargs = mock_complete.call_args
     system = kwargs["system"]
     assert isinstance(system, list)
     assert system[0]["cache_control"] == {"type": "ephemeral"}

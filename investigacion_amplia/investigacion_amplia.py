@@ -16,7 +16,6 @@ import asyncio
 import json
 import os
 import sys
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,13 +26,12 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
-import anthropic
-
 _AGENT_DIR = Path(__file__).parent
 _CRIZA_DIR = _AGENT_DIR.parent
 sys.path.insert(0, str(_CRIZA_DIR))
 sys.path.insert(0, str(_AGENT_DIR))
 
+from utils.ai_client import complete as _ai_complete, resolver_modelo as _resolver_modelo
 from utils.openalex import search_literature as _search_literature_fn
 from km_tools.search import get_sector_corpus as _get_sector_corpus_fn
 from km_tools.search import get_paper_full_text as _get_paper_full_text_fn
@@ -696,8 +694,6 @@ async def run_agent(
 
     Returns: (informe_markdown, resultado_dict, lecciones_caso)
     """
-    client = anthropic.Anthropic()
-
     if verbose:
         print(f"\n{'='*60}\n  INVESTIGACIÓN AMPLIA v2.0 — CRIZA\n  Modelo: {model}\n{'='*60}\n")
 
@@ -759,23 +755,13 @@ async def run_agent(
 
     # ── Loop agéntico ─────────────────────────────────────────────────────────
     while True:
-        for attempt in range(4):
-            try:
-                response = client.messages.create(
-                    model=model,
-                    max_tokens=16000,
-                    system=system_blocks,
-                    tools=TOOLS,
-                    messages=messages,
-                )
-                break
-            except anthropic.RateLimitError:
-                if attempt == 3:
-                    raise
-                wait = 20 * (attempt + 1)
-                if verbose:
-                    print(f"  [rate limit — esperando {wait}s...]\n")
-                time.sleep(wait)
+        response = await _ai_complete(
+            model=_resolver_modelo(model),
+            max_tokens=16000,
+            system=system_blocks,
+            tools=TOOLS,
+            messages=messages,
+        )
 
         messages.append({"role": "assistant", "content": response.content})
         tracker.add(response.usage)

@@ -16,7 +16,6 @@ Ver docs/DESIGN_GATE.md — decisiones A–F (2026-06-16).
 
 import json
 import os
-import time
 from pathlib import Path
 
 _ARMADOR_DIR = Path(__file__).parent
@@ -26,8 +25,7 @@ from dotenv import load_dotenv
 
 load_dotenv(_ARMADOR_DIR / ".env", override=True)
 
-import anthropic
-
+from utils.ai_client import complete_streaming as _ai_complete_streaming, resolver_modelo as _resolver_modelo
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
@@ -587,8 +585,6 @@ async def run_agent(
     Si oportunidad_id se provee → lee del KM.
     Si oportunidad_dict se provee → lo usa directamente (testing sin KM).
     """
-    client = anthropic.Anthropic()
-
     if verbose:
         print(f"\n{'='*60}\n  ARMADOR DEL EXPEDIENTE — CRIZA\n  Modelo: {model}\n{'='*60}\n")
 
@@ -632,24 +628,13 @@ async def run_agent(
     }]
 
     while True:
-        for attempt in range(5):
-            try:
-                with client.messages.stream(
-                    model=model,
-                    max_tokens=MAX_TOKENS,
-                    system=system_blocks,
-                    tools=TOOLS,
-                    messages=messages,
-                ) as stream:
-                    resp = stream.get_final_message()
-                break
-            except anthropic.RateLimitError:
-                if attempt == 4:
-                    raise
-                wait = min(30 * (attempt + 1), 90)
-                if verbose:
-                    print(f"  [rate limit — espero {wait}s]")
-                time.sleep(wait)
+        resp = await _ai_complete_streaming(
+            model=_resolver_modelo(model),
+            max_tokens=MAX_TOKENS,
+            system=system_blocks,
+            tools=TOOLS,
+            messages=messages,
+        )
 
         messages.append({"role": "assistant", "content": resp.content})
         tracker.add(resp.usage)
