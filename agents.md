@@ -58,6 +58,21 @@ el repo) y **borrado definitivamente el 2026-07-02**. Ya no existe en el filesys
 > suposiciones. El output alimenta una decisión de inversión real. Todo dato lleva etiqueta
 > [VERIFICADO]/[ESTIMADO]/[INFERIDO] + fuente. Gap declarado > inferencia disfrazada de hecho.
 
+Movido a `criza/_archivo_temporal/` el 2026-08-15, confirmado sin referencias vivas (grep en
+todo el repo + smoke test de imports) y **borrado definitivamente el 2026-08-15**. Ya no existe
+en el filesystem. Detalle completo: `docs/progress/2026-08-15.md`, decisión `componente=infra`
+en `decisiones_sistema`.
+
+| Qué era | Por qué se borró |
+|---|---|
+| `server.py` | MCP server legacy — 6 de 7 tools exponían el esquema corrida/oportunidad/aprendizaje del agente divergente/convergente, sin consumidor real desde su borrado (02/07). |
+| `ingest_corrida.py` | Su punto de invocación automática (`divergent_agent/test_metodologia.py`) ya no existía desde el 02/07. |
+| `ingest_historico.py` | Script de backfill histórico de una sola vez, dependía exclusivamente de `ingest_corrida.py`. |
+| `km_tools/retrieve.py` | Sus dos funciones (`get_opportunity_history`, `update_opportunity`) eran 100% del mismo pipeline muerto. |
+| `store_corrida`/`store_opportunity`/`store_document`/`store_learning`/`_link_corrida` (`km_tools/store.py`) | Ídem — quedan `store_fuente_externa`/`batch_store_fuentes_externas` (vivas). |
+| `search_knowledge` (`km_tools/search.py`) | Ídem — quedan `get_sector_corpus`/`search_fuentes_externas`/`get_paper_full_text`/`get_ficha_full_text` (vivas). |
+| `Corrida`/`Oportunidad`/`Aprendizaje`/`CorridaOportunidad`/`CorridaDocumento` (`km_models.py`) | Ídem — queda solo `Documento`. Las tablas en Neon no se tocaron, solo el código. |
+
 ---
 
 ## Stack activo
