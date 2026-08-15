@@ -1,0 +1,141 @@
+# Plantilla del área de casos — instancia CRIZA
+# Capa 2 (específica de CRIZA — el modelo de datos de "caso" es el núcleo del giro de destino,
+# no un concepto genérico de plataforma; el mecanismo —área/tipo_ficha/ficha/conexion— sí lo es,
+# viene de knowledge_module, igual que decisiones_sistema.yaml y usuarios.yaml).
+#
+# Por qué existe (PROPUESTA_DESTINO.md §7, decisión 2026-08-15): diseño concreto de la app
+# Next.js — estructura de páginas, modo chat vs. modo documento, y el modelo de datos de caso
+# (frentes, pendientes, estadío, artefactos vinculados). Esta plantilla es la parte de "diseño
+# concreto" que sí se puede construir y verificar hoy sin escribir una sola línea de Next.js —
+# el scaffold real de la app queda para una sesión propia, con su Design Gate.
+#
+# Reemplaza en los hechos al viejo nodo `oportunidad` (área `descubrimiento`) como el concepto
+# central: `oportunidad` sigue existiendo (el Motor la sigue creando cuando corre un pipeline de
+# discovery), pero un `caso` es más amplio — blue-ocean-discovery es una capacidad que un caso
+# puede invocar (§1), no lo que define qué es un caso. No hay conexión formal caso↔oportunidad
+# todavía — no hizo falta forzarla hoy, se agrega si aparece un caso real que la necesite.
+#
+# `participa_en` (usuario → caso), pensada en el ítem 4, NO es una conexión tipada acá — el
+# loader del motor exige que ambos extremos de una tipo_conexion estén declarados en la MISMA
+# plantilla, y `usuario` vive en el área `usuarios`. Se resuelve embebiendo la lista de
+# participantes en `caso.props.participantes` (lista de {usuario_nombre, rol_en_caso}). Detalle
+# del límite del motor y una posible mejora: `docs/MEJORAS_KM.md` #1.
+
+area: casos
+tenant: criza
+objetivo: >
+  El caso real que CRIZA está acompañando — con quién, en qué estadío, qué frentes tiene
+  abiertos, qué está pendiente, y qué artefactos (documentos propios o externos) lo respaldan.
+  Es el núcleo de datos de la app Next.js (PROPUESTA_DESTINO.md §7).
+descripcion: >
+  Un caso tiene N frentes en paralelo, cada frente puede producir documentos (modo chat o modo
+  documento) y tener artefactos externos vinculados. Pendientes y datos extraídos cuelgan del
+  caso completo, no de un frente específico — un caso puede no tener frentes todavía definidos.
+
+tipos_ficha:
+  - nombre: caso
+    descripcion: >
+      El caso que CRIZA acompaña. `texto_busqueda` (nombre + descripción) vectorizado para
+      poder buscar semánticamente "casos parecidos" más adelante.
+    campos:
+      - nombre           # "Efluentes biogás (Helios)", "MicroBigs — escalamiento y alianza"
+      - descripcion
+      - estadio           # libre, visible — NO es router de qué especialistas se convocan (§7.7).
+                          # ej: "desde_cero" | "validado_escalando" | "en_negociacion_alianza"
+      - fecha_inicio      # YYYY-MM-DD
+      - participantes     # lista de {usuario_nombre, rol_en_caso} — ver nota de diseño arriba
+      - notas
+      - texto_busqueda    # computado: nombre + ". " + descripcion
+    vectorizar: texto_busqueda
+    # dedup_por: null — el motor exige que dedup_por coincida con vectorizar (guardar_ficha,
+    # "caso distinto no soportado aún"); cada caso es un evento distinto, no hace falta fusionar.
+    dedup_por: null
+
+  - nombre: frente
+    descripcion: >
+      Un frente de trabajo dentro de un caso (ej. "frente técnico" y "frente de asociación" en
+      Biogás — el propio caso real que originó este campo, ver Efluentes biogas.md audio 2).
+    campos:
+      - nombre
+      - descripcion
+      - estado           # "activo" | "cerrado"
+    vectorizar: null
+    dedup_por: null
+
+  - nombre: pendiente
+    descripcion: >
+      Un pendiente explícito del caso (§7.5 — ej. la sección "ENTENDER CON PABLO" de
+      MICROBIGS 1.md, con preguntas sin resolver).
+    campos:
+      - descripcion
+      - estado           # "abierto" | "resuelto"
+      - fecha
+    vectorizar: null
+    dedup_por: null
+
+  - nombre: artefacto_externo
+    descripcion: >
+      Un artefacto que vive fuera de CRIZA y se vincula al caso (§7.6 — ej. los Google
+      Docs/Slides que ya referencia MICROBIGS 1.md).
+    campos:
+      - titulo
+      - tipo             # "google_doc" | "google_slide" | "otro"
+      - url
+    vectorizar: null
+    # dedup_por sin vectorizar no deduplica nada en la práctica (guardar_ficha solo deduplica
+    # por similitud de embedding) — dejarlo null en vez de declarar algo que no funciona.
+    dedup_por: null
+
+  - nombre: documento_caso
+    descripcion: >
+      Un documento que un especialista produce PARA el caso (distinto de artefacto_externo, que
+      es un link a algo que ya existía afuera). `modo` es la bisagra del §7.3: arranca en
+      "chat" y puede graduarse a "documento" cuando empieza a coautoría algo formal versionado
+      (ej. el Acuerdo Marco de MicroBigs, con placeholders [●] sin completar — borrador real).
+      `contenido` vectorizado para poder preguntar semánticamente qué dice un documento.
+    campos:
+      - titulo
+      - modo             # "chat" | "documento"
+      - contenido
+      - version
+      - estado           # "borrador" | "final"
+    vectorizar: contenido
+    dedup_por: null
+
+  - nombre: dato_extraido
+    descripcion: >
+      Un dato estructurado sacado de la prosa de un caso (§7.4 — contactos, cifras, plazos que
+      hoy quedan enterrados en texto libre; mismo patrón que usa el KM para sacar `props` de un
+      informe narrativo).
+    campos:
+      - categoria        # "contacto" | "cifra" | "plazo"
+      - valor
+      - contexto         # de dónde salió / para qué sirve
+    vectorizar: null
+    dedup_por: null
+
+tipos_conexion:
+  - nombre: tiene_frente
+    desde: caso
+    hacia: frente
+    campos: []
+
+  - nombre: tiene_pendiente
+    desde: caso
+    hacia: pendiente
+    campos: []
+
+  - nombre: tiene_dato
+    desde: caso
+    hacia: dato_extraido
+    campos: []
+
+  - nombre: frente_tiene_artefacto_externo
+    desde: frente
+    hacia: artefacto_externo
+    campos: []
+
+  - nombre: frente_produce_documento
+    desde: frente
+    hacia: documento_caso
+    campos: []

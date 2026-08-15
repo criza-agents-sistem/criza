@@ -241,9 +241,17 @@ login/permisos reales queda para cuando haga falta de verdad.
   arriba) — no es un detalle de implementación menor, es parte del diseño central.
 - El tercer arquetipo (empresa con tecnología/maquinaria buscando nuevo uso) — sin caso real
   todavía. No diseñar el patrón en abstracto hasta que aparezca uno.
-- **Nuevo, de hoy:** diseño concreto de la app Next.js — estructura de páginas, cómo conviven
-  modo chat y modo documento (§7), y el modelo de datos de caso (frentes, pendientes, estadío,
-  artefactos vinculados) que la va a alimentar.
+- ~~Diseño concreto de la app Next.js~~ — **modelo de datos + páginas hechos el 15/08, scaffold
+  real todavía sin construir.** Área KM `casos` (`config/plantillas/casos.yaml`): `caso`
+  (nombre, descripción, estadío, participantes), `frente`, `pendiente`, `artefacto_externo`,
+  `documento_caso` (modo chat/documento — la bisagra del §7.3), `dato_extraido`
+  (contacto/cifra/plazo). Páginas propuestas: `/` (lista de casos), `/casos/[id]`, `/casos/[id]/
+  frente/[id]` (chat o documento), `/casos/nuevo`. **Cargados los 2 casos reales** (Biogás/
+  Helios, MicroBigs) con datos sacados de `casos/*.md`, no inventados — 2 frentes cada uno, 6
+  pendientes, 2 artefactos externos, 1 documento (Acuerdo Marco, borrador), 7 datos extraídos.
+  El scaffold real de Next.js/FastAPI queda para una sesión propia, con su propio Design Gate —
+  esto era la parte de "diseño concreto" que sí se podía verificar hoy sin escribir frontend.
+  Detalle: `docs/progress/2026-08-15.md`.
 - ~~El modelo de datos de usuarios/roles (§9)~~ — **hecho el 15/08, sin login real (según lo
   decidido).** Área KM `usuarios`: `tipo_ficha usuario` (nombre, email, rol_global, estado
   activo/invitado/inactivo, notas) + `tipo_ficha rol` (catálogo abierto: admin, colaborador,
