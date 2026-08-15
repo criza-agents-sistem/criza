@@ -46,7 +46,7 @@ async def test_retorna_resultados_con_estructura_correcta():
 
     mock_factory = MagicMock(return_value=mock_session)
 
-    with patch("tools.search.get_session_factory", return_value=mock_factory):
+    with patch("km_tools.search.get_session_factory", return_value=mock_factory):
         from km_tools.search import search_fuentes_externas
         result = await search_fuentes_externas("garrapata biocontrol")
 
@@ -76,7 +76,7 @@ async def test_maneja_autores_json_malformado():
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
+    with patch("km_tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
         from km_tools.search import search_fuentes_externas
         result = await search_fuentes_externas("garrapata")
 
@@ -97,7 +97,7 @@ async def test_sin_resultados_retorna_lista_vacia():
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
+    with patch("km_tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
         from km_tools.search import search_fuentes_externas
         result = await search_fuentes_externas("xyzzy_no_existe")
 
@@ -115,7 +115,7 @@ async def test_error_de_db_retorna_success_false():
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
+    with patch("km_tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
         from km_tools.search import search_fuentes_externas
         result = await search_fuentes_externas("garrapata")
 
@@ -151,7 +151,7 @@ async def test_get_ficha_full_text_encontrada_con_texto():
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
+    with patch("km_tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
         from km_tools.search import get_ficha_full_text
         result = await get_ficha_full_text("ficha-uuid-1")
 
@@ -170,7 +170,7 @@ async def test_get_ficha_full_text_no_encontrada():
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
+    with patch("km_tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
         from km_tools.search import get_ficha_full_text
         result = await get_ficha_full_text("no-existe")
 
@@ -189,7 +189,7 @@ async def test_get_ficha_full_text_sin_texto_completo_aun():
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
+    with patch("km_tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
         from km_tools.search import get_ficha_full_text
         result = await get_ficha_full_text("ficha-uuid-1")
 
@@ -213,7 +213,7 @@ async def test_get_ficha_full_text_requiere_solicitud_con_autoservicio():
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
+    with patch("km_tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
         from km_tools.search import get_ficha_full_text
         result = await get_ficha_full_text("ficha-uuid-1")
 
@@ -237,7 +237,7 @@ async def test_get_ficha_full_text_requiere_solicitud_sin_autoservicio():
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
+    with patch("km_tools.search.get_session_factory", return_value=MagicMock(return_value=mock_session)):
         from km_tools.search import get_ficha_full_text
         result = await get_ficha_full_text("ficha-uuid-1")
 
@@ -255,7 +255,10 @@ async def test_get_ficha_full_text_requiere_solicitud_sin_autoservicio():
 @pytest.mark.asyncio
 async def test_integration_busqueda_garrapata():
     """Busca 'garrapata' en los documentos INTA cosechados."""
+    from knowledge_module.db import reset_engine
     from km_tools.search import search_fuentes_externas
+
+    reset_engine()  # engine queda pegado al loop del asyncio.run() anterior si corre otro test antes
 
     result = await search_fuentes_externas("garrapata tick")
     assert result["success"], result["error"]
@@ -269,7 +272,10 @@ async def test_integration_busqueda_garrapata():
 @pytest.mark.asyncio
 async def test_integration_busqueda_con_filtro_tipo():
     """Busca con filtro tipo=paper."""
+    from knowledge_module.db import reset_engine
     from km_tools.search import search_fuentes_externas
+
+    reset_engine()
 
     result = await search_fuentes_externas("virus influenza equina", tipo="paper", limit=5)
     assert result["success"], result["error"]
@@ -282,7 +288,10 @@ async def test_integration_busqueda_con_filtro_tipo():
 @pytest.mark.asyncio
 async def test_integration_query_vacio_o_sin_match():
     """Query que no matchea nada retorna lista vacía sin error."""
+    from knowledge_module.db import reset_engine
     from km_tools.search import search_fuentes_externas
+
+    reset_engine()
 
     result = await search_fuentes_externas("xyzzy_inexistente_12345")
     assert result["success"] is True

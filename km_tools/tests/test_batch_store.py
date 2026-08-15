@@ -78,7 +78,7 @@ async def test_new_records_created_count_matches_returning():
     mock_factory, _ = _make_session_mock(returned_ids)
     pg_insert_mock, _ = _make_pg_insert_mock()
 
-    with patch("tools.store.get_session_factory", return_value=mock_factory), \
+    with patch("km_tools.store.get_session_factory", return_value=mock_factory), \
          patch("sqlalchemy.dialects.postgresql.insert", pg_insert_mock):
         from km_tools.store import batch_store_fuentes_externas
         result = await batch_store_fuentes_externas(records)
@@ -102,7 +102,7 @@ async def test_all_conflict_returns_zero_created():
     mock_factory, _ = _make_session_mock([])
     pg_insert_mock, _ = _make_pg_insert_mock()
 
-    with patch("tools.store.get_session_factory", return_value=mock_factory), \
+    with patch("km_tools.store.get_session_factory", return_value=mock_factory), \
          patch("sqlalchemy.dialects.postgresql.insert", pg_insert_mock):
         from km_tools.store import batch_store_fuentes_externas
         result = await batch_store_fuentes_externas(records)
@@ -126,7 +126,7 @@ async def test_intra_batch_dedup_inserts_once():
     mock_factory, mock_session = _make_session_mock([MagicMock()])
     pg_insert_mock, stmt_mock = _make_pg_insert_mock()
 
-    with patch("tools.store.get_session_factory", return_value=mock_factory), \
+    with patch("km_tools.store.get_session_factory", return_value=mock_factory), \
          patch("sqlalchemy.dialects.postgresql.insert", pg_insert_mock):
         from km_tools.store import batch_store_fuentes_externas
         result = await batch_store_fuentes_externas(records)
@@ -154,7 +154,7 @@ async def test_row_with_bad_fecha_counted_as_error():
     mock_factory, _ = _make_session_mock([MagicMock()])
     pg_insert_mock, stmt_mock = _make_pg_insert_mock()
 
-    with patch("tools.store.get_session_factory", return_value=mock_factory), \
+    with patch("km_tools.store.get_session_factory", return_value=mock_factory), \
          patch("sqlalchemy.dialects.postgresql.insert", pg_insert_mock):
         from km_tools.store import batch_store_fuentes_externas
         result = await batch_store_fuentes_externas(records)
@@ -174,7 +174,7 @@ async def test_uses_on_conflict_do_nothing_with_partial_index():
     mock_factory, _ = _make_session_mock([MagicMock()])
     pg_insert_mock, stmt_mock = _make_pg_insert_mock()
 
-    with patch("tools.store.get_session_factory", return_value=mock_factory), \
+    with patch("km_tools.store.get_session_factory", return_value=mock_factory), \
          patch("sqlalchemy.dialects.postgresql.insert", pg_insert_mock):
         from km_tools.store import batch_store_fuentes_externas
         await batch_store_fuentes_externas(records)
@@ -200,7 +200,7 @@ async def test_db_error_returns_success_false():
 
     pg_insert_mock, _ = _make_pg_insert_mock()
 
-    with patch("tools.store.get_session_factory", return_value=mock_factory), \
+    with patch("km_tools.store.get_session_factory", return_value=mock_factory), \
          patch("sqlalchemy.dialects.postgresql.insert", pg_insert_mock):
         from km_tools.store import batch_store_fuentes_externas
         result = await batch_store_fuentes_externas(records)
@@ -217,13 +217,21 @@ async def test_db_error_returns_success_false():
 @pytest.mark.asyncio
 async def test_integration_batch_idempotente():
     """Insertar los mismos records dos veces → segunda vez created=0."""
+    from uuid import uuid4
+
+    from knowledge_module.db import reset_engine
     from km_tools.store import batch_store_fuentes_externas
 
+    reset_engine()  # engine queda pegado al loop del asyncio.run() anterior si corre otro test antes
+
+    # UUID por corrida — urls fijas hacían que la 1ra aserción (created==2) fallara en
+    # corridas posteriores contra el Neon real, porque las filas ya existían de antes.
+    suffix = uuid4()
     records = [
         {
             "titulo": "Test batch idempotente A",
             "contenido": "Abstract A",
-            "fuente_url": "https://hdl.handle.net/test-batch-idem/001",
+            "fuente_url": f"https://hdl.handle.net/test-batch-idem/{suffix}/001",
             "sector": "Test",
             "fecha": "2024",
             "tipo": "paper",
@@ -233,7 +241,7 @@ async def test_integration_batch_idempotente():
         {
             "titulo": "Test batch idempotente B",
             "contenido": "Abstract B",
-            "fuente_url": "https://hdl.handle.net/test-batch-idem/002",
+            "fuente_url": f"https://hdl.handle.net/test-batch-idem/{suffix}/002",
             "sector": "Test",
             "fecha": "2024",
         },

@@ -90,6 +90,6 @@ async def listar_decisiones_vigentes(componente: str | None = None) -> list[dict
     if componente:
         contiene["componente"] = componente
     fichas = await motor_api.listar(area=_AREA, tipo="decision", contiene=contiene, limit=500, tenant=_TENANT)
-    decisiones = [f["props"] for f in fichas]
+    decisiones = [{"id": f["id"], **f["props"]} for f in fichas]
     decisiones.sort(key=lambda d: d.get("fecha", ""), reverse=True)
     return decisiones

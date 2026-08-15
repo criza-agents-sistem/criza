@@ -18,6 +18,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 @pytest.mark.unit
 def test_embedding_provider_local():
     """El embedder local devuelve un vector del tamaño configurado."""
+    # LocalEmbedder (EMBEDDING_PROVIDER=local, modo dev sin API) depende de
+    # sentence-transformers — extra OPCIONAL de knowledge_module (`[local-embeddings]`), no
+    # dependencia base. CRIZA usa EMBEDDING_PROVIDER=bgem3 en producción; saltar en vez de
+    # fallar en rojo cuando el extra no está instalado, no es una regresión.
+    pytest.importorskip("sentence_transformers", reason="extra opcional [local-embeddings], no instalado")
     from knowledge_module.embeddings import LocalEmbedder
     embedder = LocalEmbedder()
     vec = embedder.embed("control de moscas en feedlot")
@@ -29,6 +34,7 @@ def test_embedding_provider_local():
 @pytest.mark.unit
 def test_embedding_batch():
     """El embedder procesa un batch correctamente."""
+    pytest.importorskip("sentence_transformers", reason="extra opcional [local-embeddings], no instalado")
     from knowledge_module.embeddings import LocalEmbedder
     embedder = LocalEmbedder()
     texts = ["garrapata resistente", "hongos entomopatógenos", "biocontrol"]
@@ -59,9 +65,16 @@ def test_embedding_singleton():
 @pytest.mark.asyncio
 async def test_store_fuente_externa_create_and_dedup():
     """store_fuente_externa: primera llamada crea; segunda devuelve skipped (idempotente)."""
+    from uuid import uuid4
+
+    from knowledge_module.db import reset_engine
     from km_tools.store import store_fuente_externa
 
-    url = "https://hdl.handle.net/TEST-store_fuente_externa-integration"
+    reset_engine()  # engine queda pegado al loop del asyncio.run() anterior si corre otro test antes
+
+    # UUID por corrida — la url fija anterior hacía que la 2da corrida contra el Neon real
+    # ya encontrara la fila de la 1ra y "created" diera siempre False (test no idempotente).
+    url = f"https://hdl.handle.net/TEST-store_fuente_externa-integration-{uuid4()}"
 
     r1 = await store_fuente_externa(
         titulo="Paper de prueba integration test",
