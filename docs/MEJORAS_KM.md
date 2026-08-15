@@ -10,6 +10,12 @@
 > habían probado hasta que un caso de uso real los tocó. Ninguna se resuelve sin decidirlo con
 > Sebas primero — mismo criterio que el resto del proyecto.
 
+> **Evaluado el 2026-08-15: ninguna de las dos bloquea nada hoy.** Ambas se esquivaron con un
+> workaround que funciona bien (participantes embebidos en `props` en vez de conexión tipada;
+> `dedup_por: null` en vez de declarar algo que no deduplica). Queda para la próxima
+> planificación, cuando aparezca una necesidad real que las requiera — no antes. Decisión
+> `componente=infra` en `decisiones_sistema`.
+
 ---
 
 ## 1. Las conexiones tipadas (`tipo_conexion`) no pueden cruzar áreas

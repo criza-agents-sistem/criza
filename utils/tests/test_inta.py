@@ -216,6 +216,14 @@ class TestIntegration:
         assert all("subjects" in r for r in records)
 
     def test_harvest_con_fecha_filtra(self):
+        """
+        `from_date` mapea al parámetro OAI-PMH `from` — filtra por datestamp (cuándo el
+        registro se creó/modificó en el repositorio INTA), no por el año de publicación
+        (campo `año` del propio contenido). Un registro puede tener año de publicación viejo
+        y datestamp reciente (re-indexado, corregido) — no hay garantía de que `año >=
+        from_date`, así que este test verifica que la corrida con el filtro no rompe y trae
+        resultados, no una propiedad que el protocolo no promete.
+        """
         records = inta.harvest("biotecnologia", from_date="2024-01-01", max_records=10)
-        years = [int(r["año"]) for r in records if r["año"] and r["año"].isdigit()]
-        assert all(y >= 2024 for y in years)
+        assert len(records) > 0
+        assert all("titulo" in r for r in records)

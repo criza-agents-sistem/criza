@@ -68,19 +68,19 @@ MOCK_RELATED = {"related": []}
 class TestSearch:
 
     def test_devuelve_lista_de_conceptos(self):
-        with patch("criza.utils.agrovoc._get", return_value=MOCK_SEARCH_GARRAPATA):
+        with patch("utils.agrovoc._get", return_value=MOCK_SEARCH_GARRAPATA):
             results = agrovoc.search("garrapata")
         assert len(results) == 1
         assert results[0]["uri"] == "http://aims.fao.org/aos/agrovoc/c_b9625ac6"
         assert results[0]["prefLabel"] == "Garrapata"
 
     def test_lista_vacia_si_sin_resultados(self):
-        with patch("criza.utils.agrovoc._get", return_value=MOCK_SEARCH_EMPTY):
+        with patch("utils.agrovoc._get", return_value=MOCK_SEARCH_EMPTY):
             results = agrovoc.search("terminoquenoexiste")
         assert results == []
 
     def test_pasa_lang_correcto(self):
-        with patch("criza.utils.agrovoc._get", return_value=MOCK_SEARCH_EMPTY) as mock_get:
+        with patch("utils.agrovoc._get", return_value=MOCK_SEARCH_EMPTY) as mock_get:
             agrovoc.search("pest", lang="en")
             mock_get.assert_called_once_with(
                 "/search", {"query": "pest", "lang": "en", "searchLang": "en"}
@@ -94,7 +94,7 @@ class TestGetLabels:
             lang = params.get("lang")
             return {"prefLabel": {"es": "Garrapata", "en": "ticks", "pt": "Carrapato"}[lang]}
 
-        with patch("criza.utils.agrovoc._get", side_effect=fake_get):
+        with patch("utils.agrovoc._get", side_effect=fake_get):
             labels = agrovoc.get_labels("http://aims.fao.org/aos/agrovoc/c_b9625ac6")
 
         assert labels == {"es": "Garrapata", "en": "ticks", "pt": "Carrapato"}
@@ -105,7 +105,7 @@ class TestGetLabels:
                 raise Exception("timeout")
             return {"prefLabel": "Garrapata" if params.get("lang") == "es" else "ticks"}
 
-        with patch("criza.utils.agrovoc._get", side_effect=fake_get):
+        with patch("utils.agrovoc._get", side_effect=fake_get):
             labels = agrovoc.get_labels("http://aims.fao.org/aos/agrovoc/c_b9625ac6")
 
         assert "es" in labels
@@ -140,7 +140,7 @@ class TestExpandTerm:
         mock_get.side_effect = side_effect
 
     def test_expand_term_encontrado_en_es(self):
-        with patch("criza.utils.agrovoc._get") as mock_get:
+        with patch("utils.agrovoc._get") as mock_get:
             self._setup_mock_get(mock_get)
             result = agrovoc.expand_term("garrapata")
 
@@ -152,7 +152,7 @@ class TestExpandTerm:
         assert result["broader"][0]["prefLabel"] == "Artrópodo"
 
     def test_expand_term_fallback_a_en_si_es_vacio(self):
-        with patch("criza.utils.agrovoc._get") as mock_get:
+        with patch("utils.agrovoc._get") as mock_get:
             self._setup_mock_get(mock_get, search_es=MOCK_SEARCH_EMPTY)
             result = agrovoc.expand_term("biological control")
 
@@ -161,7 +161,7 @@ class TestExpandTerm:
         assert result["prefLabel_es"] == "Garrapata"
 
     def test_expand_term_retorna_none_si_no_hay_resultados(self):
-        with patch("criza.utils.agrovoc._get") as mock_get:
+        with patch("utils.agrovoc._get") as mock_get:
             mock_get.return_value = MOCK_SEARCH_EMPTY
             result = agrovoc.expand_term("xyzzy123nonexistent")
 
@@ -185,7 +185,7 @@ class TestExpandTerm:
                 return {"prefLabel": {"es": "Garrapata", "en": "ticks"}.get(params.get("lang"), "")}
             return {"broader": [], "narrower": [], "related": []}
 
-        with patch("criza.utils.agrovoc._get", side_effect=fake_get):
+        with patch("utils.agrovoc._get", side_effect=fake_get):
             result = agrovoc.expand_term("garrapata")
 
         # "Garrapata" no debe aparecer dos veces
@@ -207,7 +207,7 @@ class TestExpandTerm:
                 return {"prefLabel": "label"}
             return {"broader": [], "narrower": [], "related": []}
 
-        with patch("criza.utils.agrovoc._get", side_effect=fake_get):
+        with patch("utils.agrovoc._get", side_effect=fake_get):
             result = agrovoc.expand_term("multiple", top_n=2)
 
         assert isinstance(result, list)
