@@ -14,7 +14,7 @@ import pytest
 _AGENT = Path(__file__).parent.parent
 sys.path.insert(0, str(_AGENT))
 
-import market_agent as ma
+from market_agent import market_agent as ma
 from utils.corpus import buscar_corpus_cientifico
 
 
@@ -175,7 +175,7 @@ async def test_buscar_corpus_trunca_abstract():
 async def test_dispatch_search_series():
     """_dispatch llama search_series con los parámetros correctos."""
     mock_result = {"success": True, "series": [{"id": "abc", "descripcion": "Test"}]}
-    with patch("market_agent.search_series", return_value=mock_result) as mock_fn:
+    with patch("market_agent.market_agent.search_series", return_value=mock_result) as mock_fn:
         result_str = await ma._dispatch("search_series", {"query": "faena porcina", "max_results": 5})
 
     mock_fn.assert_called_once_with(query="faena porcina", max_results=5)
@@ -189,7 +189,7 @@ async def test_dispatch_search_series():
 async def test_dispatch_get_series_values():
     """_dispatch llama get_series_values con series_id y last."""
     mock_result = {"success": True, "valores": [{"fecha": "2024-Q1", "valor": 1234}]}
-    with patch("market_agent.get_series_values", return_value=mock_result) as mock_fn:
+    with patch("market_agent.market_agent.get_series_values", return_value=mock_result) as mock_fn:
         result_str = await ma._dispatch("get_series_values", {"series_id": "MAGyP_FAENA_1", "last": 8})
 
     mock_fn.assert_called_once_with(series_id="MAGyP_FAENA_1", last=8)
@@ -202,7 +202,7 @@ async def test_dispatch_get_series_values():
 @pytest.mark.asyncio
 async def test_dispatch_search_series_default_max_results():
     """_dispatch usa default max_results=10 si no se pasa."""
-    with patch("market_agent.search_series", return_value={"success": True, "series": []}) as mock_fn:
+    with patch("market_agent.market_agent.search_series", return_value={"success": True, "series": []}) as mock_fn:
         await ma._dispatch("search_series", {"query": "stock bovino"})
 
     _, kwargs = mock_fn.call_args
@@ -259,11 +259,14 @@ async def test_run_contract_formato_output():
     cruces = {"cruce_1": {}, "cruce_3": {}, "cruce_4": {}, "gaps_prioritarios": ["gap1"]}
     lecciones = ["leccion 1"]
 
-    with patch("market_agent.run_agent", new=AsyncMock(return_value=(resumen, cruces, lecciones))):
+    with patch("market_agent.market_agent.run_agent", new=AsyncMock(return_value=(resumen, cruces, lecciones))):
         result = await ma.run({"caso": "estiércol porcino olor", "conocimiento": None})
 
     assert "análisis" in result
-    assert result["análisis"]["resumen"] == resumen
+    # análisis == lo que la costura persiste en props.mercado: cruces + informe_completo
+    # (ver orquestador/invocador.py) — no un campo "resumen" separado.
+    assert result["análisis"]["informe_completo"] == resumen
+    assert result["análisis"]["cruce_1"] == {}
     assert result["nivel_confianza"] == "medio"
     assert result["recomendaciones"] == ["gap1"]
     assert result["próximo_agente"] is None
@@ -274,7 +277,7 @@ async def test_run_contract_formato_output():
 @pytest.mark.asyncio
 async def test_run_contract_con_oportunidad_id():
     """run() extrae oportunidad_id de conocimiento y lo pasa a run_agent."""
-    with patch("market_agent.run_agent", new=AsyncMock(return_value=("", {}, []))) as mock_fn:
+    with patch("market_agent.market_agent.run_agent", new=AsyncMock(return_value=("", {}, []))) as mock_fn:
         await ma.run({"caso": "test", "conocimiento": {"oportunidad_id": "uuid-123"}})
 
     mock_fn.assert_called_once()
@@ -395,7 +398,7 @@ def test_merge_web_search_coverage_sin_llamadas_marca_no_disponible():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_check_corpus_cientifico_ok():
-    with patch("market_agent.get_session_factory", return_value=_make_db_mock(2268)()):
+    with patch("market_agent.market_agent.get_session_factory", return_value=_make_db_mock(2268)()):
         resultado = await ma._check_corpus_cientifico()
     assert resultado.ok is True
     assert resultado.conteo == 2268
@@ -404,7 +407,7 @@ async def test_check_corpus_cientifico_ok():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_check_corpus_cientifico_vacio_bloquea():
-    with patch("market_agent.get_session_factory", return_value=_make_db_mock(0)()):
+    with patch("market_agent.market_agent.get_session_factory", return_value=_make_db_mock(0)()):
         resultado = await ma._check_corpus_cientifico()
     assert resultado.ok is False
 
@@ -412,7 +415,7 @@ async def test_check_corpus_cientifico_vacio_bloquea():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_check_datos_gob_ar_ok():
-    with patch("market_agent.search_official_stats", return_value={"success": True}):
+    with patch("market_agent.market_agent.search_official_stats", return_value={"success": True}):
         resultado = await ma._check_datos_gob_ar()
     assert resultado.ok is True
 
@@ -420,7 +423,7 @@ async def test_check_datos_gob_ar_ok():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_check_datos_gob_ar_caido():
-    with patch("market_agent.search_official_stats", return_value={"success": False, "error": "timeout"}):
+    with patch("market_agent.market_agent.search_official_stats", return_value={"success": False, "error": "timeout"}):
         resultado = await ma._check_datos_gob_ar()
     assert resultado.ok is False
     assert "timeout" in resultado.detalle
@@ -429,7 +432,7 @@ async def test_check_datos_gob_ar_caido():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_check_web_search_sin_api_key_bloquea():
-    with patch("market_agent.os.getenv", return_value=None):
+    with patch("market_agent.market_agent.os.getenv", return_value=None):
         resultado = await ma._check_web_search()
     assert resultado.ok is False
 
@@ -442,8 +445,8 @@ async def test_run_agent_frena_si_preflight_bloqueante():
 
     bloqueado = PreflightResult(ok=False, bloqueantes=["corpus_cientifico: 0 fichas"], advertencias=[])
     with (
-        patch("market_agent.run_preflight", new=AsyncMock(return_value=bloqueado)),
-        patch("market_agent.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("market_agent.market_agent.run_preflight", new=AsyncMock(return_value=bloqueado)),
+        patch("market_agent.market_agent.aprendizaje.ensure_area", new=AsyncMock()),
     ):
         with pytest.raises(RuntimeError, match="Pre-flight bloqueante"):
             await ma.run_agent(texto_libre="control biológico de garrapatas", verbose=False)

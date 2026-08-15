@@ -627,9 +627,11 @@ OUTPUT_CONTRACT = {
     "agent": "investigacion_amplia",
     "version": "2.1",
     # Ver market_agent.OUTPUT_CONTRACT — contrato de conexión verificado por el auditor.
-    "km_escribe": ["props.investigacion_amplia", "props.investigacion_amplia_informe"],
+    # Un solo key: la costura (orquestador/invocador.py) persiste `análisis` completo bajo
+    # props.investigacion_amplia — ya no hay una clave `_informe` separada (2026-08-15).
+    "km_escribe": ["props.investigacion_amplia"],
     "fields": {
-        "análisis": "{'informe': str, 'resultado': {'cruce_3': dict, 'mapa_candidatos': list, 'gaps_prioritarios': list, 'fuentes_y_cobertura': dict}}",
+        "análisis": "{'cruce_3': dict, 'mapa_candidatos': list, 'gaps_prioritarios': list, 'fuentes_y_cobertura': dict, 'informe_completo': str, ...}",
         "nivel_confianza": "'alto' | 'medio' | 'bajo'",
         "recomendaciones": "mapa_candidatos ordenados por prioridad (alta → baja)",
         "próximo_agente": "'mercado' si hay ≥1 candidato alta-prioridad, else None",
@@ -954,15 +956,10 @@ async def run_agent(
         "informe_completo": informe,
     }
 
-    if oportunidad_id:
-        await motor_api.actualizar_props(
-            oportunidad_id,
-            {
-                "investigacion_amplia": resultado_dict,
-                "investigacion_amplia_informe": informe,
-            },
-            tenant=_TENANT,
-        )
+    # El write-back de props.investigacion_amplia ya NO es responsabilidad de este agente —
+    # lo hace la costura (orquestador/invocador.py::invocar_agente), siempre. Antes acá se
+    # escribía además una clave separada `investigacion_amplia_informe` duplicando el mismo
+    # informe que ya vive dentro de resultado_dict — la costura solo escribe una vez.
 
     if verbose:
         intensidad = cruce_3.get("intensidad", "?")
@@ -1026,14 +1023,9 @@ async def run(
     alta_prio = [c["candidato"] for c in mapa if c.get("prioridad") == "alta"]
 
     return {
-        "análisis": {
-            "informe": informe,
-            "resultado": {
-                "cruce_3": resultado.get("cruce_3"),
-                "mapa_candidatos": mapa,
-                "gaps_prioritarios": resultado.get("gaps_prioritarios", []),
-            },
-        },
+        # `resultado` ya es exactamente lo que la costura persiste en props.investigacion_amplia
+        # (incluye informe_completo) — no envolverlo ni recortarlo en otra forma.
+        "análisis": resultado,
         "nivel_confianza": _derive_confidence(resultado),
         "recomendaciones": sorted(
             mapa,
@@ -1057,12 +1049,25 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     async def main():
-        informe, resultado, lecciones = await run_agent(
-            caso=args.caso,
+        # Vía la costura (invocar_agente) — mismo camino que usa el Motor, para que el
+        # write-back al KM ocurra siempre.
+        from orquestador.registry import get_registry
+        from orquestador.invocador import invocar_agente
+
+        spec = get_registry()["investigacion_amplia"]
+        contract_input = {
+            "caso": args.caso,
+            "conocimiento": {"oportunidad_id": args.oportunidad_id} if args.oportunidad_id else {},
+        }
+        output = await invocar_agente(
+            spec=spec,
+            contract_input=contract_input,
+            tenant=_TENANT,
             oportunidad_id=args.oportunidad_id,
             verbose=args.verbose,
-            model=args.model,
         )
+        resultado = output["análisis"]
+        informe = resultado.get("informe_completo", "")
         print("\n" + "=" * 60)
         print("INFORME\n" + "=" * 60)
         print(informe)

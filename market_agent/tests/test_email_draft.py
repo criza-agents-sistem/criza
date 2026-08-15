@@ -6,7 +6,7 @@ Los tests verifican que el draft sea correcto y que el status sea siempre PENDIE
 """
 
 import pytest
-from tools.email_draft import draft_outreach_email
+from market_agent.tools.email_draft import draft_outreach_email
 
 
 # ── Unit tests ────────────────────────────────────────────────────────────────

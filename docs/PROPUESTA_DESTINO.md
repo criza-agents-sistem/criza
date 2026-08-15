@@ -208,13 +208,22 @@ login/permisos reales queda para cuando haga falta de verdad.
 
 ## 11. Lo que falta decidir antes de tocar código
 
-- ¿Quiénes interactúan con el sistema — solo vos, o también Pablo y Andrés? (§4)
-- Uno por uno, el destino de los 4 agentes actuales (§6) — no se decide en este documento.
-- El registry data-driven (`PROPUESTA_CONDUCTOR.md` §6) — sigue sin construirse, y es
-  prerrequisito para que sumar un especialista sea configuración y no cirugía.
-- La captura de decisiones como eventos (§4.3 de esa propuesta) — sin construir.
-- El Conductor conversacional en sí — sin construir, es el último paso de la secuencia sugerida
-  en esa propuesta (§10), no el primero.
+- ¿Quiénes interactúan con el sistema — solo vos, o también Pablo y Andrés? (§4) — **por ahora
+  solo Sebas**, confirmado, preparado para sumar accesos después (ver §9).
+- Uno por uno, el destino de los 4 agentes actuales (§6) — no se decide en este documento;
+  confirmado que no se tocan por ahora, se ve en la marcha.
+- ~~El registry data-driven~~ — **hecho el 2026-08-15.** `orquestador/agents_registry.yaml` +
+  `orquestador/registry.py` (data-driven, sin imports hardcodeados) + `orquestador/invocador.py`
+  (la costura: persiste `análisis` al KM de forma genérica para cualquier agente, sin que el
+  agente tenga que acordarse — resuelve el riesgo estructural que se discutió el 14/08). Los 4
+  agentes actuales se normalizaron para que esto funcione. Verificado real contra Neon, 218/218
+  tests. Detalle: `docs/progress/2026-08-15.md`, fila "Motor v2" en `agents.md`.
+- La captura de decisiones como eventos (§4.3 de `PROPUESTA_CONDUCTOR.md`) — sin construir. Ya
+  existe el punto de enganche (`invocador.py::_registrar_evento`, placeholder explícito) — es el
+  siguiente ítem lógico, ver orden acordado el 14/08.
+- El Conductor conversacional en sí — sin construir. Confirmado con Sebas (14/08): el Conductor
+  **asesora** sobre qué especialistas hacen falta y cómo, pero no codea — construir sigue siendo
+  tarea de Sebas + Claude Code. No cambia la secuencia sugerida en `PROPUESTA_CONDUCTOR.md` §10.
 - El tercer arquetipo (empresa con tecnología/maquinaria buscando nuevo uso) — sin caso real
   todavía. No diseñar el patrón en abstracto hasta que aparezca uno.
 - **Nuevo, de hoy:** diseño concreto de la app Next.js — estructura de páginas, cómo conviven

@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 @pytest.mark.unit
 def test_fetch_page_text_extracts_clean_text():
     """Debe remover HTML y retornar texto limpio."""
-    from tools.web_fetch import fetch_page_text
+    from market_agent.tools.web_fetch import fetch_page_text
     html = "<html><head><style>body {}</style></head><body><h1>Fitasa</h1><p>Precio: USD 50/kg</p></body></html>"
     mock_resp = MagicMock()
     mock_resp.text = html
@@ -30,7 +30,7 @@ def test_fetch_page_text_extracts_clean_text():
 @pytest.mark.unit
 def test_fetch_page_text_removes_scripts():
     """Scripts deben ser removidos del output."""
-    from tools.web_fetch import fetch_page_text
+    from market_agent.tools.web_fetch import fetch_page_text
     html = "<html><body><script>alert('xss')</script><p>Contenido real</p></body></html>"
     mock_resp = MagicMock()
     mock_resp.text = html
@@ -46,7 +46,7 @@ def test_fetch_page_text_removes_scripts():
 @pytest.mark.unit
 def test_fetch_page_text_truncates_at_max_chars():
     """Textos largos deben truncarse y marcar truncated=True."""
-    from tools.web_fetch import fetch_page_text
+    from market_agent.tools.web_fetch import fetch_page_text
     html = f"<p>{'A' * 20_000}</p>"
     mock_resp = MagicMock()
     mock_resp.text = html
@@ -63,7 +63,7 @@ def test_fetch_page_text_truncates_at_max_chars():
 def test_fetch_page_text_http_error():
     """Error HTTP debe retornar success=False con mensaje claro."""
     import requests as req
-    from tools.web_fetch import fetch_page_text
+    from market_agent.tools.web_fetch import fetch_page_text
 
     with patch("tools.web_fetch.requests.get", side_effect=req.RequestException("404 Not Found")):
         result = fetch_page_text("https://example.com/notfound")
@@ -76,7 +76,7 @@ def test_fetch_page_text_http_error():
 @pytest.mark.unit
 def test_fetch_page_text_source_label_contains_domain():
     """El label de source debe contener el dominio de la URL."""
-    from tools.web_fetch import fetch_page_text
+    from market_agent.tools.web_fetch import fetch_page_text
     mock_resp = MagicMock()
     mock_resp.text = "<p>test</p>"
     mock_resp.raise_for_status.return_value = None
@@ -91,7 +91,7 @@ def test_fetch_page_text_source_label_contains_domain():
 @pytest.mark.unit
 def test_fetch_page_text_decodes_html_entities():
     """Entidades HTML básicas deben decodificarse."""
-    from tools.web_fetch import fetch_page_text
+    from market_agent.tools.web_fetch import fetch_page_text
     html = "<p>Precio &amp; condiciones: &lt;USD 50/kg&gt;</p>"
     mock_resp = MagicMock()
     mock_resp.text = html
@@ -109,7 +109,7 @@ def test_fetch_page_text_decodes_html_entities():
 @pytest.mark.integration
 def test_fetch_page_text_real_inta():
     """Fetch real de INTA — página pública sin login."""
-    from tools.web_fetch import fetch_page_text
+    from market_agent.tools.web_fetch import fetch_page_text
     result = fetch_page_text("https://www.inta.gob.ar", max_chars=2000)
     # INTA puede tener protección. Solo verificar que la función no explota.
     assert "success" in result

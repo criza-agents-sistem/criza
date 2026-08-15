@@ -16,9 +16,15 @@ if sys.stderr.encoding != "utf-8":
     sys.stderr = open(sys.stderr.fileno(), mode="w", encoding="utf-8", buffering=1)
 
 _AGENT_DIR = Path(__file__).parent
+_CRIZA_DIR = _AGENT_DIR.parent
 sys.path.insert(0, str(_AGENT_DIR))
+if str(_CRIZA_DIR) not in sys.path:
+    sys.path.insert(0, str(_CRIZA_DIR))
 
-from evidence_generalista import run_agent
+from orquestador.registry import get_registry
+from orquestador.invocador import invocar_agente
+
+_TENANT = "criza"
 
 
 async def main() -> None:
@@ -31,7 +37,20 @@ async def main() -> None:
         print("ERROR: se requiere un oportunidad_id.")
         sys.exit(1)
 
-    informe, evidencia, lecciones = await run_agent(oportunidad_id, verbose=True)
+    # Vía la costura (invocar_agente) — mismo camino que usa el Motor, para que el
+    # write-back al KM ocurra siempre.
+    spec = get_registry()["evidencia"]
+    contract_input = {"conocimiento": {"oportunidad_id": oportunidad_id}}
+    output = await invocar_agente(
+        spec=spec,
+        contract_input=contract_input,
+        tenant=_TENANT,
+        oportunidad_id=oportunidad_id,
+        verbose=True,
+    )
+    evidencia = output["análisis"]
+    informe = evidencia.get("informe_completo", "")
+    lecciones = output.get("nuevo_conocimiento") or []
 
     print("\n" + "=" * 60)
     print("  RESULTADO")

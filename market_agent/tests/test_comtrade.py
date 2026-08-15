@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 @pytest.mark.unit
 def test_get_import_data_no_api_key():
     """Sin API key debe retornar error claro con instrucciones."""
-    from tools.comtrade import get_import_data
+    from market_agent.tools.comtrade import get_import_data
     with patch.dict("os.environ", {"COMTRADE_API_KEY": ""}):
         result = get_import_data("3507")
     assert result["success"] is False
@@ -22,7 +22,7 @@ def test_get_import_data_no_api_key():
 @pytest.mark.unit
 def test_get_import_data_parses_response(sample_comtrade_response):
     """Con respuesta válida, debe parsear correctamente y calcular summary."""
-    from tools.comtrade import get_import_data
+    from market_agent.tools.comtrade import get_import_data
     mock_resp = MagicMock()
     mock_resp.json.return_value = sample_comtrade_response
     mock_resp.raise_for_status.return_value = None
@@ -46,7 +46,7 @@ def test_get_import_data_parses_response(sample_comtrade_response):
 @pytest.mark.unit
 def test_get_import_data_empty_response():
     """Respuesta vacía de COMTRADE debe retornar success=True con nota útil."""
-    from tools.comtrade import get_import_data
+    from market_agent.tools.comtrade import get_import_data
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"data": []}
     mock_resp.raise_for_status.return_value = None
@@ -64,7 +64,7 @@ def test_get_import_data_empty_response():
 def test_get_import_data_http_error():
     """Error HTTP debe retornar success=False con mensaje claro."""
     import requests as req
-    from tools.comtrade import get_import_data
+    from market_agent.tools.comtrade import get_import_data
 
     with patch.dict("os.environ", {"COMTRADE_API_KEY": "fake-key"}):
         with patch("tools.comtrade.requests.get", side_effect=req.RequestException("timeout")):
@@ -77,7 +77,7 @@ def test_get_import_data_http_error():
 @pytest.mark.unit
 def test_get_import_data_partner_country_passed():
     """El parámetro partner_country debe pasarse correctamente al request."""
-    from tools.comtrade import get_import_data
+    from market_agent.tools.comtrade import get_import_data
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"data": []}
     mock_resp.raise_for_status.return_value = None
@@ -96,7 +96,7 @@ def test_get_import_data_partner_country_passed():
 def test_get_import_data_real_api():
     """Consulta real a COMTRADE — requiere COMTRADE_API_KEY en .env."""
     import os
-    from tools.comtrade import get_import_data
+    from market_agent.tools.comtrade import get_import_data
 
     if not os.getenv("COMTRADE_API_KEY"):
         pytest.skip("COMTRADE_API_KEY no configurada — skip integration test")

@@ -756,7 +756,8 @@ async def run_agent(
         "informe_completo": informe,
     }
 
-    await motor_api.actualizar_props(oportunidad_id, {"evidencia": evidencia_dict}, tenant=_TENANT)
+    # El write-back de props.evidencia ya NO es responsabilidad de este agente — lo hace la
+    # costura (orquestador/invocador.py::invocar_agente), siempre. Ver agents_registry.yaml.
 
     if verbose:
         recomienda = especialista.get("si_no", False)
@@ -818,7 +819,9 @@ async def run(
     especialista = evidencia.get("especialista_recomendado") or {}
 
     return {
-        "análisis": {"informe": informe, "evidencia": evidencia},
+        # `evidencia` ya es exactamente lo que la costura persiste en props.evidencia
+        # (incluye informe_completo) — no envolverlo en otra capa.
+        "análisis": evidencia,
         "nivel_confianza": _derive_confidence(evidencia),
         "recomendaciones": brechas_altas,
         "próximo_agente": "cientifico_especialista" if especialista.get("si_no") else None,

@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 @pytest.mark.unit
 def test_search_official_stats_parses_response(sample_datosgobar_response):
     """Con respuesta válida debe retornar datasets bien estructurados."""
-    from tools.datosgobar import search_official_stats
+    from market_agent.tools.datosgobar import search_official_stats
     mock_resp = MagicMock()
     mock_resp.json.return_value = sample_datosgobar_response
     mock_resp.raise_for_status.return_value = None
@@ -31,7 +31,7 @@ def test_search_official_stats_parses_response(sample_datosgobar_response):
 def test_search_official_stats_http_error():
     """Error HTTP debe retornar success=False."""
     import requests as req
-    from tools.datosgobar import search_official_stats
+    from market_agent.tools.datosgobar import search_official_stats
 
     with patch("tools.datosgobar.requests.get", side_effect=req.RequestException("connection error")):
         result = search_official_stats("fitasa")
@@ -43,7 +43,7 @@ def test_search_official_stats_http_error():
 @pytest.mark.unit
 def test_search_official_stats_api_returns_false():
     """Si la API retorna success=false, debe manejarlo gracefully."""
-    from tools.datosgobar import search_official_stats
+    from market_agent.tools.datosgobar import search_official_stats
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"success": False}
     mock_resp.raise_for_status.return_value = None
@@ -58,7 +58,7 @@ def test_search_official_stats_api_returns_false():
 @pytest.mark.unit
 def test_search_official_stats_with_organization():
     """El filtro de organismo resuelve el alias: 'indec' → slug 'sspm'."""
-    from tools.datosgobar import search_official_stats
+    from market_agent.tools.datosgobar import search_official_stats
     mock_resp = MagicMock()
     # count > 0 para evitar el retry sin filtro
     mock_resp.json.return_value = {"success": True, "result": {"count": 1, "results": []}}
@@ -75,7 +75,7 @@ def test_search_official_stats_with_organization():
 @pytest.mark.unit
 def test_search_official_stats_description_truncated():
     """Descripciones largas deben truncarse a 300 caracteres."""
-    from tools.datosgobar import search_official_stats
+    from market_agent.tools.datosgobar import search_official_stats
     long_description = "x" * 1000
     mock_resp = MagicMock()
     mock_resp.json.return_value = {
@@ -125,7 +125,7 @@ _SERIES_RESPONSE = {
 @pytest.mark.unit
 def test_search_series_parses_response():
     """search_series parsea la respuesta de la API de Series."""
-    from tools.datosgobar import search_series
+    from market_agent.tools.datosgobar import search_series
     mock_resp = MagicMock()
     mock_resp.json.return_value = _SERIES_RESPONSE
     mock_resp.raise_for_status.return_value = None
@@ -147,7 +147,7 @@ def test_search_series_parses_response():
 def test_search_series_http_error():
     """Error HTTP → success=False."""
     import requests as req
-    from tools.datosgobar import search_series
+    from market_agent.tools.datosgobar import search_series
 
     with patch("tools.datosgobar.requests.get", side_effect=req.RequestException("timeout")):
         result = search_series("producción soja")
@@ -159,7 +159,7 @@ def test_search_series_http_error():
 @pytest.mark.unit
 def test_search_series_empty_data():
     """Sin series → lista vacía, total_found=0."""
-    from tools.datosgobar import search_series
+    from market_agent.tools.datosgobar import search_series
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"data": []}
     mock_resp.raise_for_status.return_value = None
@@ -186,7 +186,7 @@ _VALUES_RESPONSE = {
 @pytest.mark.unit
 def test_get_series_values_parses_response():
     """get_series_values parsea {fecha, valor} desde la API."""
-    from tools.datosgobar import get_series_values
+    from market_agent.tools.datosgobar import get_series_values
     mock_resp = MagicMock()
     mock_resp.json.return_value = _VALUES_RESPONSE
     mock_resp.raise_for_status.return_value = None
@@ -204,7 +204,7 @@ def test_get_series_values_parses_response():
 def test_get_series_values_http_error():
     """Error HTTP → success=False."""
     import requests as req
-    from tools.datosgobar import get_series_values
+    from market_agent.tools.datosgobar import get_series_values
 
     with patch("tools.datosgobar.requests.get", side_effect=req.RequestException("timeout")):
         result = get_series_values("INVALID_ID")
@@ -216,7 +216,7 @@ def test_get_series_values_http_error():
 @pytest.mark.unit
 def test_get_series_values_malformed_row_skipped():
     """Rows con menos de 2 elementos no crashean — se omiten."""
-    from tools.datosgobar import get_series_values
+    from market_agent.tools.datosgobar import get_series_values
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"data": [["2024-12", 100], ["2024-11"], [None, 200]]}
     mock_resp.raise_for_status.return_value = None
@@ -234,7 +234,7 @@ def test_get_series_values_malformed_row_skipped():
 @pytest.mark.integration
 def test_search_official_stats_real_api():
     """Consulta real a datos.gob.ar — sin API key requerida."""
-    from tools.datosgobar import search_official_stats
+    from market_agent.tools.datosgobar import search_official_stats
 
     result = search_official_stats("exportaciones agropecuarias", max_results=5)
     assert result["success"] is True
@@ -246,7 +246,7 @@ def test_search_official_stats_real_api():
 @pytest.mark.integration
 def test_search_series_real_api():
     """Consulta real a la API de Series de datos.gob.ar."""
-    from tools.datosgobar import search_series
+    from market_agent.tools.datosgobar import search_series
 
     result = search_series("faena porcina", max_results=5)
     assert result["success"] is True
@@ -257,7 +257,7 @@ def test_search_series_real_api():
 @pytest.mark.integration
 def test_get_series_values_real_api():
     """Si search_series encuentra una serie, get_series_values trae valores reales."""
-    from tools.datosgobar import search_series, get_series_values
+    from market_agent.tools.datosgobar import search_series, get_series_values
 
     series_result = search_series("producción porcina", max_results=3)
     if not series_result["series"]:

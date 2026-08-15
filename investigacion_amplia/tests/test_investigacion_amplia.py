@@ -228,7 +228,7 @@ def test_fetch_full_text_prueba_documento_primero():
         patch("investigacion_amplia.investigacion_amplia._get_ficha_full_text_fn", new=AsyncMock()) as mock_ficha,
     ):
         import asyncio
-        resultado = asyncio.get_event_loop().run_until_complete(_fetch_full_text_fn("doc-1"))
+        resultado = asyncio.run(_fetch_full_text_fn("doc-1"))
 
     assert resultado["success"] is True
     assert resultado["data"]["texto_completo"] == "texto INTA"
@@ -246,7 +246,7 @@ def test_fetch_full_text_cae_a_ficha_si_no_esta_en_documento():
         patch("investigacion_amplia.investigacion_amplia._get_ficha_full_text_fn", new=AsyncMock(return_value=ok_ficha)) as mock_ficha,
     ):
         import asyncio
-        resultado = asyncio.get_event_loop().run_until_complete(_fetch_full_text_fn("ficha-1"))
+        resultado = asyncio.run(_fetch_full_text_fn("ficha-1"))
 
     assert resultado["success"] is True
     assert resultado["data"]["texto_completo"] == "texto CONICET"
@@ -262,7 +262,7 @@ def test_fetch_full_text_ninguna_fuente_lo_tiene():
         patch("investigacion_amplia.investigacion_amplia._get_ficha_full_text_fn", new=AsyncMock(return_value=no_encontrado_ficha)),
     ):
         import asyncio
-        resultado = asyncio.get_event_loop().run_until_complete(_fetch_full_text_fn("id-inexistente"))
+        resultado = asyncio.run(_fetch_full_text_fn("id-inexistente"))
 
     assert resultado["success"] is False
 
@@ -309,7 +309,7 @@ def test_run_contract_formato_output():
         mock_agent.return_value = (mock_informe, RESULTADO_COMPLETO, ["lección 1"])
 
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             run({"caso": "porcicultura"})
         )
 
@@ -329,7 +329,7 @@ def test_run_contract_sin_caso_ni_oportunidad_falla():
     import asyncio
 
     with pytest.raises(ValueError, match="requiere"):
-        asyncio.get_event_loop().run_until_complete(run({}))
+        asyncio.run(run({}))
 
 
 @pytest.mark.unit
@@ -338,7 +338,7 @@ def test_run_contract_proximo_agente_mercado_si_hay_alta_prio():
         mock_agent.return_value = ("informe", RESULTADO_COMPLETO, [])
 
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             run({"caso": "porcicultura"})
         )
 
@@ -357,7 +357,7 @@ def test_run_contract_proximo_agente_none_si_no_hay_alta_prio():
         mock_agent.return_value = ("informe", resultado_sin_alta, [])
 
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             run({"caso": "sector sin prioridad alta"})
         )
 
@@ -377,7 +377,7 @@ def test_run_contract_recomendaciones_ordenadas_por_prioridad():
         mock_agent.return_value = ("informe", resultado, [])
 
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             run({"caso": "sector mixto"})
         )
 
@@ -392,7 +392,7 @@ def test_run_contract_con_oportunidad_id():
         mock_agent.return_value = ("informe", RESULTADO_COMPLETO, [])
 
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             run({
                 "caso": "porcicultura",
                 "conocimiento": {"oportunidad_id": "uuid-123"},
@@ -458,7 +458,7 @@ def test_run_pasa_estado_de_desarrollo_en_recomendaciones():
         mock_agent.return_value = ("informe", RESULTADO_CON_TRL, [])
 
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             run({"caso": "porcicultura"})
         )
 
@@ -471,10 +471,6 @@ def test_run_pasa_estado_de_desarrollo_en_recomendaciones():
 
 
 # ── v2.1 — pre-flight (migrado a knowledge_module/preflight.py genérico) ──────
-# Nota: estos tests van DESPUÉS de los que usan asyncio.get_event_loop().run_until_complete()
-# a propósito — pytest-asyncio gestiona su propio event loop y cerrarlo antes de un test legacy
-# rompe 'get_event_loop()' en ese test (RuntimeError: no current event loop). Mismo orden que
-# ya se estableció para market_agent/evidence_generalista en esta sesión.
 
 @pytest.mark.unit
 @pytest.mark.asyncio

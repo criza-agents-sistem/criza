@@ -1,0 +1,59 @@
+# Registro data-driven de agentes — CRIZA
+#
+# Sumar un agente nuevo = agregar una entrada acá + que su módulo exponga `run()` con el
+# contrato estándar (ver agents.md § Convención para agregar un nuevo agente). No hace falta
+# tocar orquestador/registry.py ni orquestador/motor.py.
+#
+# `km.prop_key`: bajo qué clave de `props` queda el resultado de este agente en el KM. La
+# costura (orquestador/invocador.py) escribe siempre `props[prop_key] = output["análisis"]`
+# de forma genérica — el agente no escribe su propio resultado al KM, eso ya no es su
+# responsabilidad (ver PROPUESTA_DESTINO.md §11 y docs/progress/2026-08-15.md).
+#
+# `activo: false` = registrado pero no invocable todavía (deuda documentada, no un placeholder
+# silencioso). El Motor lo trata igual que un agente no registrado: lo saltea sin romper el flow.
+
+agentes:
+  - nombre: mercado
+    modulo: market_agent.market_agent
+    descripcion: >
+      Evalúa demanda real, sustitución de importación y valor cliente (cruces 1, 3, 4 del
+      expediente). Demand-first, no analiza factibilidad técnica.
+    km:
+      prop_key: mercado
+    activo: true
+
+  - nombre: evidencia
+    modulo: evidence_generalista.evidence_generalista
+    descripcion: >
+      Evalúa factibilidad técnica de forma technology-agnostic (cruce 2 del expediente). Puede
+      recomendar convocar a un especialista científico.
+    km:
+      prop_key: evidencia
+    activo: true
+
+  - nombre: investigacion_amplia
+    modulo: investigacion_amplia.investigacion_amplia
+    descripcion: >
+      Mapeo exhaustivo de un sector — candidatos, competidores, tecnologías, estado del arte.
+      Primer filtro, ancho.
+    km:
+      prop_key: investigacion_amplia
+    activo: true
+
+  - nombre: armador
+    modulo: armador.armador
+    descripcion: >
+      Ensambla el expediente de decisión a partir de lo que los demás agentes ya escribieron
+      al KM. No investiga, no elige — solo sintetiza lo que ya existe.
+    km:
+      prop_key: armador
+    activo: true
+
+  - nombre: cientifico_especialista
+    modulo: scientific_agent.specialist_proteins
+    descripcion: >
+      Especialista en proteínas — ESMFold, ProteinMPNN, FoldX, diseño de variantes.
+    km:
+      prop_key: cientifico_especialista
+    activo: false  # C16/C17 sin resolver: sin contrato SEB-115 (no expone run() estándar) ni
+                   # escritura al KM propia. Habilitar cuando se cierre esa deuda.

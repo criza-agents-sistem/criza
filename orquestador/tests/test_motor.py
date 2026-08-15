@@ -30,6 +30,7 @@ from orquestador.motor import (
     _steps_index,
     ejecutar,
 )
+from orquestador.registry import AgentSpec
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -149,15 +150,23 @@ ENTRY_DOLOR = {"descripcion": "Olor de estiércol porcino", "mercado_objetivo": 
 ENTRY_SECTOR = {"sector": "porcicultura"}
 
 
+def _spec(nombre: str, run_fn) -> AgentSpec:
+    return AgentSpec(
+        nombre=nombre, modulo="", descripcion="", prop_key=nombre,
+        activo=run_fn is not None, run_fn=run_fn,
+    )
+
+
 def make_registry(**overrides):
     base = {
-        "mercado": AsyncMock(return_value=MARKET_OUTPUT),
-        "evidencia": AsyncMock(return_value=EVIDENCE_OUTPUT_SIN_ESPECIALISTA),
-        "investigacion_amplia": AsyncMock(return_value=IA_OUTPUT),
-        "armador": AsyncMock(return_value=ARMADOR_OUTPUT),
-        "cientifico_especialista": None,
+        "mercado": _spec("mercado", AsyncMock(return_value=MARKET_OUTPUT)),
+        "evidencia": _spec("evidencia", AsyncMock(return_value=EVIDENCE_OUTPUT_SIN_ESPECIALISTA)),
+        "investigacion_amplia": _spec("investigacion_amplia", AsyncMock(return_value=IA_OUTPUT)),
+        "armador": _spec("armador", AsyncMock(return_value=ARMADOR_OUTPUT)),
+        "cientifico_especialista": _spec("cientifico_especialista", None),
     }
-    base.update(overrides)
+    for nombre, valor in overrides.items():
+        base[nombre] = valor if isinstance(valor, AgentSpec) else _spec(nombre, valor)
     return base
 
 
@@ -305,7 +314,7 @@ def test_ejecutar_flow_completo():
     ):
         mock_guardar_ficha.return_value = {"id": "uuid-test-1"}
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             ejecutar(
                 flow=FLOW_SIMPLE,
                 entry=ENTRY_DOLOR,
@@ -333,14 +342,14 @@ def test_ejecutar_llama_agentes_en_orden():
         calls.append("armador")
         return ARMADOR_OUTPUT
 
-    registry["mercado"] = track_market
-    registry["armador"] = track_armador
+    registry["mercado"] = _spec("mercado", track_market)
+    registry["armador"] = _spec("armador", track_armador)
 
     with (
         patch("orquestador.motor.motor_api.guardar_ficha", new_callable=AsyncMock, return_value={"id": "uuid-2"}),
         patch("orquestador.motor.motor_api.actualizar_props", new_callable=AsyncMock),
     ):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             ejecutar(flow=FLOW_SIMPLE, entry=ENTRY_DOLOR, tenant="criza", registry=registry)
         )
 
@@ -361,7 +370,7 @@ def test_ejecutar_pasa_oportunidad_id_a_agentes():
         patch("orquestador.motor.motor_api.guardar_ficha", new_callable=AsyncMock, return_value={"id": "uuid-xyz"}),
         patch("orquestador.motor.motor_api.actualizar_props", new_callable=AsyncMock),
     ):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             ejecutar(flow=FLOW_SIMPLE, entry=ENTRY_DOLOR, tenant="criza", registry=registry)
         )
 
@@ -379,7 +388,7 @@ def test_ejecutar_on_error_stop():
         patch("orquestador.motor.motor_api.guardar_ficha", new_callable=AsyncMock, return_value={"id": "uuid-3"}),
         patch("orquestador.motor.motor_api.actualizar_props", new_callable=AsyncMock),
     ):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             ejecutar(flow=FLOW_SIMPLE, entry=ENTRY_DOLOR, tenant="criza", registry=registry)
         )
 
@@ -407,7 +416,7 @@ def test_ejecutar_on_error_continue():
         patch("orquestador.motor.motor_api.guardar_ficha", new_callable=AsyncMock, return_value={"id": "uuid-4"}),
         patch("orquestador.motor.motor_api.actualizar_props", new_callable=AsyncMock),
     ):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             ejecutar(flow=flow_con_continue, entry=ENTRY_DOLOR, tenant="criza", registry=registry)
         )
 
@@ -435,7 +444,7 @@ def test_ejecutar_skip_agente_none():
         patch("orquestador.motor.motor_api.guardar_ficha", new_callable=AsyncMock, return_value={"id": "uuid-5"}),
         patch("orquestador.motor.motor_api.actualizar_props", new_callable=AsyncMock),
     ):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             ejecutar(flow=flow_con_especialista, entry=ENTRY_DOLOR, tenant="criza", registry=registry)
         )
 
@@ -474,13 +483,13 @@ def test_ejecutar_routing_con_especialista():
         patch("orquestador.motor.motor_api.guardar_ficha", new_callable=AsyncMock, return_value={"id": "uuid-6"}),
         patch("orquestador.motor.motor_api.actualizar_props", new_callable=AsyncMock),
     ):
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             ejecutar(flow=flow, entry=ENTRY_DOLOR, tenant="criza", registry=registry)
         )
 
     assert "evidence" in orden
     # especialista es None → skipped pero el armador sigue
-    assert registry["armador"].called
+    assert registry["armador"].run_fn.called
 
 
 @pytest.mark.unit
@@ -492,7 +501,7 @@ def test_ejecutar_gate_humano_pausa():
         patch("orquestador.motor.motor_api.guardar_ficha", new_callable=AsyncMock, return_value={"id": "uuid-gate"}),
         patch("orquestador.motor.motor_api.actualizar_props", new_callable=AsyncMock),
     ):
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             ejecutar(flow=FLOW_CON_GATE, entry=ENTRY_SECTOR, tenant="criza", registry=registry)
         )
 
@@ -501,7 +510,7 @@ def test_ejecutar_gate_humano_pausa():
     assert result.gate_data["step_id"] == "investigacion_amplia"
     assert result.gate_data["espera_campo"] == "candidato_elegido"
     # market NO debe haber corrido aún
-    assert not registry["mercado"].called
+    assert not registry["mercado"].run_fn.called
 
 
 @pytest.mark.unit

@@ -20,10 +20,15 @@ if sys.stdout.encoding != "utf-8":
 if sys.stderr.encoding != "utf-8":
     sys.stderr = open(sys.stderr.fileno(), mode="w", encoding="utf-8", buffering=1)
 
+_CRIZA_DIR = Path(__file__).parent.parent
+if str(_CRIZA_DIR) not in sys.path:
+    sys.path.insert(0, str(_CRIZA_DIR))
+
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
 
-from market_agent import run_agent
+from orquestador.registry import get_registry
+from orquestador.invocador import invocar_agente
 
 OUTPUTS_DIR = Path(__file__).parent / "outputs"
 _AGENTE = "mercado"
@@ -144,11 +149,21 @@ async def main():
 
     print(f"\nIniciando análisis: {descripcion}\n")
 
-    resumen, cruces, lecciones_auto = await run_agent(
+    # Vía la costura (invocar_agente), no run_agent() directo — mismo camino que usa el Motor,
+    # para que el write-back al KM ocurra siempre, sin duplicar lógica de persistencia acá.
+    spec = get_registry()["mercado"]
+    contract_input = {"caso": texto_libre, "conocimiento": {"oportunidad_id": oportunidad_id}}
+    output = await invocar_agente(
+        spec=spec,
+        contract_input=contract_input,
+        tenant=_TENANT,
         oportunidad_id=oportunidad_id,
-        texto_libre=texto_libre,
         verbose=True,
     )
+    analisis = output["análisis"]
+    resumen = analisis.get("informe_completo", "")
+    cruces = {k: v for k, v in analisis.items() if k != "informe_completo"}
+    lecciones_auto = output.get("nuevo_conocimiento") or []
 
     # Mostrar resultado
     print("\n" + "=" * 60)
@@ -156,8 +171,6 @@ async def main():
     print("=" * 60 + "\n")
     print(resumen)
 
-    # El write-back al KM (cruces + informe completo) lo hace run_agent() directamente,
-    # para que ocurra tanto por este runner como por el Motor. No duplicarlo acá.
     if oportunidad_id and cruces:
         print(f"\n  KM actualizado: oportunidad {oportunidad_id[:8]}... → cruces 1/3/4 + informe completo escritos.")
 

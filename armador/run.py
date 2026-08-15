@@ -270,26 +270,41 @@ async def main():
         print("Opción inválida.")
         sys.exit(1)
 
-    resumen, expediente, lecciones_auto = await run_agent(
-        oportunidad_id=oportunidad_id,
-        oportunidad_dict=oportunidad_dict,
-        verbose=True,
-    )
+    if oportunidad_id:
+        # Modo 2 (oportunidad real) — vía la costura (invocar_agente), mismo camino que usa
+        # el Motor, para que el write-back al KM (props.armador) ocurra siempre.
+        from orquestador.registry import get_registry
+        from orquestador.invocador import invocar_agente
 
-    print("\n" + "=" * 60)
-    print("  EXPEDIENTE DE DECISIÓN")
-    print("=" * 60 + "\n")
-    print(resumen)
-
-    # Write-back al KM (solo si hay oportunidad_id real)
-    # Guarda: expediente estructurado (6 bloques) + informe narrativo completo (el markdown íntegro)
-    if oportunidad_id and expediente:
-        datos_expediente = {**expediente, "informe_completo": resumen}
-        result = await motor_api.actualizar_props(oportunidad_id, {"expediente": datos_expediente}, tenant=_TENANT)
-        if result.get("success"):
-            print(f"\n  KM actualizado: oportunidad {oportunidad_id[:8]}... → expediente + informe completo escritos.")
-        else:
-            print(f"\n  Error en write-back KM: {result.get('error')}")
+        spec = get_registry()["armador"]
+        contract_input = {"conocimiento": {"oportunidad_id": oportunidad_id}}
+        output = await invocar_agente(
+            spec=spec,
+            contract_input=contract_input,
+            tenant=_TENANT,
+            oportunidad_id=oportunidad_id,
+            verbose=True,
+        )
+        expediente = output["análisis"]
+        resumen = expediente.get("informe_completo", "")
+        lecciones_auto = output.get("nuevo_conocimiento") or []
+        print("\n" + "=" * 60)
+        print("  EXPEDIENTE DE DECISIÓN")
+        print("=" * 60 + "\n")
+        print(resumen)
+        print(f"\n  KM actualizado: oportunidad {oportunidad_id[:8]}... → props.armador escrito.")
+    else:
+        # Modo 1 (caso de ejemplo, testing sin KM) — no hay oportunidad_id real, no hay nada
+        # que persistir. run_agent() directo, no pasa por la costura.
+        resumen, expediente, lecciones_auto = await run_agent(
+            oportunidad_id=None,
+            oportunidad_dict=oportunidad_dict,
+            verbose=True,
+        )
+        print("\n" + "=" * 60)
+        print("  EXPEDIENTE DE DECISIÓN")
+        print("=" * 60 + "\n")
+        print(resumen)
 
     # Loop de aprendizaje — guardar lecciones de caso
     for leccion in lecciones_auto:

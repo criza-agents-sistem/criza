@@ -742,10 +742,12 @@ async def run(
     )
 
     return {
-        "análisis": {
-            "expediente": resumen,  # _extract_expediente en motor.py lee análisis.expediente
-            "resultado": expediente,
-        },
+        # `análisis` es exactamente lo que la costura persiste en props.armador — la primera
+        # vez que el expediente queda guardado (antes el Armador no escribía su propio
+        # resultado al KM, solo vivía en memoria durante esa corrida). `informe_completo` es
+        # el alias estándar (ver invocador.py); motor.py::_extract_expediente también acepta
+        # las claves viejas `expediente`/`informe` por compatibilidad.
+        "análisis": {**expediente, "informe_completo": resumen},
         "nivel_confianza": _derive_nivel_confianza(expediente.get("bloque_3") or {}),
         "recomendaciones": [],
         "próximo_agente": None,

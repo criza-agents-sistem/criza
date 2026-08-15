@@ -25,12 +25,13 @@ import anthropic
 _AGENT_DIR = Path(__file__).parent
 _CRIZA_DIR = _AGENT_DIR.parent
 sys.path.insert(0, str(_CRIZA_DIR))
-sys.path.insert(0, str(_AGENT_DIR))
 
-# `tools` acá es SIEMPRE market_agent/tools/ (paquete propio de este agente) — desde que el KM
-# se empaquetó, ya no existe ningún `knowledge_module.tools` a secas con el que pudiera
-# colisionar (se renombró a km_tools al separar lo genérico de lo específico de CRIZA).
-from tools import (
+# Import calificado (market_agent.tools, no `tools` a secas) — market_agent/ ya es un paquete
+# real (__init__.py agregado 2026-08-15) para que no colisione con el tools/ de ningún otro
+# agente. Antes esto dependía de agregar market_agent/ a sys.path e importar `tools` como
+# módulo top-level, lo que obligaba a orquestador/registry.py a limpiar sys.modules["tools"]
+# a mano entre imports de agentes distintos.
+from market_agent.tools import (
     buscar_corpus_cientifico,
     search_official_stats,
     search_series,
@@ -837,21 +838,11 @@ async def run_agent(
         "modelo":          model,
     }
 
-    # Write-back al KM — resultado estructurado + informe narrativo completo.
-    # Vive ACÁ y no en run.py (donde estaba) para que ocurra en TODOS los caminos:
-    # el Motor llama run() -> run_agent() sin pasar por run.py, así que con la
-    # escritura en el runner el pipeline orquestado nunca dejaba `props.mercado`
-    # y el Armador se bloqueaba con "mercado: ausente". Mismo patrón que
-    # evidence_generalista. Ver "Regla de escritura al KM" en CLAUDE.md.
-    if oportunidad_id:
-        await motor_api.actualizar_props(
-            oportunidad_id,
-            {"mercado": {**cruces_dict, "informe_completo": resumen_markdown}},
-            tenant=_TENANT,
-        )
-        if verbose:
-            print(f"  KM actualizado — cruces 1/3/4 + informe completo escritos.")
-
+    # El write-back de resultado+informe al KM (props.mercado) ya NO es responsabilidad de
+    # este agente — lo hace la costura (orquestador/invocador.py::invocar_agente), siempre,
+    # para cualquier camino de invocación (Motor o directo). Antes vivía acá porque vivía en
+    # run.py y el Motor no pasaba por ahí — ver docs/progress/2026-07-22.md para el bug
+    # original. Ver "Regla de escritura al KM" en CLAUDE.md y agents_registry.yaml.
     await _persist_tokens()
     return resumen_markdown, cruces_dict, lecciones_auto
 
@@ -906,7 +897,9 @@ async def run(
     )
 
     return {
-        "análisis": {"resumen": resumen, "cruces": cruces},
+        # `análisis` es exactamente lo que la costura persiste en props.mercado — por eso
+        # incluye `informe_completo`, no un campo `resumen` aparte (ver invocador.py).
+        "análisis": {**cruces, "informe_completo": resumen},
         "nivel_confianza": _derive_confidence(cruces),
         "recomendaciones": cruces.get("gaps_prioritarios", []),
         "próximo_agente": None,

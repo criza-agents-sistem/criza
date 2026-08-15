@@ -101,9 +101,8 @@
 
 | Tipo de output | Qué contiene | Key en KM | Cómo | Estado |
 |---|---|---|---|---|
-| **Resultado estructurado** | `cruce_3` + `mapa_candidatos` (con TRL) + `gaps_prioritarios` + metadata v2.0 | `props.investigacion_amplia` | `motor_api.actualizar_props` | ✅ implementado |
-| **Informe narrativo completo** | El markdown íntegro con fuentes y cobertura | `props.investigacion_amplia_informe` | `motor_api.actualizar_props` | ✅ implementado |
-| **Token usage** | Tokens por run (input/output/calls) | `props.token_usage.investigacion_amplia` | `TokenTracker` → `motor_api.actualizar_props` | ✅ implementado |
+| **Resultado estructurado + informe narrativo** | `cruce_3` + `mapa_candidatos` (con TRL) + `gaps_prioritarios` + metadata v2.0 + `informe_completo` (markdown íntegro con fuentes y cobertura), todo en un solo dict | `props.investigacion_amplia` | La costura (`orquestador/invocador.py::invocar_agente`) persiste `análisis` tal cual — ya no es este módulo el que escribe (2026-08-15, ver PROPUESTA_DESTINO.md §11). Antes escribía además `props.investigacion_amplia_informe` por separado, duplicando el mismo texto — se eliminó esa clave. | ✅ implementado |
+| **Token usage** | Tokens por run (input/output/calls) | `props.token_usage.investigacion_amplia` | `TokenTracker` → `motor_api.actualizar_props` (esta escritura sigue siendo del agente, no de la costura) | ✅ implementado |
 | **Aprendizaje** | Lecciones del caso (auto) + de proceso (humano al cierre) | área `lecciones` | `aprendizaje.guardar_leccion_caso` + `cierre_aprendizaje` | 🔵 lecciones_caso retornadas, persistencia pendiente cierre |
 
 ---

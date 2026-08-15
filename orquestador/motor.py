@@ -21,6 +21,7 @@ if str(_CRIZA_DIR) not in sys.path:
     sys.path.insert(0, str(_CRIZA_DIR))
 
 from knowledge_module.motor import api as motor_api
+from orquestador.invocador import invocar_agente
 
 try:
     import yaml as _yaml
@@ -154,7 +155,9 @@ async def ejecutar(
         flow:          Flow config cargado desde YAML.
         entry:         Entrada del usuario {tipo, descripcion, ...}.
         tenant:        Instancia (ej: "criza").
-        registry:      {nombre_agente: callable_run | None}.
+        registry:      {nombre_agente: AgentSpec} — ver orquestador/registry.py. La invocación
+                       y la persistencia al KM las hace `invocar_agente` (orquestador/invocador.py),
+                       no este loop directamente.
         state_inicial: Para reanudar desde un estado previo (recovery).
         verbose:       Logging a stdout.
 
@@ -233,9 +236,9 @@ async def ejecutar(
         # ── Agent step ───────────────────────────────────────────────────────
         elif step["type"] == "agent":
             agent_name = step["agent"]
-            agent_fn = registry.get(agent_name)
+            spec = registry.get(agent_name)
 
-            if agent_fn is None:
+            if spec is None or spec.run_fn is None:
                 msg = f"Agente '{agent_name}' no disponible (stub o no registrado)"
                 if verbose:
                     print(f"  [MOTOR] SKIP: {msg}")
@@ -256,8 +259,13 @@ async def ejecutar(
                 }
                 await _write_status(state, pipeline_status, tenant)
 
-                agent_output = await agent_fn(
+                # La persistencia al KM ya no es responsabilidad del agente — la costura
+                # (invocar_agente) la hace siempre, sin excepción (PROPUESTA_CONDUCTOR.md §4.2).
+                agent_output = await invocar_agente(
+                    spec=spec,
                     contract_input=contract_input,
+                    tenant=tenant,
+                    oportunidad_id=state.get("oportunidad_id"),
                     verbose=verbose,
                 )
                 steps_output[current_id] = agent_output
@@ -443,10 +451,17 @@ def _advance(step_ids: list[str], current: str) -> str | None:
 
 
 def _extract_expediente(steps_output: dict) -> str | None:
-    """Extrae el markdown del expediente del output del Armador."""
+    """Extrae el markdown del expediente del output del Armador. `informe_completo` es la
+    clave estándar (ver invocador.py); `expediente`/`informe` quedan por compatibilidad con
+    el shape viejo."""
     armador_out = steps_output.get("armador", {})
     análisis = armador_out.get("análisis", {})
-    return análisis.get("expediente") or análisis.get("informe") or None
+    return (
+        análisis.get("informe_completo")
+        or análisis.get("expediente")
+        or análisis.get("informe")
+        or None
+    )
 
 
 async def _write_status(

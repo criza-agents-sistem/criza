@@ -281,8 +281,14 @@ async def test_run_agent_captura_submit_evidencia():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_run_agent_escribe_evidencia_al_km():
-    """run_agent debe llamar actualizar_props con la clave 'evidencia'."""
+async def test_run_agent_devuelve_evidencia_lista_para_persistir():
+    """
+    run_agent ya NO escribe props.evidencia al KM directamente — eso lo hace la costura
+    (orquestador/invocador.py::invocar_agente), siempre, para cualquier camino de invocación.
+    Ver test_invocador.py para la cobertura de esa persistencia. Acá solo se verifica que
+    run_agent devuelve el dict listo para que la costura lo persista tal cual (con
+    informe_completo adentro). token_usage sigue siendo responsabilidad del agente.
+    """
     mock_tool_use = type("ToolUseBlock", (), {
         "type": "tool_use", "name": "submit_evidencia", "id": "tool_ev_02",
         "input": EVIDENCIA_MOCK,
@@ -302,15 +308,21 @@ async def test_run_agent_escribe_evidencia_al_km():
          patch("evidence_generalista.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
         mock_anthropic.return_value.messages.create.return_value = mock_response
 
-        await eg.run_agent("uuid-km", verbose=False)
+        informe, evidencia_dict, _ = await eg.run_agent("uuid-km", verbose=False)
 
-    # Verificar que se escribió 'evidencia' al KM
+    assert "informe_completo" in evidencia_dict
+    assert evidencia_dict["informe_completo"] == informe
+    assert "cruce_2" in evidencia_dict
+
+    # token_usage sigue siendo el agente el que lo escribe (no pasó por la costura)
     keys_escritas = set()
     for call in mock_actualizar.call_args_list:
         if call.args and len(call.args) >= 2:
             keys_escritas.update(call.args[1].keys())
-    assert "evidencia" in keys_escritas, f"'evidencia' no fue escrita al KM. Keys: {keys_escritas}"
     assert "token_usage" in keys_escritas, f"'token_usage' no fue escrita al KM. Keys: {keys_escritas}"
+    assert "evidencia" not in keys_escritas, (
+        "run_agent no debería escribir 'evidencia' directamente — eso es de la costura ahora"
+    )
 
 @pytest.mark.unit
 @pytest.mark.asyncio
@@ -606,6 +618,9 @@ async def test_run_contract_formato_output():
             "brechas_tecnicas": [{"brecha": "Escalado", "impacto_en_decision": "alto"}],
         },
         "especialista_recomendado": {"si_no": True},
+        # run_agent siempre devuelve informe_completo adentro de evidencia_dict — es lo que
+        # la costura persiste tal cual en props.evidencia (ver invocador.py).
+        "informe_completo": informe,
     }
     lecciones = ["lección de prueba"]
 
@@ -613,7 +628,7 @@ async def test_run_contract_formato_output():
         result = await eg.run({"conocimiento": {"oportunidad_id": "uuid-abc"}})
 
     assert "análisis" in result
-    assert result["análisis"]["informe"] == informe
+    assert result["análisis"]["informe_completo"] == informe
     assert result["nivel_confianza"] == "medio"
     assert result["recomendaciones"] == ["Escalado"]
     assert result["próximo_agente"] == "cientifico_especialista"
