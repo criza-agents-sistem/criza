@@ -265,8 +265,8 @@ login/permisos reales queda para cuando haga falta de verdad.
   `utils/ai_client.py` (nuevo) — `complete()`/`complete_streaming()` traducen entre la forma
   nativa de Anthropic (que ya usan los 5 agentes) y LiteLLM (decisión de plataforma, ver
   `platform-boundary.md`). Migrados Evidence Generalista, Investigación Amplia y Armador
-  (streaming). **Mercado excluido a propósito** — depende de la tool nativa `web_search` de
-  Anthropic, sin equivalente portable todavía; se migra el día que haga falta de verdad elegir
-  otro proveedor para ese agente puntual. Verificado con corridas reales completas de los 3
-  agentes migrados (tool-use, truncado, prompt caching, streaming — no mockeado). Detalle:
-  `docs/progress/2026-08-15.md`.
+  (streaming). **Mercado es Anthropic-only — excepción permanente, no pendiente de migrar**
+  (definido con Sebas el 15/08): depende de la tool nativa `web_search` de Anthropic, sin
+  equivalente portable en el traductor de proveedores — no es un TODO abierto, es una decisión
+  cerrada. Verificado con corridas reales completas de los 3 agentes migrados (tool-use,
+  truncado, prompt caching, streaming — no mockeado). Detalle: `docs/progress/2026-08-15.md`.

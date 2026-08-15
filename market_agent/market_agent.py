@@ -47,6 +47,13 @@ from knowledge_module.preflight import FuenteCheck, FuenteCheckResult, run_prefl
 from knowledge_module.db import get_session_factory
 from sqlalchemy import text as _sql_text
 
+# Mercado es Anthropic-only por decisión — excepción permanente, no pendiente de migrar.
+# Usa la tool nativa `web_search_20250305` (búsqueda que corre del lado del servidor de
+# Anthropic, ver TOOLS abajo), sin equivalente en el traductor genérico de proveedores
+# (utils/ai_client.py, que sí usan Evidence Generalista/Investigación Amplia/Armador desde el
+# 2026-08-15). No aplica el mismo patrón acá porque no hay forma de expresar una tool nativa de
+# un proveedor específico en el formato de función que el traductor entiende. Decisión
+# `componente=ai_client` en `decisiones_sistema` (KM), confirmada por Sebas el 2026-08-15.
 client = anthropic.Anthropic()
 DEFAULT_MODEL = os.getenv("MARKET_MODEL", "claude-sonnet-4-6")
 _AGENTE = "mercado"
