@@ -49,6 +49,17 @@ from utils.token_tracker import TokenTracker
 DEFAULT_MODEL = os.getenv("CONDUCTOR_MODEL", "claude-sonnet-4-6")
 _TENANT = "criza"
 
+# Especialistas conectados al modelo de casos.yaml (invocables vía frente_id) — lista explícita,
+# no inferida del registry, porque los 4 agentes viejos (mercado/evidencia/investigacion_amplia/
+# armador) siguen solo en el modelo oportunidad_id y NO deben poder invocarse desde acá (fallarían
+# con un error confuso dentro de su propio run() en vez de uno claro del Conductor). Etapa 7 sumó
+# el segundo (ingeniero_ambiental) — de acá en más, sumar un especialista nuevo a esta lista es
+# todo lo que hace falta para que el Conductor lo pueda invocar, sin tocar TOOLS ni el dispatch.
+_ESPECIALISTAS_CASOS = {
+    "microbiologo": "Especialista Microbiólogo",
+    "ingeniero_ambiental": "Especialista Ingeniero Ambiental",
+}
+
 
 # ── Resolución de identificadores (Sebas habla por nombre, no por UUID) ────────
 
@@ -104,21 +115,24 @@ TOOLS = [
         },
     },
     {
-        "name": "correr_microbiologo",
+        "name": "correr_especialista",
         "description": (
-            "Invoca al Especialista Microbiólogo contra un frente de un caso, vía la costura "
-            "(nunca directo). Gasta tokens reales y escribe al KM — no lo llames sin que Sebas "
-            "lo haya pedido o aprobado explícitamente en la conversación."
+            "Invoca a un especialista de la biblioteca contra un frente de un caso, vía la "
+            "costura (nunca directo). Especialistas disponibles hoy: "
+            + ", ".join(f"'{k}' ({v})" for k, v in _ESPECIALISTAS_CASOS.items())
+            + ". Gasta tokens reales y escribe al KM — no lo llames sin que Sebas lo haya pedido "
+              "o aprobado explícitamente en la conversación."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
+                "especialista": {"type": "string", "enum": list(_ESPECIALISTAS_CASOS.keys())},
                 "caso": {"type": "string", "description": "Nombre (o fragmento) del caso, o su UUID."},
                 "frente": {"type": "string", "description": "Nombre (o fragmento) del frente, o su UUID."},
                 "tarea": {"type": "string", "description": "Opcional — instrucción específica para esta corrida."},
                 "contexto": {"type": "string", "description": "Opcional — contexto adicional para esta corrida."},
             },
-            "required": ["caso", "frente"],
+            "required": ["especialista", "caso", "frente"],
         },
     },
     {
@@ -189,7 +203,10 @@ async def _tool_ver_caso(identificador: str) -> dict:
     }
 
 
-async def _tool_correr_microbiologo(caso_ident: str, frente_ident: str, tarea: str | None, contexto: str | None, verbose: bool) -> dict:
+async def _tool_correr_especialista(nombre_especialista: str, caso_ident: str, frente_ident: str, tarea: str | None, contexto: str | None, verbose: bool) -> dict:
+    if nombre_especialista not in _ESPECIALISTAS_CASOS:
+        return {"error": f"'{nombre_especialista}' no es un especialista disponible. Opciones: {list(_ESPECIALISTAS_CASOS.keys())}."}
+
     caso = await _resolver_caso(caso_ident)
     if not caso:
         return {"error": f"No se encontró ningún caso que coincida con '{caso_ident}'."}
@@ -198,9 +215,9 @@ async def _tool_correr_microbiologo(caso_ident: str, frente_ident: str, tarea: s
         return {"error": f"No se encontró ningún frente que coincida con '{frente_ident}' dentro de '{caso_ident}'."}
 
     registry = get_registry()
-    spec = registry.get("microbiologo")
+    spec = registry.get(nombre_especialista)
     if spec is None or spec.run_fn is None:
-        return {"error": "El especialista microbiólogo no está disponible (inactivo o sin cargar)."}
+        return {"error": f"El especialista '{nombre_especialista}' no está disponible (inactivo o sin cargar)."}
 
     output = await invocar_agente(
         spec=spec,
@@ -265,11 +282,14 @@ TOOLS DISPONIBLES:
 - listar_casos: cuando no sepas de qué caso habla Sebas.
 - ver_caso: el briefing completo — identidad, frentes (y si cada uno ya tiene documentos
   producidos), pendientes abiertos, lecciones relevantes, decisiones de sistema vigentes.
-- correr_microbiologo: invoca al especialista microbiólogo contra un frente. GASTA TOKENS
-  REALES Y ESCRIBE AL KM — no lo llames sin que Sebas lo haya pedido o aprobado explícitamente.
-  Antes de sugerirlo, chequeá con ver_caso si ese frente ya tiene un documento producido — no
-  re-correr un análisis que ya existe sin decírselo a Sebas primero (puede que igual quiera
-  reintentar, pero es su decisión, no la tuya).
+- correr_especialista: invoca a un especialista de la biblioteca (microbiólogo, ingeniero
+  ambiental) contra un frente. GASTA TOKENS REALES Y ESCRIBE AL KM — no lo llames sin que Sebas
+  lo haya pedido o aprobado explícitamente. Antes de sugerirlo, chequeá con ver_caso si ese
+  frente ya tiene un documento producido — no re-correr un análisis que ya existe sin decírselo
+  a Sebas primero (puede que igual quiera reintentar, pero es su decisión, no la tuya). Elegí el
+  especialista según qué pregunta hay que responder — el microbiólogo evalúa si un enfoque es
+  biológica/químicamente viable, el ingeniero ambiental evalúa si ese enfoque ya identificado se
+  puede construir y operar de verdad (balances de masa/energía, dimensionamiento).
 - ver_documento: el texto completo de un documento puntual, cuando Sebas quiere profundizar.
 
 CÓMO RESPONDER (PROPUESTA_CONDUCTOR.md §3.2 — la atención de Sebas es el recurso escaso):
@@ -279,8 +299,9 @@ frente que un especialista marcó como necesitando ayuda adicional y nadie lo si
 es exactamente el tipo de cosa que solo vos podés ver.
 
 LÍMITES EXPLÍCITOS DE ESTA VERSIÓN (no prometas lo que no hacés todavía):
-- Solo podés invocar al especialista microbiólogo — todavía no hay otros especialistas conectados
-  a este modelo de datos.
+- Solo podés invocar los especialistas conectados al modelo de casos.yaml (hoy: microbiólogo,
+  ingeniero ambiental) — los 4 agentes del expediente viejo (mercado, evidencia, investigación
+  amplia, armador) todavía no están conectados a este modelo.
 - No persistís en ningún lado qué se decidió en esta conversación — si Sebas necesita que quede
   un registro de una decisión de negocio sobre el caso, avisale que eso todavía no está resuelto
   (gap conocido, no lo inventes ni finjas que lo guardaste).
@@ -294,9 +315,9 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
         return await _tool_listar_casos()
     if nombre == "ver_caso":
         return await _tool_ver_caso(tool_input.get("caso", ""))
-    if nombre == "correr_microbiologo":
-        return await _tool_correr_microbiologo(
-            tool_input.get("caso", ""), tool_input.get("frente", ""),
+    if nombre == "correr_especialista":
+        return await _tool_correr_especialista(
+            tool_input.get("especialista", ""), tool_input.get("caso", ""), tool_input.get("frente", ""),
             tool_input.get("tarea"), tool_input.get("contexto"), verbose,
         )
     if nombre == "ver_documento":

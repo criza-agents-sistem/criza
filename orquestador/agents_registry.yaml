@@ -69,3 +69,17 @@ agentes:
     km:
       prop_key: microbiologo
     activo: true
+
+  - nombre: ingeniero_ambiental
+    nombre_display: Especialista Ingeniero Ambiental
+    modulo: ingeniero_ambiental_agent.ingeniero_ambiental_agent
+    descripcion: >
+      Especialista en factibilidad de ingeniería (balances de masa/energía, dimensionamiento
+      preliminar, integración de planta) de un enfoque técnico ya identificado por otro
+      especialista. Segundo agente de la biblioteca de especialistas — construido en respuesta
+      directa al gap que el Microbiólogo ya recomendó en una corrida real sobre Helios (ver
+      ingeniero_ambiental_agent/docs/DESIGN_GATE.md). Solo invocable vía frente_id
+      (config/plantillas/casos.yaml) — no soporta oportunidad_id.
+    km:
+      prop_key: ingeniero_ambiental
+    activo: true

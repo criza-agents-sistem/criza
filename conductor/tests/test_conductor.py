@@ -41,13 +41,19 @@ def test_tools_count():
 @pytest.mark.unit
 def test_tools_names():
     nombres = {t["name"] for t in cond.TOOLS}
-    assert nombres == {"listar_casos", "ver_caso", "correr_microbiologo", "ver_documento"}
+    assert nombres == {"listar_casos", "ver_caso", "correr_especialista", "ver_documento"}
 
 
 @pytest.mark.unit
-def test_correr_microbiologo_requiere_caso_y_frente():
-    tool = next(t for t in cond.TOOLS if t["name"] == "correr_microbiologo")
-    assert set(tool["input_schema"]["required"]) == {"caso", "frente"}
+def test_correr_especialista_requiere_especialista_caso_y_frente():
+    tool = next(t for t in cond.TOOLS if t["name"] == "correr_especialista")
+    assert set(tool["input_schema"]["required"]) == {"especialista", "caso", "frente"}
+
+
+@pytest.mark.unit
+def test_correr_especialista_enum_incluye_los_dos_especialistas():
+    tool = next(t for t in cond.TOOLS if t["name"] == "correr_especialista")
+    assert set(tool["input_schema"]["properties"]["especialista"]["enum"]) == {"microbiologo", "ingeniero_ambiental"}
 
 
 # ── _resolver_caso ───────────────────────────────────────────────────────────
@@ -141,7 +147,7 @@ async def test_tool_correr_microbiologo_invoca_con_frente_id():
         patch("conductor.get_registry", return_value=mock_registry),
         patch("conductor.invocar_agente", new=AsyncMock(return_value=mock_output)) as mock_invocar,
     ):
-        result = await cond._tool_correr_microbiologo("helios", "técnico", None, None, False)
+        result = await cond._tool_correr_especialista("microbiologo", "helios", "técnico", None, None, False)
 
     mock_invocar.assert_awaited_once()
     _, kwargs = mock_invocar.call_args
@@ -153,13 +159,43 @@ async def test_tool_correr_microbiologo_invoca_con_frente_id():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_tool_correr_microbiologo_frente_no_encontrado():
+async def test_tool_correr_especialista_frente_no_encontrado():
     with (
         patch("conductor._resolver_caso", new=AsyncMock(return_value=CASO_HELIOS)),
         patch("conductor._resolver_frente", new=AsyncMock(return_value=None)),
     ):
-        result = await cond._tool_correr_microbiologo("helios", "no existe", None, None, False)
+        result = await cond._tool_correr_especialista("microbiologo", "helios", "no existe", None, None, False)
     assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_correr_especialista_nombre_invalido():
+    result = await cond._tool_correr_especialista("especialista_inventado", "helios", "técnico", None, None, False)
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_correr_especialista_ingeniero_ambiental():
+    """El segundo especialista (Etapa 7) también es invocable — no quedó hardcodeado a microbiólogo."""
+    mock_spec = type("Spec", (), {"run_fn": AsyncMock()})()
+    mock_registry = {"ingeniero_ambiental": mock_spec}
+    mock_output = {
+        "análisis": {"evaluacion_tecnica": {"enfoques_tecnicos_identificados": []}, "especialista_adicional_recomendado": {"si_no": False}, "informe_completo": "x"},
+        "nivel_confianza": "alto",
+        "recomendaciones": [],
+    }
+    with (
+        patch("conductor._resolver_caso", new=AsyncMock(return_value=CASO_HELIOS)),
+        patch("conductor._resolver_frente", new=AsyncMock(return_value=FRENTE_TECNICO)),
+        patch("conductor.get_registry", return_value=mock_registry),
+        patch("conductor.invocar_agente", new=AsyncMock(return_value=mock_output)) as mock_invocar,
+    ):
+        result = await cond._tool_correr_especialista("ingeniero_ambiental", "helios", "técnico", None, None, False)
+
+    mock_invocar.assert_awaited_once()
+    assert result["nivel_confianza"] == "alto"
 
 
 # ── _tool_ver_documento ──────────────────────────────────────────────────────

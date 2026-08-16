@@ -57,14 +57,13 @@ MicroBigs no tienen ninguna oportunidad asociada.
 |---|---|---|
 | `listar_casos` | Lista los casos existentes (`utils/casos.py::listar_casos`) — para no requerir que Sebas sepa IDs de antemano. | ✅ construido |
 | `ver_caso` | El briefing completo de un caso — identidad, frentes (con si cada uno ya tiene `documento_caso` o no), pendientes abiertos, lecciones relevantes, decisiones de sistema vigentes. Implementa el protocolo de la Etapa 3, adaptado al modelo real (`casos.yaml`). | ✅ construido |
-| `correr_microbiologo` | Invoca al Especialista Microbiólogo contra un frente, vía la costura (`invocar_agente(..., frente_id=...)`) — nunca corre el agente directo, siempre por el mismo camino que cualquier otro invocador (`PROPUESTA_CONDUCTOR.md` §3.1, "otra puerta de entrada, nunca un bypass"). | ✅ construido |
+| `correr_especialista` | Invoca a un especialista de la biblioteca (por nombre) contra un frente, vía la costura (`invocar_agente(..., frente_id=...)`) — nunca corre el agente directo, siempre por el mismo camino que cualquier otro invocador (`PROPUESTA_CONDUCTOR.md` §3.1, "otra puerta de entrada, nunca un bypass"). **Generalizado en la Etapa 7** (era `correr_microbiologo`, hardcodeado a un solo especialista) — al sumar el Ingeniero Ambiental como segundo especialista casos.yaml-conectado, hardcodear un tool por especialista dejó de escalar. Ahora valida contra `_ESPECIALISTAS_CASOS` (lista explícita en `conductor.py`, no inferida del registry — los 4 agentes viejos, oportunidad_id-only, no deben poder invocarse desde acá). Sumar un especialista nuevo de acá en más = agregar una entrada a esa lista, sin tocar `TOOLS` ni el dispatch. | ✅ construido, generalizado 2026-08-16 |
 | `ver_documento` | Lee el contenido completo de un `documento_caso` puntual — para cuando Sebas quiere profundizar en algo que `ver_caso` solo resumió. | ✅ construido |
 
-**No incluido en v1** (ver §4): invocar otros especialistas (solo existe el Microbiólogo hoy —
-Etapa 7 suma el segundo), `estimar_costo`/`inspeccionar_caso`/`reanudar_desde` de Etapa 2 (el
-modelo `oportunidad`+flow no tiene ningún caso real activo hoy — se conectan cuando haga falta),
-persistencia de qué se decidió en la conversación (ver §4 y `PROPUESTA_CONDUCTOR.md` §9 decisión
-4, sigue abierta).
+**No incluido en v1** (ver §4): `estimar_costo`/`inspeccionar_caso`/`reanudar_desde` de Etapa 2
+(el modelo `oportunidad`+flow no tiene ningún caso real activo hoy — se conectan cuando haga
+falta), persistencia de qué se decidió en la conversación (ver §4 y `PROPUESTA_CONDUCTOR.md` §9
+decisión 4, sigue abierta).
 
 ### El loop conversacional — por qué no es el loop de los otros agentes
 
@@ -123,10 +122,10 @@ Sebas lo corta (`salir`/Ctrl+C), no cuando "terminó de pensar".
 
 | Feature | Versión | Razón |
 |---|---|---|
-| Invocar otros especialistas además del Microbiólogo | v2 (Etapa 7 del plan) | Solo existe un especialista casos.yaml-conectado hoy. |
+| Invocar otros especialistas además del Microbiólogo | ✅ hecho (Etapa 7, 2026-08-16) | `correr_especialista` generalizado — ver decisión E abajo. |
 | Primitivas de Etapa 2 (`inspeccionar_caso`/`estimar_costo`/`reanudar_desde`, modelo `oportunidad`+flow) | v2, si aparece un caso real en ese modelo | Ningún caso real activo usa ese modelo hoy (Helios/MicroBigs son `casos.yaml`) — conectarlas ahora sería diseño especulativo. |
 | Captura de qué se decidió en la conversación | Backlog, sin resolver | Mismo gap declarado en `docs/PROTOCOLO_LECTURA_CONDUCTOR.md` §5 — no se inventa un mecanismo sin un caso real que fuerce la forma correcta. |
-| Consola web (`PROPUESTA_CONDUCTOR.md` §7) | Etapa 6 del plan | El Conductor v1 es CLI (`run.py`), como todos los agentes hoy. |
+| Consola web (`PROPUESTA_CONDUCTOR.md` §7) | ✅ hecho (Etapa 6, `web/` + `api/`) | El Conductor sigue siendo CLI (`run.py`) — la consola web (Etapa 6) es solo-lectura, no conversacional todavía. |
 
 ---
 
@@ -138,6 +137,7 @@ Sebas lo corta (`salir`/Ctrl+C), no cuando "terminó de pensar".
 | B | ¿Contra qué modelo de datos arma el briefing — `oportunidad`+flow (Etapa 2) o `casos.yaml` (Etapa 4)? | Etapa 2 (primitivas ya construidas) / Etapa 4 (modelo real de Helios hoy) | **`casos.yaml`** — es el modelo que el caso real (Helios) usa hoy. Las primitivas de Etapa 2 quedan disponibles para cuando un caso real las necesite, no se descartan, no se usan todavía. | 2026-08-16 |
 | C | ¿Qué agentes puede invocar en v1? | Solo Microbiólogo / Los 4 agentes viejos también | **Solo Microbiólogo** — es el único conectado al modelo `casos.yaml` (Etapa 4). Los 4 agentes viejos siguen sin tocarse (`PROPUESTA_DESTINO.md` §6, decisión ya tomada, no se reabre acá). | 2026-08-16 |
 | D | ¿Persiste qué se decidió en la conversación? | Sí, mecanismo nuevo / No, gap conocido | **No en v1** — mismo gap ya declarado explícitamente en `docs/PROTOCOLO_LECTURA_CONDUCTOR.md` §5. Inventar el mecanismo sin un caso real que muestre la forma correcta repetiría el error que este proyecto viene evitando toda la sesión. | 2026-08-16 |
+| E | Al sumar el segundo especialista (Etapa 7), ¿un tool nuevo (`correr_ingeniero_ambiental`) o generalizar el existente? | Tool nuevo por especialista / Generalizar `correr_microbiologo` → `correr_especialista` | **Generalizar.** Con 2 especialistas ya era visible que un tool por especialista no escala (cada uno nuevo hubiera exigido tocar `TOOLS` + `_despachar_tool` + el SYSTEM_PROMPT). `correr_especialista(especialista, caso, frente, ...)` valida contra `_ESPECIALISTAS_CASOS` (lista explícita, no inferida del registry completo — los 4 agentes viejos no deben ser invocables desde acá). Sumar un especialista nuevo de acá en más es una línea en esa lista. | 2026-08-16 |
 
 ---
 
@@ -145,10 +145,9 @@ Sebas lo corta (`salir`/Ctrl+C), no cuando "terminó de pensar".
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-D cerradas, ninguna abierta.
+Decisiones A-E cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
-- Invocar otros especialistas → Etapa 7 del plan
 - Primitivas de Etapa 2 (`oportunidad`+flow) → v2, si aparece un caso real en ese modelo
 - Captura de decisiones de la conversación → backlog, gap conocido y declarado
-- Consola web → Etapa 6 del plan
+- Conductor conversacional en la web (más allá de las páginas de solo lectura de Etapa 6) → v2
