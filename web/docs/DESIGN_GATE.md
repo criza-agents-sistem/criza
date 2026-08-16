@@ -52,7 +52,7 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `GET /casos` | Lista de casos (id, nombre, descripción, estadío) — `utils/casos.py::listar_casos` | ✅ construido |
 | `GET /casos/{id}` | Detalle completo: identidad + frentes (con documentos y artefactos externos de cada uno) + pendientes | ✅ construido |
 | `GET /documentos/{id}` | Contenido completo de un `documento_caso` puntual | ✅ construido |
-| `POST /conductor/sesiones` | Crea una sesión de chat nueva (`session_id`), estado en memoria del proceso. | ✅ construido (v1.2, mismo día) |
+| `POST /conductor/sesiones` | Crea una sesión de chat nueva — la ficha creada en el KM (área `conductor_sesiones`) *es* el `session_id`, no hay un id separado que mantener sincronizado. | ✅ construido (v1.2, mismo día; persistencia al KM sumada el mismo día tras la pregunta de Sebas) |
 | `POST /conductor/sesiones/{id}/mensajes` | Un turno de conversación — envuelve `conductor.enviar_mensaje()` tal cual, misma función que usa `run.py` (CLI). | ✅ construido (v1.2, mismo día) |
 
 ### Páginas — `web/app/`
@@ -69,16 +69,33 @@ lectura — sin capa de estado cliente, no hace falta para páginas sin interacc
 es la excepción deliberada: necesita mantener el historial visible y el estado de "enviando", eso
 exige un client component (`"use client"`).
 
-### El chat del Conductor — sesiones en memoria, no un store persistente
+### El chat del Conductor — sesiones persistidas en el KM (no en memoria)
 
 `enviar_mensaje()` (`conductor/conductor.py`) muta y devuelve una lista `messages` que mezcla
 dicts planos y objetos del SDK de Anthropic (bloques `ContentBlock` para turnos del asistente) —
 no es serializable a JSON tal cual para que el cliente la sostenga entre requests HTTP (a
-diferencia de `/casos`, que si es stateless). Solución: `_sesiones_conductor` (dict en memoria
-del proceso de `api/main.py`, `session_id -> messages`) — el browser solo manda `session_id` +
-texto, el estado real de la conversación (incluidos los bloques del SDK) nunca sale del proceso
-Python. Suficiente para un solo usuario local (Sebas) — se pierde si se reinicia el server, límite
-aceptado de v1, no un caso de uso real que lo necesite hoy.
+diferencia de `/casos`, que sí es stateless). Primera versión (mismo día, antes de esto):
+`_sesiones_conductor`, un dict en memoria del proceso de `api/main.py` — se perdía al reiniciar
+`api/run.py`. Sebas preguntó explícitamente por qué (esperaba, con razón, que el chat se
+comportara como todo lo demás en el proyecto: "si el output de un agente no está en el KM, no
+existe para el sistema", CLAUDE.md).
+
+**Solución (mismo día, después):** área nueva `conductor_sesiones` en el KM
+(`config/plantillas/conductor_sesiones.yaml`), una ficha por sesión completa. `POST
+/conductor/sesiones` crea la ficha (`motor_api.guardar_ficha`) y devuelve su id como
+`session_id` — no hay traducción entre "id que ve el browser" e "id de la ficha", son el mismo.
+Cada turno (`POST /conductor/sesiones/{id}/mensajes`) lee `props.mensajes` (`motor_api.obtener`),
+se lo pasa tal cual a `enviar_mensaje()`, y reescribe `props.mensajes` con el historial actualizado
+(`motor_api.actualizar_props`) — serializado con `conductor.py::serializar_mensajes` (convierte
+`ContentBlock` a dict plano vía `dataclasses.asdict`; no hace falta una función inversa porque
+`utils/ai_client.py::_mensajes_a_formato_openai` ya acepta indistintamente `ContentBlock` o dict
+plano al armar la siguiente llamada al modelo). El browser solo manda `session_id` + texto, igual
+que antes — lo único que cambió es dónde vive el estado entre requests.
+
+Verificado con una corrida real, no solo con los tests: sesión creada, primer mensaje respondido,
+proceso de `api/run.py` matado con `taskkill /F` (no un shutdown limpio), proceso nuevo levantado,
+segundo mensaje a la misma sesión — recordó correctamente el primero. Leyendo la ficha directo del
+KM después: 6 mensajes (incluido el tool-use de `listar_casos`), serializados y recuperados bien.
 
 **Import fix real, no cosmético:** `api/main.py` importaba `from conductor.conductor import
 enviar_mensaje` (calificado por paquete) — eso cachea el PAQUETE `conductor/__init__.py` (vacío)
@@ -158,7 +175,8 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | A | ¿Cómo accede Next.js a los datos del KM? | API Python delgada (FastAPI) / Next.js conecta directo a Postgres (cliente TS) | **API Python delgada.** Reusa `knowledge_module`/`utils/casos.py` sin duplicar lógica de queries en TypeScript — el costo (un proceso más en dev) se acepta a cambio de no arriesgar que la lógica diverja entre dos lenguajes. | 2026-08-16 |
 | B | ¿La API lee de producción o de staging? | Producción / Staging | **Producción** — es estrictamente de solo lectura, sin ningún riesgo de escritura que staging deba absorber (a diferencia de la Etapa 4). | 2026-08-16 |
 | C | ¿Cómo se renderiza el contenido de un `documento_caso` (es markdown)? | Texto plano (`whitespace-pre-wrap`) / Markdown real | **Markdown real** (`react-markdown`+`remark-gfm`+`@tailwindcss/typography`) — encontrado al verificar en navegador que el texto plano mostraba `##`/`**` literales, ilegible para el caso de uso central de esta etapa ("ver los documentos que se generen", `PROPUESTA_DESTINO.md` §7). | 2026-08-16 |
-| D | ¿Cómo mantiene el chat del Conductor memoria conversacional entre requests HTTP (stateless por naturaleza)? | Cliente sostiene el historial serializado / Sesión en memoria del server | **Sesión en memoria del server** (`_sesiones_conductor`, dict `session_id -> messages`) — `messages` mezcla dicts planos y objetos del SDK de Anthropic no serializables a JSON, hacer que el cliente los sostenga hubiera exigido convertir y reconstruir bloques del SDK en cada ida y vuelta. Válido porque es un solo usuario local — no es la respuesta correcta si esto se vuelve multi-usuario. | 2026-08-16 |
+| D | ¿Cómo mantiene el chat del Conductor memoria conversacional entre requests HTTP (stateless por naturaleza)? | Cliente sostiene el historial serializado / Sesión en memoria del server / Sesión persistida en el KM | **Sesión en memoria del server** en la primera versión del mismo día (`_sesiones_conductor`, dict `session_id -> messages`) — luego **reemplazada, mismo día**, por sesión persistida en el KM (ver decisión E) al preguntar Sebas por qué se perdía al reiniciar el server. | 2026-08-16 |
+| E | ¿Dónde persiste el historial de una sesión de chat para que sobreviva a un reinicio del server? | Archivo local (JSON en disco) / Área nueva en el KM | **Área nueva en el KM** (`conductor_sesiones`) — mismo mecanismo que ya usa todo lo demás del proyecto (`pipeline_status`, `token_usage`), no un archivo local que solo esta instancia vería. `session_id` que ve el browser es directamente el id de la ficha. | 2026-08-16 |
 
 ---
 
@@ -166,12 +184,14 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-D cerradas, ninguna abierta.
+Decisiones A-E cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Gasto de tokens visible en la web → v1.1, anotado explícitamente para no perderse
-- Chat con cada especialista por separado (no solo el Conductor) → v2, si hace falta
+- Chat con cada especialista por separado (no solo el Conductor) → en construcción (Etapa 10 del
+  plan), pedido explícito de Sebas el mismo día que se resolvió la persistencia de sesiones
 - Entrada por voz, modo documento, extracción de datos, dashboard → v2+
 - Login real → no planeado todavía
-- Sesiones del Conductor en memoria (se pierden al reiniciar el server, no sirven para
-  multi-usuario) → aceptado para v1, un solo usuario local
+- Historial *destilado* de una sesión (lecciones reusables, no el transcript crudo) → en
+  construcción (Etapa 9 del plan) — el transcript crudo ya persiste (decisión E), destilarlo en
+  una lección buscable es un problema distinto, todavía sin resolver

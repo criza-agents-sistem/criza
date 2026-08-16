@@ -97,52 +97,91 @@ def test_obtener_documento_id_de_otro_tipo_es_404():
     assert resp.status_code == 404
 
 
-# ── Chat del Conductor ─────────────────────────────────────────────────────
+# ── Chat del Conductor — sesiones persistidas en el KM, no en memoria ──────────
 
 @pytest.mark.unit
 def test_crear_sesion_conductor():
-    resp = client.post("/conductor/sesiones")
+    with (
+        patch("main.load_plantilla", new=AsyncMock(return_value={})),
+        patch("main.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "sesion-1"})) as mock_guardar,
+    ):
+        resp = client.post("/conductor/sesiones")
+
     assert resp.status_code == 200
-    session_id = resp.json()["session_id"]
-    assert session_id
-    assert session_id in api_main._sesiones_conductor
+    assert resp.json()["session_id"] == "sesion-1"
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["area"] == "conductor_sesiones"
+    assert kwargs["campos"]["mensajes"] == []
+
+
+@pytest.mark.unit
+def test_crear_sesion_conductor_falla_al_guardar_es_500():
+    with (
+        patch("main.load_plantilla", new=AsyncMock(return_value={})),
+        patch("main.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": False, "error": "boom"})),
+    ):
+        resp = client.post("/conductor/sesiones")
+    assert resp.status_code == 500
 
 
 @pytest.mark.unit
 def test_enviar_mensaje_sesion_inexistente():
-    resp = client.post("/conductor/sesiones/no-existe/mensajes", json={"texto": "hola"})
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=None)):
+        resp = client.post("/conductor/sesiones/no-existe/mensajes", json={"texto": "hola"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_session_id_invalido_es_404_no_500():
+    """Un session_id que no es un UUID válido rompe la query SQL — se captura y se trata igual
+    que 'no encontrada', no como un error de servidor."""
+    with patch("main.motor_api.obtener", new=AsyncMock(side_effect=Exception("invalid input syntax for type uuid"))):
+        resp = client.post("/conductor/sesiones/no-es-un-uuid/mensajes", json={"texto": "hola"})
     assert resp.status_code == 404
 
 
 @pytest.mark.unit
 def test_enviar_mensaje_vacio_es_400():
-    session_id = client.post("/conductor/sesiones").json()["session_id"]
-    resp = client.post(f"/conductor/sesiones/{session_id}/mensajes", json={"texto": "   "})
+    resp = client.post("/conductor/sesiones/cualquier-id/mensajes", json={"texto": "   "})
     assert resp.status_code == 400
 
 
 @pytest.mark.unit
 def test_enviar_mensaje_conductor_devuelve_respuesta():
-    session_id = client.post("/conductor/sesiones").json()["session_id"]
+    sesion = {"id": "sesion-1", "tipo": "sesion", "props": {"mensajes": []}}
 
     async def fake_enviar_mensaje(messages, texto, model=None, verbose=False, tracker=None):
         messages.append({"role": "user", "content": texto})
         messages.append({"role": "assistant", "content": "Hola, ¿en qué te ayudo?"})
         return "Hola, ¿en qué te ayudo?", messages
 
-    with patch("main._enviar_mensaje_conductor", new=fake_enviar_mensaje):
-        resp = client.post(f"/conductor/sesiones/{session_id}/mensajes", json={"texto": "Hola"})
+    with (
+        patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)),
+        patch("main.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})) as mock_actualizar,
+        patch("main._enviar_mensaje_conductor", new=fake_enviar_mensaje),
+    ):
+        resp = client.post("/conductor/sesiones/sesion-1/mensajes", json={"texto": "Hola"})
 
     assert resp.status_code == 200
     assert resp.json()["respuesta"] == "Hola, ¿en qué te ayudo?"
+    args, _ = mock_actualizar.call_args
+    assert args[0] == "sesion-1"
+    assert len(args[1]["mensajes"]) == 2  # persistió el historial actualizado
 
 
 @pytest.mark.unit
 def test_enviar_mensaje_conductor_mantiene_historial_entre_turnos():
-    """El segundo mensaje del mismo session_id debe operar sobre los mismos `messages`
-    acumulados — la sesión en memoria es lo que le da memoria conversacional."""
-    session_id = client.post("/conductor/sesiones").json()["session_id"]
+    """El segundo mensaje del mismo session_id debe arrancar con los mensajes que el primer
+    turno persistió — la memoria conversacional viene de leer el KM, no de un dict en memoria."""
+    km_fake: dict[str, list] = {"sesion-1": []}
     historiales_vistos = []
+
+    async def fake_obtener(ficha_id, *, tenant):
+        return {"id": ficha_id, "tipo": "sesion", "props": {"mensajes": km_fake[ficha_id]}}
+
+    async def fake_actualizar_props(ficha_id, cambios, *, tenant):
+        km_fake[ficha_id] = cambios["mensajes"]
+        return {"success": True}
 
     async def fake_enviar_mensaje(messages, texto, model=None, verbose=False, tracker=None):
         historiales_vistos.append(len(messages))
@@ -150,11 +189,15 @@ def test_enviar_mensaje_conductor_mantiene_historial_entre_turnos():
         messages.append({"role": "assistant", "content": "ok"})
         return "ok", messages
 
-    with patch("main._enviar_mensaje_conductor", new=fake_enviar_mensaje):
-        client.post(f"/conductor/sesiones/{session_id}/mensajes", json={"texto": "primero"})
-        client.post(f"/conductor/sesiones/{session_id}/mensajes", json={"texto": "segundo"})
+    with (
+        patch("main.motor_api.obtener", new=fake_obtener),
+        patch("main.motor_api.actualizar_props", new=fake_actualizar_props),
+        patch("main._enviar_mensaje_conductor", new=fake_enviar_mensaje),
+    ):
+        client.post("/conductor/sesiones/sesion-1/mensajes", json={"texto": "primero"})
+        client.post("/conductor/sesiones/sesion-1/mensajes", json={"texto": "segundo"})
 
-    assert historiales_vistos == [0, 2]  # el segundo turno arrancó con los 2 mensajes del primero
+    assert historiales_vistos == [0, 2]  # el segundo turno arrancó con los 2 mensajes que quedaron del primero
 
 
 @pytest.mark.unit

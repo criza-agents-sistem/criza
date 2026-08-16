@@ -21,6 +21,7 @@ Ver docs/DESIGN_GATE.md — decisiones A-D (2026-08-16).
 import json
 import os
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -32,7 +33,7 @@ _CRIZA_DIR = _AGENT_DIR.parent
 sys.path.insert(0, str(_CRIZA_DIR))
 sys.path.insert(0, str(_AGENT_DIR))
 
-from utils.ai_client import complete as _ai_complete, resolver_modelo as _resolver_modelo
+from utils.ai_client import complete as _ai_complete, resolver_modelo as _resolver_modelo, ContentBlock
 from utils.casos import (
     listar_casos as _listar_casos_fn,
     obtener_frentes_de_caso as _obtener_frentes_fn,
@@ -305,9 +306,11 @@ LÍMITES EXPLÍCITOS DE ESTA VERSIÓN (no prometas lo que no hacés todavía):
 - Solo podés invocar los especialistas conectados al modelo de casos.yaml (hoy: microbiólogo,
   ingeniero ambiental, ingeniero agrónomo) — los 4 agentes del expediente viejo (mercado,
   evidencia, investigación amplia, armador) todavía no están conectados a este modelo.
-- No persistís en ningún lado qué se decidió en esta conversación — si Sebas necesita que quede
-  un registro de una decisión de negocio sobre el caso, avisale que eso todavía no está resuelto
-  (gap conocido, no lo inventes ni finjas que lo guardaste).
+- Esta conversación SÍ queda guardada (el historial completo vive en el KM, sobrevive a un
+  reinicio del servidor) — podés decirle a Sebas que si vuelve a esta misma sesión más tarde vas
+  a recordar lo que se habló. Lo que todavía NO hacés es destilar una lección reusable a partir
+  de la charla (eso es un paso aparte, todavía no construido) — si Sebas te pide "anotá esto como
+  lección", avisale que ese gap sigue abierto, no lo inventes ni finjas que lo guardaste como tal.
 """
 
 
@@ -373,3 +376,27 @@ async def enviar_mensaje(
                 "content": json.dumps(resultado, ensure_ascii=False, default=str),
             })
         messages.append({"role": "user", "content": tool_results})
+
+
+def serializar_mensajes(messages: list[dict]) -> list[dict]:
+    """
+    Convierte `messages` a JSON-safe para persistir (ver docs/DESIGN_GATE.md decisión E) —
+    los turnos assistant traen `ContentBlock` (utils/ai_client.py, dataclass simple, no un tipo
+    opaco de SDK), que `json.dumps` no serializa sin ayuda.
+
+    No hace falta una función inversa: `utils/ai_client.py::_mensajes_a_formato_openai` ya
+    acepta indistintamente `ContentBlock` o dict plano (`b = block if isinstance(block, dict)
+    else block.__dict__`) — un mensaje recién cargado de storage se re-envía tal cual al
+    próximo turno, sin reconstruir nada.
+    """
+    out = []
+    for m in messages:
+        content = m["content"]
+        if isinstance(content, str):
+            out.append(m)
+        else:
+            out.append({
+                "role": m["role"],
+                "content": [asdict(b) if isinstance(b, ContentBlock) else b for b in content],
+            })
+    return out

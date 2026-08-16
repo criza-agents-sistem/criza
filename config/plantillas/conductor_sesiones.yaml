@@ -1,0 +1,33 @@
+# Plantilla del área de sesiones del Conductor — instancia CRIZA
+#
+# Por qué existe: las sesiones de chat del Conductor (api/main.py, chat sumado el 2026-08-16)
+# vivían solo en memoria del proceso de la API — se perdían si se reiniciaba api/run.py. Sebas
+# preguntó cómo resolver eso. Solución: persistir cada sesión como una ficha, mismo mecanismo
+# que ya usa todo lo demás (pipeline_status, token_usage) — nada de un archivo local nuevo
+# (CLAUDE.md: "si el output de un agente no está en el KM, no existe para el sistema").
+#
+# Sin vectorizar — no hace falta búsqueda semántica sobre conversaciones pasadas en v1 (se suma
+# si aparece la necesidad real, no antes).
+
+area: conductor_sesiones
+tenant: criza
+objetivo: >
+  Persistir el historial completo de cada conversación con el Conductor, para que sobreviva a
+  un reinicio del servidor de la API — sin esto, "sesión de chat" era sinónimo de "vive y muere
+  con el proceso de api/run.py".
+descripcion: >
+  Una ficha por sesión de chat completa. `mensajes` guarda el historial ya serializado a
+  JSON-safe (ver conductor/conductor.py::serializar_mensajes) — se re-envía tal cual a la próxima
+  llamada del modelo, no hace falta reconstruir ningún objeto al leerlo de vuelta.
+
+tipos_ficha:
+  - nombre: sesion
+    descripcion: >
+      Una conversación completa con el Conductor, de principio a fin. `session_id` que ve el
+      browser es directamente el id de esta ficha — no hay un id separado.
+    campos:
+      - mensajes         # lista serializada de {role, content} — content: str o list[dict]
+      - iniciada_en       # ISO timestamp
+      - actualizada_en     # ISO timestamp, se actualiza en cada turno
+    vectorizar: null
+    dedup_por: null
