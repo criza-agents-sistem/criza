@@ -8,10 +8,17 @@ puerta de entrada a la misma costura, nunca un bypass") — pasa por acá. Un ag
 puede "olvidarse" de escribir al KM porque ya no es su responsabilidad.
 
 Contrato que un agente debe cumplir para que esto funcione (ver agents.md § Convención para
-agregar un nuevo agente): el `análisis` que devuelve `run()` es exactamente lo que se guarda en
-`props[prop_key]` — incluye una clave `informe_completo` con la narrativa completa, además de
-los campos estructurados propios del agente. La costura no conoce ni le importa qué hay adentro
-de `análisis` más allá de eso — lo persiste tal cual, sin casos especiales por agente.
+agregar un nuevo agente): el `análisis` que devuelve `run()` es exactamente lo que se persiste
+— incluye una clave `informe_completo` con la narrativa completa, además de los campos
+estructurados propios del agente. La costura no conoce ni le importa qué hay adentro de
+`análisis` más allá de eso — lo persiste tal cual, sin casos especiales por agente.
+
+Dos modelos de dato soportados (Etapa 4 del plan, 2026-08-16 — ver
+docs/PROTOCOLO_LECTURA_CONDUCTOR.md y microbiologo_agent/docs/DESIGN_GATE.md decisión G):
+- `oportunidad_id` (modelo viejo, área `descubrimiento`) → `props[prop_key]` de la oportunidad.
+- `frente_id` (modelo de `casos.yaml`) → `documento_caso` nuevo, conectado vía
+  `frente_produce_documento`. Mutuamente excluyentes por invocación — un agente corre contra
+  una oportunidad O contra un frente, nunca los dos a la vez.
 """
 
 import logging
@@ -19,6 +26,7 @@ import logging
 from knowledge_module.motor import api as motor_api
 
 from orquestador.registry import AgentSpec
+from utils.casos import guardar_documento_de_frente
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +35,8 @@ async def invocar_agente(
     spec: AgentSpec,
     contract_input: dict,
     tenant: str,
-    oportunidad_id: str | None,
+    oportunidad_id: str | None = None,
+    frente_id: str | None = None,
     verbose: bool = False,
 ) -> dict:
     """
@@ -42,9 +51,9 @@ async def invocar_agente(
         raise ValueError(f"Agente '{spec.nombre}' no disponible (inactivo o sin cargar)")
 
     output = await spec.run_fn(contract_input=contract_input, verbose=verbose)
+    analisis = output.get("análisis")
 
     if oportunidad_id:
-        analisis = output.get("análisis")
         if analisis is not None:
             await motor_api.actualizar_props(
                 oportunidad_id, {spec.prop_key: analisis}, tenant=tenant,
@@ -55,6 +64,26 @@ async def invocar_agente(
                     spec.prop_key, oportunidad_id,
                 )
         await _registrar_evento(spec.nombre, oportunidad_id, tenant, contract_input, output)
+
+    elif frente_id:
+        if analisis is not None:
+            resultado = await guardar_documento_de_frente(
+                frente_id=frente_id,
+                titulo=f"Evaluación — {spec.nombre}",
+                contenido=analisis.get("informe_completo", ""),
+                tenant=tenant,
+                analisis_estructurado=analisis,
+                agente=spec.nombre,
+            )
+            if verbose:
+                if resultado["success"]:
+                    logger.info(
+                        "[costura] documento_caso %s persistido y conectado a frente %s",
+                        resultado["documento_id"], frente_id,
+                    )
+                else:
+                    logger.warning("[costura] falló persistir documento_caso: %s", resultado["error"])
+        await _registrar_evento(spec.nombre, frente_id, tenant, contract_input, output)
 
     return output
 

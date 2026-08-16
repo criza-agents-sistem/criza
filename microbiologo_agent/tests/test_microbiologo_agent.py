@@ -564,6 +564,113 @@ def test_derive_confidence_medio_con_enfoque_y_una_brecha_alta():
     assert ma._derive_confidence(evaluacion) == "medio"
 
 
+# ── build_input_desde_frente + run_agent_desde_frente — Etapa 4 (2026-08-16) ────
+
+FRENTE_TEST = {
+    "id": "frente-uuid-1",
+    "tipo": "frente",
+    "props": {"nombre": "Frente técnico", "descripcion": "Definir enfoque biológico para el efluente.", "estado": "activo"},
+}
+CASO_TEST = {
+    "id": "caso-uuid-1",
+    "tipo": "caso",
+    "props": {"nombre": "Efluentes biogás (Helios)", "descripcion": "Biodigestor con efluente de alta carga orgánica."},
+}
+PENDIENTES_TEST = [
+    {"id": "pend-1", "props": {"descripcion": "Confirmar quién paga el flete.", "estado": "abierto"}},
+]
+
+
+@pytest.mark.unit
+def test_build_input_desde_frente_incluye_caso_y_frente():
+    result = ma.build_input_desde_frente(FRENTE_TEST, CASO_TEST, [])
+    assert "Efluentes biogás (Helios)" in result
+    assert "Frente técnico" in result
+    assert "submit_evaluacion_tecnica" in result
+
+
+@pytest.mark.unit
+def test_build_input_desde_frente_incluye_pendientes():
+    result = ma.build_input_desde_frente(FRENTE_TEST, CASO_TEST, PENDIENTES_TEST)
+    assert "Confirmar quién paga el flete" in result
+
+
+@pytest.mark.unit
+def test_build_input_desde_frente_sin_pendientes_no_falla():
+    result = ma.build_input_desde_frente(FRENTE_TEST, CASO_TEST, [])
+    assert "submit_evaluacion_tecnica" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_desde_frente_captura_submit_y_escribe_token_usage_en_frente():
+    mock_tool_use = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "submit_evaluacion_tecnica", "id": "tool_ev_frente", "input": EVALUACION_MOCK,
+    })()
+    mock_usage = type("Usage", (), {"input_tokens": 800, "output_tokens": 400})()
+    mock_response = type("Response", (), {
+        "stop_reason": "tool_use", "content": [mock_tool_use], "usage": mock_usage,
+    })()
+
+    mock_actualizar = AsyncMock(return_value={"success": True})
+    with patch("microbiologo_agent._ai_complete", new=AsyncMock(return_value=mock_response)), \
+         patch("microbiologo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})), \
+         patch("microbiologo_agent.obtener_pendientes_de_caso", new=AsyncMock(return_value=PENDIENTES_TEST)), \
+         patch("microbiologo_agent.motor_api.actualizar_props", new=mock_actualizar), \
+         patch("microbiologo_agent.aprendizaje.ensure_area", new=AsyncMock()), \
+         patch("microbiologo_agent.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
+         patch("microbiologo_agent.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")):
+
+        informe, evaluacion, lecciones = await ma.run_agent_desde_frente("frente-uuid-1", verbose=False)
+
+    assert "Evaluación Técnica" in informe
+    assert evaluacion["evaluacion_tecnica"]["resumen"]["estado"] == "establecido"
+    # token_usage se escribe sobre el FRENTE, no sobre ninguna oportunidad
+    mock_actualizar.assert_awaited_once()
+    args, kwargs = mock_actualizar.call_args
+    assert args[0] == "frente-uuid-1"
+    assert "token_usage" in args[1]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_desde_frente_sin_frente_levanta_valueerror():
+    with patch("microbiologo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": None, "caso": None})):
+        with pytest.raises(ValueError, match="no encontrado"):
+            await ma.run_agent_desde_frente("no-existe")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_desde_frente_sin_caso_asociado_levanta_valueerror():
+    with patch("microbiologo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": None})):
+        with pytest.raises(ValueError, match="no tiene un caso asociado"):
+            await ma.run_agent_desde_frente("frente-uuid-1")
+
+
+# ── run() — dispatch oportunidad_id vs. frente_id (Etapa 4) ────────────────────
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_contract_con_frente_id_llama_run_agent_desde_frente():
+    with patch("microbiologo_agent.run_agent_desde_frente", new=AsyncMock(
+        return_value=(EVALUACION_MOCK["informe_completo"], EVALUACION_MOCK, [])
+    )) as mock_desde_frente, patch("microbiologo_agent.run_agent", new=AsyncMock()) as mock_oportunidad:
+
+        result = await ma.run(contract_input={"conocimiento": {"frente_id": "frente-1"}}, verbose=False)
+
+    mock_desde_frente.assert_awaited_once()
+    mock_oportunidad.assert_not_awaited()
+    assert result["análisis"]["informe_completo"] == EVALUACION_MOCK["informe_completo"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_contract_ambos_ids_a_la_vez_es_error():
+    with pytest.raises(ValueError, match="mutuamente excluyentes"):
+        await ma.run(contract_input={"conocimiento": {"oportunidad_id": "x", "frente_id": "y"}}, verbose=False)
+
+
 # ── Integration: corrida real ─────────────────────────────────────────────────
 
 @pytest.mark.integration
@@ -593,3 +700,58 @@ async def test_run_agent_caso_real():
     assert isinstance(informe, str) and len(informe) > 100
     assert "evaluacion_tecnica" in evaluacion
     assert "enfoques_tecnicos_identificados" in evaluacion["evaluacion_tecnica"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_run_agent_desde_frente_caso_real_helios():
+    """
+    Corrida real contra Anthropic + corpus INTA/CONICET + KM, vía el modelo de casos.yaml
+    (frente_id) en vez de oportunidad_id — Etapa 4 del plan (2026-08-16).
+
+    Corre contra el branch de STAGING (docs/STAGING.md), no producción — escribe un
+    documento_caso real conectado al 'Frente técnico' real de Helios. Se skippea si
+    DATABASE_URL_STAGING no está configurado, en vez de arriesgar escribir contra producción.
+    """
+    import os
+    from knowledge_module.db import reset_engine
+    from knowledge_module.motor import api as motor_api
+    from orquestador.invocador import invocar_agente
+    from orquestador.registry import AgentSpec
+
+    staging_url = os.getenv("DATABASE_URL_STAGING")
+    if not staging_url:
+        pytest.skip("DATABASE_URL_STAGING no configurado — ver docs/STAGING.md")
+
+    database_url_original = os.getenv("DATABASE_URL", "")
+    os.environ["DATABASE_URL"] = staging_url
+    reset_engine()
+    try:
+        casos_reales = await motor_api.listar(area="casos", tipo="caso", tenant="criza", limit=10)
+        helios = next(c for c in casos_reales if "Helios" in c["props"].get("nombre", ""))
+        frentes = await motor_api.conexiones_de(helios["id"], tipo_conexion="tiene_frente", tenant="criza")
+        frente_tecnico = next(f for f in frentes if "técnico" in f["props"].get("nombre", "").lower())
+
+        spec = AgentSpec(nombre="microbiologo", modulo="microbiologo_agent.microbiologo_agent",
+                          descripcion="", prop_key="microbiologo", activo=True, run_fn=ma.run)
+
+        output = await invocar_agente(
+            spec=spec,
+            contract_input={"conocimiento": {"frente_id": frente_tecnico["id"]}},
+            tenant="criza",
+            frente_id=frente_tecnico["id"],
+            verbose=True,
+        )
+
+        assert output["análisis"]["informe_completo"]
+
+        # Verificación leyendo el KM (DoD del proyecto): el documento_caso quedó persistido y
+        # conectado al frente real.
+        documentos = await motor_api.conexiones_de(
+            frente_tecnico["id"], tipo_conexion="frente_produce_documento", tenant="criza"
+        )
+        assert len(documentos) >= 1
+        assert documentos[-1]["props"]["contenido"] == output["análisis"]["informe_completo"]
+    finally:
+        os.environ["DATABASE_URL"] = database_url_original
+        reset_engine()

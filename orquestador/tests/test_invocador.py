@@ -110,3 +110,83 @@ async def test_invocar_agente_sin_run_fn_levanta_valueerror():
 
     with pytest.raises(ValueError, match="no disponible"):
         await invocar_agente(spec, {}, tenant="criza", oportunidad_id="uuid-4")
+
+
+# ── frente_id — modelo de casos.yaml (Etapa 4, 2026-08-16) ──────────────────────
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_invocar_agente_con_frente_id_guarda_documento_de_frente():
+    run_fn = AsyncMock(return_value={
+        "análisis": {"evaluacion_tecnica": {}, "informe_completo": "texto del informe"},
+        "nivel_confianza": "medio",
+        "recomendaciones": [],
+        "próximo_agente": None,
+        "nuevo_conocimiento": [],
+    })
+    spec = _spec("microbiologo", run_fn)
+
+    with patch("orquestador.invocador.guardar_documento_de_frente", new_callable=AsyncMock) as mock_guardar:
+        mock_guardar.return_value = {"success": True, "documento_id": "doc-1", "error": None}
+        output = await invocar_agente(
+            spec=spec, contract_input={"conocimiento": {"frente_id": "frente-1"}},
+            tenant="criza", frente_id="frente-1", verbose=False,
+        )
+
+    mock_guardar.assert_awaited_once_with(
+        frente_id="frente-1",
+        titulo="Evaluación — microbiologo",
+        contenido="texto del informe",
+        tenant="criza",
+        analisis_estructurado={"evaluacion_tecnica": {}, "informe_completo": "texto del informe"},
+        agente="microbiologo",
+    )
+    assert output["análisis"]["informe_completo"] == "texto del informe"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_invocar_agente_con_frente_id_no_toca_props_de_oportunidad():
+    """frente_id y oportunidad_id son caminos separados — invocar con frente_id nunca debe
+    llamar actualizar_props (eso es solo del camino oportunidad_id)."""
+    run_fn = AsyncMock(return_value={"análisis": {"informe_completo": "x"}})
+    spec = _spec("microbiologo", run_fn)
+
+    with (
+        patch("orquestador.invocador.motor_api.actualizar_props", new_callable=AsyncMock) as mock_ap,
+        patch("orquestador.invocador.guardar_documento_de_frente", new_callable=AsyncMock,
+              return_value={"success": True, "documento_id": "doc-1", "error": None}),
+    ):
+        await invocar_agente(spec, {}, tenant="criza", frente_id="frente-1")
+
+    mock_ap.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_invocar_agente_sin_analisis_no_guarda_documento():
+    run_fn = AsyncMock(return_value={"análisis": None})
+    spec = _spec("microbiologo", run_fn)
+
+    with patch("orquestador.invocador.guardar_documento_de_frente", new_callable=AsyncMock) as mock_guardar:
+        await invocar_agente(spec, {}, tenant="criza", frente_id="frente-1")
+
+    mock_guardar.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_invocar_agente_sin_oportunidad_id_ni_frente_id_no_persiste():
+    """Ninguno de los dos identificadores — no hay dónde persistir, no debe romper."""
+    run_fn = AsyncMock(return_value={"análisis": {"informe_completo": "x"}})
+    spec = _spec("microbiologo", run_fn)
+
+    with (
+        patch("orquestador.invocador.motor_api.actualizar_props", new_callable=AsyncMock) as mock_ap,
+        patch("orquestador.invocador.guardar_documento_de_frente", new_callable=AsyncMock) as mock_guardar,
+    ):
+        output = await invocar_agente(spec, {}, tenant="criza")
+
+    mock_ap.assert_not_awaited()
+    mock_guardar.assert_not_awaited()
+    assert output["análisis"]["informe_completo"] == "x"

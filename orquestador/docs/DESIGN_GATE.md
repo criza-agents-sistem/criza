@@ -205,3 +205,34 @@ real de uso, no algo a resolver por anticipado acá.
 - [x] `reanudar_desde`: step inexistente en el flow → `ValueError` explícito
 - [x] Al menos 1 test que reanude un flow parcial real (integration) sin re-pagar los pasos ya
       corridos (verificación explícita del plan, Etapa 2)
+
+---
+
+## 8. La costura soporta el modelo de `casos.yaml` (Etapa 4 parte 2, 2026-08-16)
+
+`orquestador/invocador.py::invocar_agente()` ganó un segundo modelo de persistencia, mutuamente
+excluyente con el existente: además de `oportunidad_id` (→ `props[prop_key]`), ahora acepta
+`frente_id` (→ `documento_caso` nuevo, conectado vía `frente_produce_documento`, usando
+`utils/casos.py::guardar_documento_de_frente`). El principio de la costura no cambia — el agente
+invocado sigue sin saber ni le importa dónde persiste su resultado, la costura decide según qué
+identificador recibió.
+
+Primer consumidor: `microbiologo_agent.py` (ver su Design Gate, decisión G) — `run()` detecta si
+`contract_input['conocimiento']` trae `oportunidad_id` o `frente_id` y despacha a
+`run_agent()`/`run_agent_desde_frente()` según corresponda. Ningún flow YAML usa `frente_id`
+todavía (los flows existentes siguen 100% en el modelo `oportunidad`) — este camino se usa hoy
+por invocación directa (`PROPUESTA_CONDUCTOR.md` §3.1, "otra puerta de entrada"), no vía Motor.
+
+Verificado en vivo contra el branch de staging (`docs/STAGING.md`): `invocar_agente(...,
+frente_id=...)` corrido de punta a punta contra el 'Frente técnico' real de Helios, `documento_
+caso` real creado y conectado, producción confirmada intacta después.
+
+### Tests
+
+- [x] `invocar_agente` con `frente_id` → llama `guardar_documento_de_frente`, no
+      `motor_api.actualizar_props`
+- [x] `invocar_agente` con `oportunidad_id` sigue sin cambios (regresión)
+- [x] `invocar_agente` sin `análisis` (agente no llegó a `submit_*`) → no intenta guardar nada,
+      ni con `oportunidad_id` ni con `frente_id`
+- [x] `invocar_agente` sin ningún identificador → no rompe, no persiste
+- [x] Corrida real (integration, contra staging) de un especialista completo vía `frente_id`

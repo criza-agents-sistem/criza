@@ -22,6 +22,7 @@ sesgado a un caso cancelado por hacer exactamente lo contrario).
 
 import asyncio
 import json
+import logging
 import os
 import sys
 from datetime import date
@@ -45,6 +46,7 @@ from utils.kegg import search_kegg as _search_kegg_fn
 from utils.rhea import search_rhea as _search_rhea_fn
 from utils.uniprot import search_uniprot as _search_uniprot_fn
 from utils.bacdive import search_bacdive as _search_bacdive_fn
+from utils.casos import obtener_frente_con_caso, obtener_pendientes_de_caso
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
@@ -474,12 +476,16 @@ consultaste, cuántos resultados procesaste de cada una, y si alguna no estuvo d
 
 INPUT_CONTRACT = {
     "agent": "microbiologo",
-    "version": "1.0",
+    "version": "1.1",
     "fields": {
-        "caso": "Descripción del problema técnico (puede omitirse si se pasa oportunidad_id)",
+        "caso": "Descripción del problema técnico (puede omitirse si se pasa oportunidad_id/frente_id)",
         "tarea": "Evaluación técnica pedida en esta corrida",
         "contexto": "Opcional — contexto adicional de otro agente o de quien invoca",
-        "conocimiento": "{'oportunidad_id': str} — requerido para leer el KM y persistir resultados",
+        "conocimiento": (
+            "{'oportunidad_id': str} (modelo viejo, área descubrimiento) O "
+            "{'frente_id': str} (modelo de casos.yaml, Etapa 4 del plan) — mutuamente "
+            "excluyentes, exactamente uno de los dos requerido."
+        ),
         "herramientas": [
             "search_literature", "buscar_corpus_cientifico", "expand_agrovoc", "search_corpus_inta",
             "search_kegg", "search_rhea", "search_uniprot", "search_bacdive",
@@ -490,8 +496,11 @@ INPUT_CONTRACT = {
 
 OUTPUT_CONTRACT = {
     "agent": "microbiologo",
-    "version": "1.0",
-    "km_escribe": ["props.microbiologo"],
+    "version": "1.1",
+    "km_escribe": [
+        "props.microbiologo (si se invocó con oportunidad_id)",
+        "documento_caso conectado al frente vía frente_produce_documento (si se invocó con frente_id)",
+    ],
     "fields": {
         "análisis": "{'evaluacion_tecnica': dict, 'especialista_adicional_recomendado': dict, 'fuentes_y_cobertura': dict, 'informe_completo': str, ...}",
         "nivel_confianza": "'alto' | 'medio' | 'bajo' — basado en madurez de enfoques y brechas de alto impacto",
@@ -522,6 +531,30 @@ def build_input(oportunidad_id: str, oportunidad_dict: dict) -> str:
     return "\n\n".join(secciones)
 
 
+def build_input_desde_frente(frente_dict: dict, caso_dict: dict, pendientes: list[dict]) -> str:
+    """Construye el input cuando se invoca contra el modelo de casos.yaml (frente_id) en vez de
+    una oportunidad — ver utils/casos.py::obtener_frente_con_caso/obtener_pendientes_de_caso."""
+    caso_props = caso_dict.get("props") or {}
+    frente_props = frente_dict.get("props") or {}
+
+    secciones = [
+        f"# Caso\n\n**Nombre:** {caso_props.get('nombre', '')}\n\n{caso_props.get('descripcion', '')}",
+        f"# Frente: {frente_props.get('nombre', '')}\n\n{frente_props.get('descripcion', '')}",
+    ]
+
+    if pendientes:
+        lista = "\n".join(f"- {(p.get('props') or {}).get('descripcion', '')}" for p in pendientes)
+        secciones.append(f"# Pendientes abiertos del caso (contexto, no necesariamente de este frente)\n\n{lista}")
+
+    secciones.append(
+        "---\n"
+        "Tu tarea: dar una evaluación técnica microbiológica de este frente. "
+        "Llamá submit_evaluacion_tecnica cuando tengas suficiente evidencia."
+    )
+
+    return "\n\n".join(secciones)
+
+
 # ── Agentic loop ──────────────────────────────────────────────────────────────
 
 def _bloque_instruccion(tarea: str | None, contexto_extra: str | None, foco: str | None = None) -> str:
@@ -539,60 +572,38 @@ def _bloque_instruccion(tarea: str | None, contexto_extra: str | None, foco: str
     return ("\n\n" + "\n\n".join(partes)) if partes else ""
 
 
-async def run_agent(
-    oportunidad_id: str,
-    verbose: bool = False,
-    model: str = DEFAULT_MODEL,
-    tarea: str | None = None,
-    contexto_extra: str | None = None,
-    foco: str | None = None,
-) -> tuple[str, dict, list[str]]:
-    """
-    Corre el Especialista Microbiólogo.
-
-    Returns:
-        (informe_markdown, evaluacion_dict, lecciones_caso)
-        No escribe al KM — eso lo hace la costura (orquestador/invocador.py).
-    """
-    if verbose:
-        print(f"\n{'='*60}\n  ESPECIALISTA MICROBIÓLOGO — CRIZA\n  Modelo: {model}\n{'='*60}\n")
-
-    oportunidad_dict = await motor_api.obtener(oportunidad_id, tenant=_TENANT)
-    if not oportunidad_dict:
-        raise ValueError(f"Oportunidad {oportunidad_id} no encontrada en el KM")
-
+async def _preflight() -> None:
+    """Mismo pre-flight sin importar el modelo de dato de entrada (oportunidad_id o frente_id)
+    — depende de fuentes externas (INTA/corpus_cientifico/OpenAlex), no del caller."""
     preflight = await run_preflight([
         FuenteCheck("INTA corpus", bloqueante=True, check_fn=_check_inta_corpus),
         FuenteCheck("corpus_cientifico (CONICET+INTA)", bloqueante=True, check_fn=_check_corpus_cientifico),
         FuenteCheck("OpenAlex", bloqueante=False, check_fn=_check_openalex),
     ])
-    if verbose:
-        for adv in preflight.advertencias:
-            print(f"  ⚠️  {adv}")
+    for adv in preflight.advertencias:
+        logging.getLogger(__name__).warning(adv)
     if not preflight.ok:
         raise RuntimeError(
             "Pre-flight bloqueante — Especialista Microbiólogo no puede continuar:\n"
             + "\n".join(preflight.bloqueantes)
         )
 
-    tracker = TokenTracker(agent=_AGENTE, oportunidad_id=oportunidad_id, model=model)
 
-    await aprendizaje.ensure_area(tenant=_TENANT)
-    bloque = await aprendizaje.bloque_lecciones_para_prompt(
-        agente=_AGENTE,
-        consulta=(oportunidad_dict.get("props") or {}).get("descripcion") or oportunidad_id,
-        tenant=_TENANT,
-    )
-    effective_system = SYSTEM_PROMPT + bloque
-    system_blocks = [{
-        "type": "text",
-        "text": effective_system,
-        "cache_control": {"type": "ephemeral"},
-    }]
+async def _run_loop(
+    identificador: str,
+    system_blocks: list[dict],
+    user_input: str,
+    model: str,
+    verbose: bool,
+) -> tuple[str, dict, list[str], TokenTracker]:
+    """
+    Loop agéntico compartido entre run_agent (oportunidad) y run_agent_desde_frente (frente) —
+    no sabe ni le importa cuál de los dos lo llamó, ni persiste nada al KM. `identificador` es
+    solo para el TokenTracker (bookkeeping, no se persiste en to_dict()).
 
-    user_input = build_input(oportunidad_id, oportunidad_dict) + _bloque_instruccion(
-        tarea, contexto_extra, foco
-    )
+    Returns: (informe_markdown, evaluacion_dict, lecciones_caso, tracker)
+    """
+    tracker = TokenTracker(agent=_AGENTE, oportunidad_id=identificador, model=model)
     messages = [{"role": "user", "content": user_input}]
     evaluacion_result = None
 
@@ -774,13 +785,10 @@ async def run_agent(
             break
 
     tracker.log(verbose)
-    existing_tu = (oportunidad_dict.get("props") or {}).get("token_usage") or {}
-    existing_tu[_AGENTE] = tracker.to_dict()
-    await motor_api.actualizar_props(oportunidad_id, {"token_usage": existing_tu}, tenant=_TENANT)
 
     if evaluacion_result is None:
         raw = "".join(b.text for b in response.content if hasattr(b, "text"))
-        return raw or "El agente no llamó submit_evaluacion_tecnica.", {}, []
+        return raw or "El agente no llamó submit_evaluacion_tecnica.", {}, [], tracker
 
     informe = evaluacion_result.get("informe_completo", "")
     evaluacion_tecnica = evaluacion_result.get("evaluacion_tecnica", {})
@@ -801,16 +809,126 @@ async def run_agent(
         "informe_completo": informe,
     }
 
-    # El write-back de props.microbiologo NO es responsabilidad de este agente — lo hace la
-    # costura (orquestador/invocador.py::invocar_agente), siempre. Ver agents_registry.yaml.
+    # El write-back del resultado (props.microbiologo o documento_caso) NO es responsabilidad de
+    # este agente — lo hace la costura (orquestador/invocador.py::invocar_agente), siempre.
 
     if verbose:
         recomienda = especialista.get("si_no", False)
-        print(f"\n  KM actualizado — {len(evaluacion_tecnica.get('enfoques_tecnicos_identificados', []))} enfoques identificados")
+        print(f"\n  {len(evaluacion_tecnica.get('enfoques_tecnicos_identificados', []))} enfoques identificados")
         if recomienda:
             print(f"  Especialista adicional recomendado: {especialista.get('descripcion', '')[:100]}")
         else:
             print("  Sin especialista adicional recomendado.")
+
+    return informe, evaluacion_dict, lecciones_auto, tracker
+
+
+async def run_agent(
+    oportunidad_id: str,
+    verbose: bool = False,
+    model: str = DEFAULT_MODEL,
+    tarea: str | None = None,
+    contexto_extra: str | None = None,
+    foco: str | None = None,
+) -> tuple[str, dict, list[str]]:
+    """
+    Corre el Especialista Microbiólogo contra una oportunidad (modelo viejo, área
+    descubrimiento).
+
+    Returns:
+        (informe_markdown, evaluacion_dict, lecciones_caso)
+        No escribe al KM — eso lo hace la costura (orquestador/invocador.py).
+    """
+    if verbose:
+        print(f"\n{'='*60}\n  ESPECIALISTA MICROBIÓLOGO — CRIZA\n  Modelo: {model}\n{'='*60}\n")
+
+    oportunidad_dict = await motor_api.obtener(oportunidad_id, tenant=_TENANT)
+    if not oportunidad_dict:
+        raise ValueError(f"Oportunidad {oportunidad_id} no encontrada en el KM")
+
+    await _preflight()
+
+    await aprendizaje.ensure_area(tenant=_TENANT)
+    bloque = await aprendizaje.bloque_lecciones_para_prompt(
+        agente=_AGENTE,
+        consulta=(oportunidad_dict.get("props") or {}).get("descripcion") or oportunidad_id,
+        tenant=_TENANT,
+    )
+    system_blocks = [{
+        "type": "text",
+        "text": SYSTEM_PROMPT + bloque,
+        "cache_control": {"type": "ephemeral"},
+    }]
+    user_input = build_input(oportunidad_id, oportunidad_dict) + _bloque_instruccion(
+        tarea, contexto_extra, foco
+    )
+
+    informe, evaluacion_dict, lecciones_auto, tracker = await _run_loop(
+        oportunidad_id, system_blocks, user_input, model, verbose
+    )
+
+    existing_tu = (oportunidad_dict.get("props") or {}).get("token_usage") or {}
+    existing_tu[_AGENTE] = tracker.to_dict()
+    await motor_api.actualizar_props(oportunidad_id, {"token_usage": existing_tu}, tenant=_TENANT)
+
+    return informe, evaluacion_dict, lecciones_auto
+
+
+async def run_agent_desde_frente(
+    frente_id: str,
+    verbose: bool = False,
+    model: str = DEFAULT_MODEL,
+    tarea: str | None = None,
+    contexto_extra: str | None = None,
+    foco: str | None = None,
+) -> tuple[str, dict, list[str]]:
+    """
+    Corre el Especialista Microbiólogo contra un frente del modelo de casos.yaml — Etapa 4 del
+    plan de construcción (2026-08-16). Ver microbiologo_agent/docs/DESIGN_GATE.md decisión G.
+
+    Returns:
+        (informe_markdown, evaluacion_dict, lecciones_caso)
+        No escribe al KM — eso lo hace la costura (orquestador/invocador.py::invocar_agente),
+        que para frente_id persiste un documento_caso conectado vía frente_produce_documento en
+        vez de props[prop_key] (que solo existe para oportunidad).
+    """
+    if verbose:
+        print(f"\n{'='*60}\n  ESPECIALISTA MICROBIÓLOGO — CRIZA (frente)\n  Modelo: {model}\n{'='*60}\n")
+
+    contexto = await obtener_frente_con_caso(frente_id, tenant=_TENANT)
+    frente_dict, caso_dict = contexto["frente"], contexto["caso"]
+    if not frente_dict:
+        raise ValueError(f"Frente {frente_id} no encontrado en el KM")
+    if not caso_dict:
+        raise ValueError(f"Frente {frente_id} no tiene un caso asociado (conexión tiene_frente ausente)")
+
+    await _preflight()
+
+    pendientes = await obtener_pendientes_de_caso(caso_dict["id"], tenant=_TENANT)
+
+    await aprendizaje.ensure_area(tenant=_TENANT)
+    caso_props = caso_dict.get("props") or {}
+    bloque = await aprendizaje.bloque_lecciones_para_prompt(
+        agente=_AGENTE,
+        consulta=caso_props.get("descripcion") or caso_props.get("nombre") or frente_id,
+        tenant=_TENANT,
+    )
+    system_blocks = [{
+        "type": "text",
+        "text": SYSTEM_PROMPT + bloque,
+        "cache_control": {"type": "ephemeral"},
+    }]
+    user_input = build_input_desde_frente(frente_dict, caso_dict, pendientes) + _bloque_instruccion(
+        tarea, contexto_extra, foco
+    )
+
+    informe, evaluacion_dict, lecciones_auto, tracker = await _run_loop(
+        frente_id, system_blocks, user_input, model, verbose
+    )
+
+    existing_tu = (frente_dict.get("props") or {}).get("token_usage") or {}
+    existing_tu[_AGENTE] = tracker.to_dict()
+    await motor_api.actualizar_props(frente_id, {"token_usage": existing_tu}, tenant=_TENANT)
 
     return informe, evaluacion_dict, lecciones_auto
 
@@ -837,20 +955,32 @@ async def run(
     verbose: bool = False,
     model: str = DEFAULT_MODEL,
 ) -> dict:
-    """Interfaz de contrato estándar para el Orquestador (SEB-115). Wraps run_agent()."""
+    """Interfaz de contrato estándar para el Orquestador (SEB-115). Wraps run_agent() o
+    run_agent_desde_frente() según qué venga en conocimiento — ver INPUT_CONTRACT."""
     conocimiento = contract_input.get("conocimiento") or {}
     oportunidad_id = conocimiento.get("oportunidad_id") if isinstance(conocimiento, dict) else None
-    if not oportunidad_id:
-        raise ValueError("Especialista Microbiólogo requiere 'oportunidad_id' en contract_input['conocimiento']")
+    frente_id = conocimiento.get("frente_id") if isinstance(conocimiento, dict) else None
 
-    informe, evaluacion, lecciones = await run_agent(
-        oportunidad_id,
+    if not oportunidad_id and not frente_id:
+        raise ValueError(
+            "Especialista Microbiólogo requiere 'oportunidad_id' o 'frente_id' en contract_input['conocimiento']"
+        )
+    if oportunidad_id and frente_id:
+        raise ValueError(
+            "Especialista Microbiólogo: 'oportunidad_id' y 'frente_id' son mutuamente excluyentes"
+        )
+
+    kwargs = dict(
         verbose=verbose,
         model=model,
         tarea=contract_input.get("tarea") or None,
         contexto_extra=contract_input.get("contexto") or None,
         foco=contract_input.get("caso") or None,
     )
+    if frente_id:
+        informe, evaluacion, lecciones = await run_agent_desde_frente(frente_id, **kwargs)
+    else:
+        informe, evaluacion, lecciones = await run_agent(oportunidad_id, **kwargs)
 
     evaluacion_tecnica = evaluacion.get("evaluacion_tecnica") or {}
     brechas_altas = [

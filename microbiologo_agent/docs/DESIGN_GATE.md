@@ -113,8 +113,9 @@ persistir es responsabilidad de la costura, no del agente — este agente no tie
 
 | Tipo de output | Qué contiene | Key en KM | Cómo | Estado |
 |---|---|---|---|---|
-| **Resultado estructurado + informe** | `evaluacion_tecnica` + `especialista_adicional_recomendado` + `informe_completo` (markdown íntegro) | `props.microbiologo` | La costura (`invocador.py::invocar_agente`), no el agente | ✅ construido (por diseño, no hay nada que construir acá) |
-| **Token usage** | Tokens consumidos | `props.token_usage.microbiologo` | `TokenTracker` + `motor_api.actualizar_props` (el agente sí escribe esto — mismo patrón que los 4 activos, es local a la corrida, no al resultado) | ✅ construido |
+| **Resultado estructurado + informe (oportunidad)** | `evaluacion_tecnica` + `especialista_adicional_recomendado` + `informe_completo` (markdown íntegro) | `props.microbiologo` | La costura (`invocador.py::invocar_agente`), no el agente | ✅ construido (por diseño, no hay nada que construir acá) |
+| **Resultado estructurado + informe (frente, casos.yaml)** | Mismo shape, dentro de `documento_caso.props.analisis_estructurado` + `.contenido` (informe) | `documento_caso` nuevo, conectado vía `frente_produce_documento` | La costura (`invocador.py::invocar_agente` → `utils/casos.py::guardar_documento_de_frente`), no el agente | ✅ construido, decisión G (2026-08-16) |
+| **Token usage** | Tokens consumidos | `props.token_usage.microbiologo` de la oportunidad (camino viejo) o del **frente** (camino `casos.yaml`) | `TokenTracker` + `motor_api.actualizar_props` (el agente sí escribe esto — mismo patrón que los 4 activos, es local a la corrida, no al resultado) | ✅ construido |
 | **Aprendizaje** | Lecciones del caso | área `lecciones` | `aprendizaje` | 🔵 pendiente — misma deuda intencional que evidence_generalista, no se cierra en esta etapa |
 
 ---
@@ -156,7 +157,7 @@ persistir es responsabilidad de la costura, no del agente — este agente no tie
 
 | Feature | Versión | Razón |
 |---|---|---|
-| Conexión al modelo de datos `casos.yaml` (leer/escribir `frente`/`documento_caso` de Helios) | Etapa 4 del plan | Decisión explícita: no mezclar "especialista nuevo" con "nueva integración de datos" en el mismo paso — la Etapa 4 además introduce staging (Neon branching) antes de escribir contra el modelo de casos reales. |
+| Conexión al modelo de datos `casos.yaml` (leer/escribir `frente`/`documento_caso` de Helios) | ✅ v1.1 (2026-08-16, decisión G) | Construido en la Etapa 4 (parte 2), después de tener staging real (parte 1) — verificado en vivo escribiendo un `documento_caso` real contra el 'Frente técnico' de Helios en staging, confirmando además que producción quedó intacta. |
 | Persistencia de lecciones de caso (`aprendizaje.guardar_leccion_caso`) | backlog | Misma deuda intencional que `evidence_generalista` — no bloquea nada hoy. |
 | Tools bioquímicas (KEGG/Rhea/UniProt/BacDive) | ✅ v1 (2026-08-16, decisión F) | Sebas confirmó necesidad real y concreta del caso que trae ("bacterias, encimas") — se suman de una en vez de esperar una corrida que la muestre, con el mismo rigor de verificación en vivo (curl real de cada API antes de codear, no asumido). |
 | BRENDA (cinética de enzimas, SOAP) | Etapa 8 del plan | Fricción de integración real y distinta (SOAP vs REST) — Sebas pidió sumarla en una etapa separada, no ahora. |
@@ -173,6 +174,7 @@ persistir es responsabilidad de la costura, no del agente — este agente no tie
 | D | ¿Conecta con `casos.yaml` (Helios) en esta etapa? | Sí / No, todavía contra `props` de `oportunidad` | **No** — sigue el patrón viejo (`props` de `oportunidad`) como los 4 agentes activos hoy. La integración con `casos.yaml` es la Etapa 4 del plan, después de introducir staging. | 2026-08-16 |
 | E | ¿Nombre del tool de submit y del schema? | `submit_microbiologia` (específico) / `submit_evaluacion_tecnica` (genérico) | **Genérico** (`submit_evaluacion_tecnica`) — mismo schema se va a reusar para el ingeniero ambiental (Etapa 7), así el futuro Armador/Conductor leen especialistas distintos con la misma forma. | 2026-08-16 |
 | F | ¿Sumar tools de bases de datos bioquímicas (KEGG/Rhea/UniProt/BacDive/BRENDA) ahora o esperar señal de una corrida real? | Esperar señal (decisión C original) / Sumar ahora, Sebas confirma necesidad real del caso | **Sumar las 4 REST ahora** (KEGG, Rhea, UniProt, BacDive) — Sebas: "sé que este caso real que tengo las va a pedir". Cada API se verificó en vivo antes de codear (curl real, no asumido): las 4 son REST **sin auth** (BacDive se verificó dos veces: primero se construyó con Basic Auth asumiendo cuenta requerida — Sebas señaló la doc real de BacDive, que confirma que desde febrero 2026 la API es pública sin registro; se corrigió el cliente para no pedir credenciales). **BRENDA queda afuera de esta ronda** — confirmado en vivo que es SOAP-only (WSDL real, sin equivalente REST), fricción de integración genuinamente distinta — Sebas pidió sumarla en una etapa separada (Etapa 8 del plan). | 2026-08-16 |
+| G | ¿Cómo se conecta el agente al modelo de `casos.yaml`? | Reemplazar el modelo viejo (`oportunidad`) / Sumarlo como camino alternativo, mutuamente excluyente | **Camino alternativo, no reemplazo.** `contract_input['conocimiento']` acepta `oportunidad_id` (modelo viejo, sin cambios) O `frente_id` (nuevo) — nunca los dos juntos. `run_agent_desde_frente()` lee `caso`+`frente`+`pendientes` vía `utils/casos.py` (nuevo, genérico — no específico de microbiólogo, para que el próximo especialista de la Etapa 7 lo reuse gratis). La costura (`invocador.py::invocar_agente`) persiste el resultado como `documento_caso` conectado vía `frente_produce_documento` en vez de `props[prop_key]` — mismo principio de siempre (el agente no persiste nada, la costura sí), generalizado a un segundo modelo de dato. `token_usage` de una corrida por-frente se guarda en `props` del **frente**, no de ningún `oportunidad` (no hay una oportunidad involucrada en ese camino). Verificado en vivo: `documento_caso` real (11.370 chars) creado y conectado al 'Frente técnico' real de Helios, corrido contra el branch de staging (`docs/STAGING.md`) — producción confirmada intacta (0 documentos) tras la corrida. | 2026-08-16 |
 
 ---
 
@@ -180,11 +182,11 @@ persistir es responsabilidad de la costura, no del agente — este agente no tie
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A–E cerradas, ninguna abierta. El agente clona un patrón ya probado (evidence_generalista) —
+Decisiones A–G cerradas, ninguna abierta. El agente clona un patrón ya probado (evidence_generalista) —
 no hay diseño nuevo de fondo, solo aplicación a un dominio distinto con el checklist anti-sesgo
 como control explícito.
 
 **Deuda intencional documentada:**
-- Conexión a `casos.yaml` → Etapa 4 del plan, no esta
 - Persistencia de lecciones de caso → backlog, misma deuda que evidence_generalista
 - Tools de dominio específicas → solo si una corrida real las requiere
+- BRENDA (cinética de enzimas) → Etapa 8 del plan
