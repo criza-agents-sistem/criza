@@ -221,13 +221,15 @@ login/permisos reales queda para cuando haga falta de verdad.
 - **Captura de decisiones (§4.3 de `PROPUESTA_CONDUCTOR.md`) — resuelta en dos partes distintas,
   15/08.** Se separó en Caso A (decisiones sobre el sistema — arquitectura de CRIZA) y Caso B
   (decisiones dentro de un caso — lo que decide el Conductor sobre una oportunidad puntual):
-  - **Caso B: cubierto por la costura de hoy** (`pipeline_status` + `props` por agente, siempre
-    persistido). Sebas señaló un matiz importante: que quede bien registrado en el KM no alcanza
-    — importa igual de qué lee el Conductor cuando "se despierta" o le preguntan por un caso
-    puntual. **Eso es diseño del Conductor mismo (su protocolo de lectura/recuperación) y no se
-    puede resolver en el aire sin el Conductor construido.** Queda como requisito explícito para
-    cuando se diseñe el Conductor (no antes): definir qué consulta, en qué orden, y cómo arma
-    contexto antes de responder — no asumir que "estar bien estructurado en el KM" es suficiente.
+  - ~~Caso B~~ — **diseño cerrado el 2026-08-16** (Etapa 3 del plan de construcción del nuevo
+    sistema, `docs/PROTOCOLO_LECTURA_CONDUCTOR.md`). Sebas señaló un matiz importante: que quede
+    bien registrado en el KM no alcanza — importa igual de qué lee el Conductor cuando "se
+    despierta" o le preguntan por un caso puntual. El protocolo fija 7 pasos en orden (identidad →
+    qué falta vía `inspeccionar_caso` → sanity check de lo "completo" → costo gastado+estimado vía
+    `estimar_costo` → lecciones relevantes → decisiones de sistema vigentes → inconsistencias
+    entre agentes que solo el Conductor puede ver) y el shape del "briefing" que arma antes de
+    responder — corrido de verdad contra un caso real del KM, no solo diseñado en el papel. Sin
+    construir todavía (eso es la Etapa 5) — esto deja el diseño que esa etapa implementa.
   - ~~Caso A~~ — **hecho el 15/08.** Área KM `decisiones_sistema` + `scripts/km_decisiones.py` +
     `scripts/generar_agents_md.py` (regenera "Agentes activos" y "Estado operativo" de
     `agents.md` desde decisiones vigentes + escaneo real del repo, ya no prosa a mano). DoD de
@@ -237,8 +239,9 @@ login/permisos reales queda para cuando haga falta de verdad.
 - El Conductor conversacional en sí — sin construir. Confirmado con Sebas (14/08): el Conductor
   **asesora** sobre qué especialistas hacen falta y cómo, pero no codea — construir sigue siendo
   tarea de Sebas + Claude Code. No cambia la secuencia sugerida en `PROPUESTA_CONDUCTOR.md` §10.
-  **Cuando se diseñe: incluir explícitamente el protocolo de lectura/recuperación** (ver Caso B
-  arriba) — no es un detalle de implementación menor, es parte del diseño central.
+  ~~Cuando se diseñe: incluir explícitamente el protocolo de lectura/recuperación~~ — **diseño
+  del protocolo cerrado el 16/08** (ver Caso B arriba, `docs/PROTOCOLO_LECTURA_CONDUCTOR.md`).
+  Construir el Conductor en sí sigue pendiente (Etapa 5 del plan).
 - El tercer arquetipo (empresa con tecnología/maquinaria buscando nuevo uso) — sin caso real
   todavía. No diseñar el patrón en abstracto hasta que aparezca uno.
 - ~~Diseño concreto de la app Next.js~~ — **modelo de datos + páginas hechos el 15/08, scaffold
