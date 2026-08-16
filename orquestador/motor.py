@@ -42,6 +42,40 @@ class MotorResult:
     error: str | None = None
 
 
+@dataclass
+class InspeccionStep:
+    step_id: str
+    agent: str
+    estado: str        # "completo" | "pendiente" | "no_disponible"
+    detalle: str
+
+
+@dataclass
+class InspeccionResult:
+    """"¿Qué le falta a este caso?" — ver Design Gate §7 (Etapa 2, 2026-08-16)."""
+    oportunidad_id: str
+    pasos: list[InspeccionStep] = field(default_factory=list)
+    completos: list[str] = field(default_factory=list)
+    pendientes: list[str] = field(default_factory=list)
+    no_disponibles: list[str] = field(default_factory=list)
+
+
+@dataclass
+class EstimacionPaso:
+    step_id: str
+    agent: str
+    tokens_estimados: int | None
+    basado_en: int      # cantidad de corridas históricas usadas para el promedio
+    detalle: str
+
+
+@dataclass
+class EstimacionCosto:
+    oportunidad_id: str
+    pasos: list[EstimacionPaso] = field(default_factory=list)
+    total_estimado: int | None = None  # None si falta histórico para algún paso pendiente
+
+
 # ── Template resolution ────────────────────────────────────────────────────────
 
 def _get_nested(d: Any, keys: list[str]) -> Any:
@@ -436,6 +470,167 @@ async def reanudar(
         tenant=tenant,
         registry=registry,
         state_inicial=inner_state,
+        verbose=verbose,
+    )
+
+
+# ── Primitivas de invocación (Etapa 2, 2026-08-16 — ver Design Gate §7) ────────
+
+async def inspeccionar_caso(
+    flow: dict,
+    oportunidad_id: str,
+    tenant: str,
+    registry: dict,
+) -> InspeccionResult:
+    """
+    "¿Qué le falta a este caso?" como consulta explícita — no ejecuta nada, solo lee el KM.
+
+    Generaliza `armador.py::_validar_cobertura_upstream` (hardcodeado a mercado/evidencia) a
+    cualquier step `type: agent` de cualquier flow: por cada uno, ¿ya existe `props[prop_key]`?
+    """
+    oportunidad = await motor_api.obtener(oportunidad_id, tenant=tenant)
+    if not oportunidad:
+        raise ValueError(f"Oportunidad {oportunidad_id} no encontrada en el KM")
+    props = oportunidad.get("props") or {}
+
+    pasos: list[InspeccionStep] = []
+    for step in flow.get("steps", []):
+        if step["type"] != "agent":
+            continue
+        agent_name = step["agent"]
+        spec = registry.get(agent_name)
+
+        if spec is None:
+            pasos.append(InspeccionStep(step["id"], agent_name, "no_disponible", "agente no registrado"))
+        elif spec.run_fn is None:
+            pasos.append(InspeccionStep(step["id"], agent_name, "no_disponible", "agente inactivo (sin run_fn)"))
+        elif props.get(spec.prop_key):
+            pasos.append(InspeccionStep(step["id"], agent_name, "completo", f"props.{spec.prop_key} ya presente"))
+        else:
+            pasos.append(InspeccionStep(step["id"], agent_name, "pendiente", f"props.{spec.prop_key} ausente — no corrió todavía"))
+
+    return InspeccionResult(
+        oportunidad_id=oportunidad_id,
+        pasos=pasos,
+        completos=[p.step_id for p in pasos if p.estado == "completo"],
+        pendientes=[p.step_id for p in pasos if p.estado == "pendiente"],
+        no_disponibles=[p.step_id for p in pasos if p.estado == "no_disponible"],
+    )
+
+
+async def estimar_costo(
+    flow: dict,
+    oportunidad_id: str,
+    tenant: str,
+    registry: dict,
+    muestra: int = 20,
+) -> EstimacionCosto:
+    """
+    Estima el costo en tokens de los steps pendientes de un caso — promedia el histórico REAL
+    de `props.token_usage.<agente>` de otras oportunidades (nunca un número inventado). Sin
+    histórico para un agente, ese paso queda `tokens_estimados=None` (a-confirmar, no un cero
+    encubierto) y el total agregado también queda `None` en vez de sumar parcial y aparentar
+    una certeza que no hay.
+    """
+    inspeccion = await inspeccionar_caso(flow, oportunidad_id, tenant, registry)
+    pendientes = {p.step_id: p.agent for p in inspeccion.pasos if p.estado == "pendiente"}
+
+    if not pendientes:
+        return EstimacionCosto(oportunidad_id=oportunidad_id, pasos=[], total_estimado=0)
+
+    historicas = await motor_api.listar(area="descubrimiento", tipo="oportunidad", limit=muestra, tenant=tenant)
+
+    pasos: list[EstimacionPaso] = []
+    total = 0
+    total_conocido = True
+    for step_id, agent_name in pendientes.items():
+        muestras = [
+            dato["total_tokens"]
+            for h in historicas
+            if (dato := ((h.get("props") or {}).get("token_usage") or {}).get(agent_name)) and dato.get("total_tokens")
+        ]
+        if muestras:
+            promedio = round(sum(muestras) / len(muestras))
+            pasos.append(EstimacionPaso(step_id, agent_name, promedio, len(muestras), f"promedio de {len(muestras)} corridas históricas"))
+            total += promedio
+        else:
+            pasos.append(EstimacionPaso(step_id, agent_name, None, 0, "sin histórico — no se puede estimar"))
+            total_conocido = False
+
+    return EstimacionCosto(
+        oportunidad_id=oportunidad_id,
+        pasos=pasos,
+        total_estimado=total if total_conocido else None,
+    )
+
+
+async def reanudar_desde(
+    flow: dict,
+    oportunidad_id: str,
+    desde_step: str,
+    tenant: str,
+    registry: dict,
+    entry: dict | None = None,
+    verbose: bool = False,
+) -> MotorResult:
+    """
+    Reanuda un flow desde cualquier step, reconstruyendo el estado ÚNICAMENTE desde lo que ya
+    está persistido en el KM (`props.pipeline_status.steps` + `props[prop_key]` por step) — a
+    diferencia de `reanudar()` (que requiere el `gate_data` en memoria de un `MotorResult`
+    anterior), esto funciona aunque la sesión que disparó la pausa ya no exista. Es la primitiva
+    real detrás de "otra puerta de entrada, nunca un bypass" (`PROPUESTA_CONDUCTOR.md` §3.1).
+
+    `entry` no se reconstruye del KM (no se persiste hoy — ver Design Gate §7) — si algún step
+    posterior a `desde_step` necesita `{entry.*}` y no se pasa, el template queda sin resolver
+    (comportamiento ya existente de `_resolve()`, no un crash).
+    """
+    oportunidad = await motor_api.obtener(oportunidad_id, tenant=tenant)
+    if not oportunidad:
+        raise ValueError(f"Oportunidad {oportunidad_id} no encontrada en el KM")
+    props = oportunidad.get("props") or {}
+
+    steps_cfg = _steps_index(flow)
+    if desde_step not in steps_cfg:
+        raise ValueError(f"Step '{desde_step}' no existe en el flow '{flow.get('name')}'")
+
+    km_pipeline_status = props.get("pipeline_status") or {}
+    km_steps = km_pipeline_status.get("steps") or {}
+
+    steps_output: dict = {}
+    pipeline_status: dict = {}
+    for step_id, step_cfg in steps_cfg.items():
+        km_step = km_steps.get(step_id)
+        if not km_step or km_step.get("status") != "completo":
+            continue
+        pipeline_status[step_id] = km_step
+        if step_cfg["type"] == "agent":
+            spec = registry.get(step_cfg["agent"])
+            if spec is not None:
+                analisis = props.get(spec.prop_key)
+                if analisis is not None:
+                    steps_output[step_id] = {
+                        "análisis": analisis,
+                        "nivel_confianza": km_step.get("nivel_confianza"),
+                        "próximo_agente": km_step.get("próximo_agente"),
+                    }
+
+    state = {
+        "oportunidad_id": oportunidad_id,
+        "objetivo": km_pipeline_status.get("objetivo", ""),
+        "started_at": km_pipeline_status.get("started_at") or datetime.now(timezone.utc).isoformat(),
+        "flow": flow.get("name"),
+        "flow_version": flow.get("version", "1.0"),
+        "_resume_from_step": desde_step,
+        "_steps_output": steps_output,
+        "_pipeline_status": pipeline_status,
+    }
+
+    return await ejecutar(
+        flow=flow,
+        entry=entry or {},
+        tenant=tenant,
+        registry=registry,
+        state_inicial=state,
         verbose=verbose,
     )
 

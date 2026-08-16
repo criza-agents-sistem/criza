@@ -1,10 +1,20 @@
 # Design Gate — Orquestador
 
-**Versión:** 1.1
-**Fecha:** 2026-06-16
+**Versión:** 1.2
+**Fecha:** 2026-08-16
 **Módulo:** `criza/orquestador/`
 **Capa:** 2 (instancia CRIZA)
-**Estado:** ✅ LISTO — 20/20 tests unitarios pasando
+**Estado:** ✅ LISTO (Motor v2) — ⚠️ ver nota de staleness abajo
+
+> **Nota de staleness (2026-08-16):** las §1-6 originales de este gate (versión 1.1, 2026-06-16)
+> describen el **Orquestador v1 — LLM-driven** (`SYSTEM_PROMPT` + `TOOLS`, `correr_divergente`,
+> `correr_evidence_especialista` como tool). Ese diseño quedó reemplazado por el **Motor v2 —
+> flows YAML declarativos** (`orquestador/motor.py`, sin LLM, ver
+> `docs/DISEÑO_MOTOR_ORQUESTADOR.md`, SEB-152 ✅ 2026-06-27) — el código real de
+> `orquestador/motor.py` ya no tiene nada de lo que describen §1-6 (no hay `SYSTEM_PROMPT`, no
+> hay `TOOLS`, no hay Divergente). Reescribir el gate completo para reflejar Motor v2 es deuda
+> aparte, no se hace en esta sesión — acá solo se agrega §7 (nuevo) para las 3 primitivas de
+> Etapa 2, que sí son código real de hoy.
 
 ---
 
@@ -147,3 +157,51 @@ El Orquestador no interpreta el output — solo ejecuta y pasa al siguiente paso
 - Drill-down → v2
 - `correr_divergente` (blue_ocean/tecnologia) → requiere SEB-147 formalizar divergente
 - `correr_evidence_especialista` real → requiere refactor scientific_agent (SEB-149)
+- **Reescribir §1-6 para reflejar Motor v2** (ver nota de staleness al inicio del documento) —
+  deuda documentada, no crítica (el código funciona y está testeado, el gate describe una
+  generación anterior del diseño)
+
+---
+
+## 7. Primitivas de invocación del Motor v2 (Etapa 2, 2026-08-16)
+
+Del plan de construcción del nuevo sistema de agentes (`C:\Users\sebab\.claude\plans\
+greedy-cooking-llama.md`, Etapa 2): `PROPUESTA_CONDUCTOR.md` §5 pide 5 primitivas de invocación
+para que el Conductor (Etapa 5) pueda operar sobre un caso sin bypasear la costura. Diagnóstico
+del 2026-08-16: correr un agente ✅ y invocar con tarea/contexto propios ✅ ya estaban resueltos
+(`ejecutar()`, `contract_input`). Faltaban 3: "ver qué le falta a un caso" (existía solo como
+excepción bloqueante en `armador.py::_validar_cobertura_upstream`, específica a mercado/evidencia),
+"estimar costo antes de correr" (no existía), y `reanudar()` generalizado (solo servía para
+retomar justo después de un gate humano, atado al `gate_data` en memoria del `MotorResult`
+anterior — se perdía si la sesión que disparó el gate ya no existía).
+
+### Entidades nuevas
+
+| Entidad | Descripción | Estado |
+|---|---|---|
+| `inspeccionar_caso(flow, oportunidad_id, tenant, registry)` | "¿Qué le falta a este caso?" — generaliza `armador._validar_cobertura_upstream` (hardcodeado a mercado/evidencia) a cualquier step `type: agent` de cualquier flow: por cada step, ¿ya existe `props[prop_key]`? Solo lee, no ejecuta nada, no lanza excepción — devuelve `InspeccionResult` con `completos`/`pendientes`/`no_disponibles`. | ✅ construido |
+| `estimar_costo(flow, oportunidad_id, tenant, registry)` | Estima tokens de los steps pendientes (según `inspeccionar_caso`) promediando `props.token_usage.<agente>` real de otras oportunidades ya corridas (`utils/token_tracker.py` es la fuente — nunca un número inventado). Sin histórico para un agente, ese paso queda `tokens_estimados=None` (a-confirmar), no un cero encubierto — y el total agregado también queda `None` si falta algún dato, en vez de sumar parcial y aparentar certeza que no hay. | ✅ construido |
+| `reanudar_desde(flow, oportunidad_id, desde_step, tenant, registry, entry=None)` | Generaliza `reanudar()`: reconstruye `steps_output`/`pipeline_status` **únicamente desde lo que ya está persistido en el KM** (`props.pipeline_status.steps` + `props[prop_key]` por step) — no depende del `gate_data` en memoria de un `MotorResult` anterior. Es la primitiva real detrás de "otra puerta de entrada, nunca un bypass" (`PROPUESTA_CONDUCTOR.md` §3.1): el Conductor puede retomar un caso sin haber sido quien lo pausó. `reanudar()` (post-gate-humano) queda intacto, sin cambios — `reanudar_desde` es una primitiva nueva, más general, no un reemplazo. | ✅ construido |
+
+**Decisión de diseño:** `entry` (los campos originales del pedido humano — `descripcion`,
+`sector`, etc.) no se persiste hoy en `props.pipeline_status` (solo vive en el `state` en memoria
+de una corrida activa) — `reanudar_desde` lo recibe como parámetro opcional en vez de intentar
+reconstruirlo desde el KM. Si algún step posterior al punto de reanudación necesita `{entry.*}`
+y no se pasa `entry`, el template queda sin resolver (comportamiento ya existente de `_resolve()`,
+no un crash) — persistir `entry` en el KM es deuda de una etapa futura si se vuelve un problema
+real de uso, no algo a resolver por anticipado acá.
+
+### Tests
+
+- [x] `inspeccionar_caso`: step con prop presente → `completo`; prop ausente → `pendiente`;
+      agente inactivo/no registrado → `no_disponible`
+- [x] `inspeccionar_caso`: solo considera steps `type: agent` (ignora `km_write`/`gate_humano`)
+- [x] `estimar_costo`: con histórico real → promedio correcto, `basado_en` = cantidad de muestras
+- [x] `estimar_costo`: sin histórico para un agente → `tokens_estimados=None`, total agregado
+      también `None` (no aparenta certeza que no hay)
+- [x] `estimar_costo`: sin steps pendientes → `total_estimado=0`, lista de pasos vacía
+- [x] `reanudar_desde`: reconstruye `steps_output` desde `props[prop_key]` + `pipeline_status` del
+      KM, sin usar `gate_data` en memoria
+- [x] `reanudar_desde`: step inexistente en el flow → `ValueError` explícito
+- [x] Al menos 1 test que reanude un flow parcial real (integration) sin re-pagar los pasos ya
+      corridos (verificación explícita del plan, Etapa 2)

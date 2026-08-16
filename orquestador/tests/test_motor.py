@@ -20,6 +20,8 @@ _CRIZA = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_CRIZA))
 
 from orquestador.motor import (
+    EstimacionCosto,
+    InspeccionResult,
     MotorResult,
     _advance,
     _build_context,
@@ -29,6 +31,9 @@ from orquestador.motor import (
     _resolve,
     _steps_index,
     ejecutar,
+    estimar_costo,
+    inspeccionar_caso,
+    reanudar_desde,
 )
 from orquestador.registry import AgentSpec
 
@@ -523,3 +528,257 @@ def test_motor_result_estructura():
     assert r.gate_data is None
     assert r.expediente_markdown is None
     assert r.error is None
+
+
+# ── inspeccionar_caso — Etapa 2 (2026-08-16) ────────────────────────────────────
+
+@pytest.mark.unit
+def test_inspeccionar_caso_prop_presente_es_completo():
+    registry = make_registry()
+    oportunidad = {"id": "uuid-1", "props": {"mercado": {"resumen": "ok"}}}
+
+    with patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)):
+        result = asyncio.run(inspeccionar_caso(FLOW_SIMPLE, "uuid-1", "criza", registry))
+
+    assert "market" in result.completos
+    assert "market" not in result.pendientes
+
+
+@pytest.mark.unit
+def test_inspeccionar_caso_prop_ausente_es_pendiente():
+    registry = make_registry()
+    oportunidad = {"id": "uuid-1", "props": {}}
+
+    with patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)):
+        result = asyncio.run(inspeccionar_caso(FLOW_SIMPLE, "uuid-1", "criza", registry))
+
+    assert result.pendientes == ["market", "armador"]
+    assert result.completos == []
+
+
+@pytest.mark.unit
+def test_inspeccionar_caso_agente_no_registrado_es_no_disponible():
+    registry = {"armador": make_registry()["armador"]}  # falta "mercado" en el registry
+    oportunidad = {"id": "uuid-1", "props": {}}
+
+    with patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)):
+        result = asyncio.run(inspeccionar_caso(FLOW_SIMPLE, "uuid-1", "criza", registry))
+
+    assert "market" in result.no_disponibles
+
+
+@pytest.mark.unit
+def test_inspeccionar_caso_agente_inactivo_es_no_disponible():
+    registry = make_registry(mercado=_spec("mercado", None))  # run_fn=None
+    oportunidad = {"id": "uuid-1", "props": {}}
+
+    with patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)):
+        result = asyncio.run(inspeccionar_caso(FLOW_SIMPLE, "uuid-1", "criza", registry))
+
+    assert "market" in result.no_disponibles
+
+
+@pytest.mark.unit
+def test_inspeccionar_caso_ignora_steps_no_agent():
+    """FLOW_SIMPLE tiene un step type=km_write ('crear_oportunidad') — no debe aparecer."""
+    registry = make_registry()
+    oportunidad = {"id": "uuid-1", "props": {}}
+
+    with patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)):
+        result = asyncio.run(inspeccionar_caso(FLOW_SIMPLE, "uuid-1", "criza", registry))
+
+    step_ids = {p.step_id for p in result.pasos}
+    assert "crear_oportunidad" not in step_ids
+
+
+@pytest.mark.unit
+def test_inspeccionar_caso_oportunidad_inexistente():
+    registry = make_registry()
+    with patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=None)):
+        with pytest.raises(ValueError, match="no encontrada"):
+            asyncio.run(inspeccionar_caso(FLOW_SIMPLE, "no-existe", "criza", registry))
+
+
+# ── estimar_costo — Etapa 2 (2026-08-16) ─────────────────────────────────────────
+
+@pytest.mark.unit
+def test_estimar_costo_con_historico_promedia():
+    registry = make_registry()
+    oportunidad = {"id": "uuid-1", "props": {}}
+    historicas = [
+        {"props": {"token_usage": {"mercado": {"total_tokens": 1000}}}},
+        {"props": {"token_usage": {"mercado": {"total_tokens": 2000}}}},
+        {"props": {"token_usage": {"armador": {"total_tokens": 500}}}},
+    ]
+
+    with (
+        patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)),
+        patch("orquestador.motor.motor_api.listar", new=AsyncMock(return_value=historicas)),
+    ):
+        result = asyncio.run(estimar_costo(FLOW_SIMPLE, "uuid-1", "criza", registry))
+
+    paso_market = next(p for p in result.pasos if p.step_id == "market")
+    assert paso_market.tokens_estimados == 1500
+    assert paso_market.basado_en == 2
+
+    paso_armador = next(p for p in result.pasos if p.step_id == "armador")
+    assert paso_armador.tokens_estimados == 500
+    assert paso_armador.basado_en == 1
+
+    assert result.total_estimado == 2000
+
+
+@pytest.mark.unit
+def test_estimar_costo_sin_historico_es_none():
+    registry = make_registry()
+    oportunidad = {"id": "uuid-1", "props": {}}
+
+    with (
+        patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)),
+        patch("orquestador.motor.motor_api.listar", new=AsyncMock(return_value=[])),
+    ):
+        result = asyncio.run(estimar_costo(FLOW_SIMPLE, "uuid-1", "criza", registry))
+
+    paso_market = next(p for p in result.pasos if p.step_id == "market")
+    assert paso_market.tokens_estimados is None
+    assert result.total_estimado is None  # no aparenta certeza que no hay
+
+
+@pytest.mark.unit
+def test_estimar_costo_sin_pendientes_total_cero():
+    registry = make_registry()
+    oportunidad = {"id": "uuid-1", "props": {"mercado": {"x": 1}, "armador": {"x": 1}}}
+
+    with (
+        patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)),
+        patch("orquestador.motor.motor_api.listar", new=AsyncMock(return_value=[])),
+    ):
+        result = asyncio.run(estimar_costo(FLOW_SIMPLE, "uuid-1", "criza", registry))
+
+    assert result.pasos == []
+    assert result.total_estimado == 0
+
+
+# ── reanudar_desde — Etapa 2 (2026-08-16) ────────────────────────────────────────
+
+@pytest.mark.unit
+def test_reanudar_desde_no_re_corre_pasos_completos():
+    """El step 'market' ya está completo en el KM — reanudar_desde('armador') no debe
+    volver a invocar mercado."""
+    registry = make_registry()
+    oportunidad = {
+        "id": "uuid-1",
+        "props": {
+            "mercado": {"resumen": "ya corrido", "informe_completo": "..."},
+            "pipeline_status": {
+                "flow": "pipeline_test", "objetivo": "obj", "started_at": "2026-08-16T00:00:00Z",
+                "steps": {
+                    "crear_oportunidad": {"status": "completo"},
+                    "market": {"status": "completo", "nivel_confianza": "alto", "próximo_agente": None},
+                },
+            },
+        },
+    }
+
+    with (
+        patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)),
+        patch("orquestador.motor.motor_api.actualizar_props", new=AsyncMock()),
+    ):
+        result = asyncio.run(reanudar_desde(FLOW_SIMPLE, "uuid-1", "armador", "criza", registry))
+
+    assert not registry["mercado"].run_fn.called
+    assert registry["armador"].run_fn.called
+    assert result.status == "completo"
+
+
+@pytest.mark.unit
+def test_reanudar_desde_step_inexistente():
+    registry = make_registry()
+    oportunidad = {"id": "uuid-1", "props": {}}
+
+    with patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=oportunidad)):
+        with pytest.raises(ValueError, match="no existe en el flow"):
+            asyncio.run(reanudar_desde(FLOW_SIMPLE, "uuid-1", "step_fantasma", "criza", registry))
+
+
+@pytest.mark.unit
+def test_reanudar_desde_oportunidad_inexistente():
+    registry = make_registry()
+    with patch("orquestador.motor.motor_api.obtener", new=AsyncMock(return_value=None)):
+        with pytest.raises(ValueError, match="no encontrada"):
+            asyncio.run(reanudar_desde(FLOW_SIMPLE, "no-existe", "armador", "criza", registry))
+
+
+@pytest.mark.integration
+def test_reanudar_desde_caso_real_no_repaga_pasos_completos():
+    """
+    Corrida real contra el KM (sin mock de motor_api) — verifica el requisito explícito del
+    plan (Etapa 2): reanudar un flow parcial sin re-pagar los pasos ya corridos. Los run_fn de
+    los agentes son stubs livianos a propósito — lo que se verifica acá es la mecánica del
+    Motor (reconstrucción de estado + persistencia real al KM), no la calidad de síntesis de
+    cada agente (eso ya está cubierto en las suites propias de cada uno).
+    """
+    from knowledge_module.db import reset_engine
+    from knowledge_module.motor import api as motor_api
+
+    reset_engine()
+
+    async def _run():
+        creada = await motor_api.guardar_ficha(
+            area="descubrimiento", tipo="oportunidad", tenant="criza",
+            campos={
+                "nombre": "TEST reanudar_desde — borrar",
+                "descripcion": "Prueba de integración de reanudar_desde (Etapa 2)",
+            },
+        )
+        oportunidad_id = creada["id"]
+
+        # Simula que 'market' ya corrió en una sesión anterior — persistencia real al KM.
+        await motor_api.actualizar_props(
+            oportunidad_id,
+            {
+                "mercado": {"resumen": "Mercado ya evaluado (fixture de test)", "informe_completo": "..."},
+                "pipeline_status": {
+                    "flow": "pipeline_test", "objetivo": "obj de prueba",
+                    "started_at": "2026-08-16T00:00:00Z",
+                    "steps": {
+                        "crear_oportunidad": {"status": "completo"},
+                        "market": {"status": "completo", "nivel_confianza": "alto", "próximo_agente": None},
+                    },
+                },
+            },
+            tenant="criza",
+        )
+
+        market_calls = []
+        armador_calls = []
+
+        async def market_stub(contract_input, verbose=False):
+            market_calls.append(contract_input)
+            return MARKET_OUTPUT
+
+        async def armador_stub(contract_input, verbose=False):
+            armador_calls.append(contract_input)
+            return ARMADOR_OUTPUT
+
+        registry = {
+            "mercado": _spec("mercado", market_stub),
+            "armador": _spec("armador", armador_stub),
+        }
+
+        # verbose=False: motor.py imprime '→' (U+2192), que la consola cp1252 de Windows no
+        # puede encodear bajo pytest's capture — no es un bug de reanudar_desde, es un
+        # problema de codepage de la terminal, ver test_run_agent_caso_real para el mismo caso.
+        result = await reanudar_desde(FLOW_SIMPLE, oportunidad_id, "armador", "criza", registry, verbose=False)
+
+        assert market_calls == [], "reanudar_desde volvió a invocar 'market' — no debería, ya estaba completo"
+        assert len(armador_calls) == 1
+        assert result.status == "completo"
+
+        # Verificación leyendo el KM (DoD del proyecto: no confiar solo en el valor de retorno).
+        oportunidad_final = await motor_api.obtener(oportunidad_id, tenant="criza")
+        props_final = oportunidad_final.get("props") or {}
+        assert props_final.get("armador") is not None, "props.armador no quedó persistido en el KM"
+        assert props_final["pipeline_status"]["steps"]["armador"]["status"] == "completo"
+
+    asyncio.run(_run())
