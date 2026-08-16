@@ -116,6 +116,7 @@ OUTPUT_CONTRACT = {"agent": "agronomo", "version": "1.0",
 | A | ¿Hay necesidad real que justifique este especialista ahora? | Sí, señal concreta / No, esperar | **Sí** — Sebas confirmó explícitamente: Helios necesita destino para su efluente, el sector agropecuario es un destino probable, hace falta quien lo evalúe. No se construyó por completar el trío de `PROPUESTA_DESTINO.md` §5, se construyó porque había señal real. | 2026-08-16 |
 | B | ¿Rol exacto — evalúa producción agrícola en general, o el uso agronómico de un producto/enfoque ya identificado? | General / Uso agronómico de un enfoque ya identificado | **Uso agronómico de un enfoque ya identificado** — mismo patrón que Microbiólogo (biología) e Ingeniero Ambiental (ingeniería): cada especialista evalúa una DIMENSIÓN de un enfoque que ya existe, no arranca de cero. Acá la dimensión es: ¿funciona como insumo agrícola/ganadero real? | 2026-08-16 |
 | C | ¿Tool set y schema? | Nuevos / Reusar los de Ingeniero Ambiental | **Reusar tal cual** — mismo criterio ya aplicado dos veces, sin razón para desviarse. | 2026-08-16 |
+| D | Etapa 10 (2026-08-16) — mismo pedido de Sebas: chat directo con el especialista. | Mismo patrón que `microbiologo_agent.py`/`ingeniero_ambiental_agent.py` / uno propio | **Mismo patrón, sin variación** — tercer consumidor del patrón conversacional (`_despachar_tool` extraído, `TOOLS_CHAT`, `iniciar_sesion`/`enviar_mensaje`), mismo razonamiento de las otras dos: la evaluación formal persistida sigue siendo exclusiva de la corrida de un turno vía la costura. | 2026-08-16 |
 
 ---
 
@@ -123,7 +124,7 @@ OUTPUT_CONTRACT = {"agent": "agronomo", "version": "1.0",
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-C cerradas, ninguna abierta. Tercer consumidor del patrón — sin diseño nuevo de
+Decisiones A-D cerradas, ninguna abierta. Tercer consumidor del patrón — sin diseño nuevo de
 fondo, la única decisión real de esta ronda fue confirmar que había señal real antes de construir
 (decisión A).
 
@@ -131,3 +132,5 @@ fondo, la única decisión real de esta ronda fue confirmar que había señal re
 - Camino `oportunidad_id` → no planeado
 - Tools de dominio específicas → solo si una corrida real las requiere
 - Persistencia de lecciones de caso → backlog
+- El chat (decisión D) no escribe lecciones al cierre (a diferencia del Conductor, Etapa 9) —
+  mismo backlog

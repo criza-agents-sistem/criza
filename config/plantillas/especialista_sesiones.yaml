@@ -1,0 +1,36 @@
+# Plantilla del área de sesiones de chat con un especialista puntual — instancia CRIZA
+#
+# Por qué existe: Etapa 10 del plan de construcción (2026-08-16) — Sebas pidió poder hablar
+# directo con cada especialista (Microbiólogo, Ingeniero Ambiental, Agrónomo), no solo con el
+# Conductor. Mismo mecanismo de persistencia que ya usa conductor_sesiones (config/plantillas/
+# conductor_sesiones.yaml) — un área separada porque el shape es distinto: acá cada ficha necesita
+# recordar CONTRA QUÉ frente y especialista es la conversación para poder reconstruir contexto
+# (lecciones, caso) en cada turno.
+
+area: especialista_sesiones
+tenant: criza
+objetivo: >
+  Persistir el historial de cada conversación de chat con un especialista puntual (distinto del
+  chat con el Conductor) — para que sobreviva a un reinicio del servidor de la API, mismo criterio
+  que conductor_sesiones.
+descripcion: >
+  Una ficha por sesión de chat con un especialista. `mensajes` guarda el historial ya serializado
+  a JSON-safe (ver conductor/conductor.py::serializar_mensajes, reusada tal cual para esto — no es
+  específica del Conductor). `especialista` y `frente_id` identifican con quién y sobre qué frente
+  es la conversación, para reconstruir el contexto (lecciones relevantes) en cada turno.
+
+tipos_ficha:
+  - nombre: sesion_especialista
+    descripcion: >
+      Una conversación completa de chat con un especialista sobre un frente puntual.
+      `session_id` que ve el browser es directamente el id de esta ficha.
+    campos:
+      - especialista      # "microbiologo" / "ingeniero_ambiental" / "agronomo"
+      - frente_id          # UUID del frente sobre el que es la conversación
+      - mensajes           # lista serializada de {role, content} — content: str o list[dict]
+      - iniciada_en        # ISO timestamp
+      - actualizada_en     # ISO timestamp, se actualiza en cada turno
+    vectorizar: null
+    dedup_por: null
+
+tipos_conexion: []

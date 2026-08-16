@@ -176,13 +176,15 @@ persistir es responsabilidad de la costura, no del agente — este agente no tie
 | F | ¿Sumar tools de bases de datos bioquímicas (KEGG/Rhea/UniProt/BacDive/BRENDA) ahora o esperar señal de una corrida real? | Esperar señal (decisión C original) / Sumar ahora, Sebas confirma necesidad real del caso | **Sumar las 4 REST ahora** (KEGG, Rhea, UniProt, BacDive) — Sebas: "sé que este caso real que tengo las va a pedir". Cada API se verificó en vivo antes de codear (curl real, no asumido): las 4 son REST **sin auth** (BacDive se verificó dos veces: primero se construyó con Basic Auth asumiendo cuenta requerida — Sebas señaló la doc real de BacDive, que confirma que desde febrero 2026 la API es pública sin registro; se corrigió el cliente para no pedir credenciales). **BRENDA queda afuera de esta ronda** — confirmado en vivo que es SOAP-only (WSDL real, sin equivalente REST), fricción de integración genuinamente distinta — Sebas pidió sumarla en una etapa separada (Etapa 8 del plan). | 2026-08-16 |
 | G | ¿Cómo se conecta el agente al modelo de `casos.yaml`? | Reemplazar el modelo viejo (`oportunidad`) / Sumarlo como camino alternativo, mutuamente excluyente | **Camino alternativo, no reemplazo.** `contract_input['conocimiento']` acepta `oportunidad_id` (modelo viejo, sin cambios) O `frente_id` (nuevo) — nunca los dos juntos. `run_agent_desde_frente()` lee `caso`+`frente`+`pendientes` vía `utils/casos.py` (nuevo, genérico — no específico de microbiólogo, para que el próximo especialista de la Etapa 7 lo reuse gratis). La costura (`invocador.py::invocar_agente`) persiste el resultado como `documento_caso` conectado vía `frente_produce_documento` en vez de `props[prop_key]` — mismo principio de siempre (el agente no persiste nada, la costura sí), generalizado a un segundo modelo de dato. `token_usage` de una corrida por-frente se guarda en `props` del **frente**, no de ningún `oportunidad` (no hay una oportunidad involucrada en ese camino). Verificado en vivo: `documento_caso` real (11.370 chars) creado y conectado al 'Frente técnico' real de Helios, corrido contra el branch de staging (`docs/STAGING.md`) — producción confirmada intacta (0 documentos) tras la corrida. | 2026-08-16 |
 
+| H | Etapa 10 (2026-08-16) — Sebas pidió chat directo con cada especialista, no solo con el Conductor. ¿Cómo se vuelve conversacional el agente sin perder el contrato SEB-115 (`run()`, de un turno, que ya usa el Motor/la costura)? | Reemplazar `run()` por un loop conversacional / Sumar un camino conversacional aparte, `run()` intacto | **Sumar aparte.** `_run_loop()` (el loop de un turno, usado por `run_agent`/`run_agent_desde_frente`/`run()`) no se toca. Nuevo: `iniciar_sesion(frente_id)` arma el primer mensaje (mismo `build_input_desde_frente` que ya usaba la corrida formal) y `enviar_mensaje(messages, texto, frente_id)` es un loop tipo `conductor.enviar_mensaje()` — multi-turno, sin forzar un final. `TOOLS_CHAT = TOOLS - {submit_evaluacion_tecnica}` a propósito: el chat da acceso al mismo conocimiento (búsquedas, KEGG/Rhea/UniProt/BacDive), pero la evaluación formal persistida sigue siendo exclusiva del camino de un turno vía la costura — si Sebas quiere el documento, se lo pide al Conductor, mismo principio de "nunca bypasear la costura" que ya rige el resto del sistema. El dispatch de tools (`_despachar_tool`) se extrajo del if/elif inline de `_run_loop` a una función propia para que ambos caminos lo reusen sin duplicar ~170 líneas — refactor verificado behavior-preserving corriendo los tests existentes sin cambios antes de sumar nada nuevo. | 2026-08-16 |
+
 ---
 
 ## 6. Estado del gate
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A–G cerradas, ninguna abierta. El agente clona un patrón ya probado (evidence_generalista) —
+Decisiones A–H cerradas, ninguna abierta. El agente clona un patrón ya probado (evidence_generalista) —
 no hay diseño nuevo de fondo, solo aplicación a un dominio distinto con el checklist anti-sesgo
 como control explícito.
 
@@ -190,3 +192,5 @@ como control explícito.
 - Persistencia de lecciones de caso → backlog, misma deuda que evidence_generalista
 - Tools de dominio específicas → solo si una corrida real las requiere
 - BRENDA (cinética de enzimas) → Etapa 8 del plan
+- El chat (decisión H) no escribe lecciones al cierre (a diferencia del Conductor, Etapa 9) — no
+  pedido explícitamente para especialistas, mismo backlog que "persistencia de lecciones de caso"

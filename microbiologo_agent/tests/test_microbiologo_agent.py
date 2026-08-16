@@ -671,6 +671,82 @@ async def test_run_contract_ambos_ids_a_la_vez_es_error():
         await ma.run(contract_input={"conocimiento": {"oportunidad_id": "x", "frente_id": "y"}}, verbose=False)
 
 
+# ── Chat conversacional (Etapa 10, 2026-08-16) ──────────────────────────────────
+
+@pytest.mark.unit
+def test_tools_chat_excluye_submit_evaluacion_tecnica():
+    nombres = {t["name"] for t in ma.TOOLS_CHAT}
+    assert "submit_evaluacion_tecnica" not in nombres
+    assert nombres == {t["name"] for t in ma.TOOLS} - {"submit_evaluacion_tecnica"}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_iniciar_sesion_arma_primer_mensaje_con_contexto_del_frente():
+    with (
+        patch("microbiologo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})),
+        patch("microbiologo_agent.obtener_pendientes_de_caso", new=AsyncMock(return_value=PENDIENTES_TEST)),
+    ):
+        messages = await ma.iniciar_sesion("frente-uuid-1")
+
+    assert len(messages) == 1
+    assert messages[0]["role"] == "user"
+    assert "Frente técnico" in messages[0]["content"]
+    assert "Confirmar quién paga el flete" in messages[0]["content"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_iniciar_sesion_frente_no_encontrado_levanta_valueerror():
+    with patch("microbiologo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": None, "caso": None})):
+        with pytest.raises(ValueError, match="no encontrado"):
+            await ma.iniciar_sesion("no-existe")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_enviar_mensaje_chat_mantiene_historial_y_no_usa_tools_de_submit():
+    mock_text = type("TextBlock", (), {"type": "text", "text": "El enfoque de microalgas es viable si..."})()
+    mock_usage = type("Usage", (), {"input_tokens": 10, "output_tokens": 5})()
+    mock_response = type("Response", (), {"stop_reason": "end_turn", "content": [mock_text], "usage": mock_usage})()
+
+    with (
+        patch("microbiologo_agent._ai_complete", new=AsyncMock(return_value=mock_response)) as mock_ai,
+        patch("microbiologo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})),
+        patch("microbiologo_agent.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("microbiologo_agent.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")),
+    ):
+        respuesta, messages = await ma.enviar_mensaje([{"role": "user", "content": "contexto inicial"}], "¿Qué opinás de microalgas?", "frente-uuid-1")
+
+    assert respuesta == "El enfoque de microalgas es viable si..."
+    assert len(messages) == 3  # contexto inicial + pregunta + respuesta
+    assert messages[1] == {"role": "user", "content": "¿Qué opinás de microalgas?"}
+    _, kwargs = mock_ai.call_args
+    assert kwargs["tools"] == ma.TOOLS_CHAT
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_enviar_mensaje_chat_despacha_tool_sin_forzar_submit():
+    tool_call = type("ToolUseBlock", (), {"type": "tool_use", "name": "expand_agrovoc", "id": "t1", "input": {"term": "biodigestor"}})()
+    mock_usage = type("Usage", (), {"input_tokens": 10, "output_tokens": 5})()
+    r1 = type("Response", (), {"stop_reason": "tool_use", "content": [tool_call], "usage": mock_usage})()
+    mock_text = type("TextBlock", (), {"type": "text", "text": "Según AGROVOC, biodigestor se relaciona con..."})()
+    r2 = type("Response", (), {"stop_reason": "end_turn", "content": [mock_text], "usage": mock_usage})()
+
+    with (
+        patch("microbiologo_agent._ai_complete", new=AsyncMock(side_effect=[r1, r2])),
+        patch("microbiologo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})),
+        patch("microbiologo_agent.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("microbiologo_agent.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")),
+        patch("microbiologo_agent._expand_agrovoc_fn", return_value={"found": True, "term": "biodigestor"}) as mock_expand,
+    ):
+        respuesta, messages = await ma.enviar_mensaje([], "¿Qué significa biodigestor en AGROVOC?", "frente-uuid-1")
+
+    mock_expand.assert_called_once()
+    assert respuesta == "Según AGROVOC, biodigestor se relaciona con..."
+
+
 # ── Integration: corrida real ─────────────────────────────────────────────────
 
 @pytest.mark.integration

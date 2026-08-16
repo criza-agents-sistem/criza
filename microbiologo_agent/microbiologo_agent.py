@@ -589,6 +589,77 @@ async def _preflight() -> None:
         )
 
 
+async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
+    """
+    Todas las tools EXCEPTO submit_evaluacion_tecnica — esa queda especial-casada en `_run_loop`
+    (marca el fin del análisis de un turno, no es una consulta de datos como el resto). Extraída
+    a función propia (Etapa 10, 2026-08-16) para que `enviar_mensaje` (chat conversacional) la
+    reuse sin duplicar el dispatch — antes vivía inline en el loop de `_run_loop`, que solo servía
+    para la corrida de un turno vía `run()`/la costura.
+    """
+    if nombre == "expand_agrovoc":
+        term = tool_input.get("term", "")
+        if verbose:
+            print(f"  -> expand_agrovoc: {term[:60]}")
+        try:
+            expanded = _expand_agrovoc_fn(term)
+            return expanded if expanded else {"found": False, "term": term}
+        except Exception as exc:
+            return {"error": str(exc), "term": term}
+    if nombre == "search_corpus_inta":
+        query = tool_input.get("query", "")
+        if verbose:
+            print(f"  -> search_corpus_inta: {query[:80]}")
+        return await _search_inta_fn(
+            query=query, tipo=tool_input.get("tipo"), limit=tool_input.get("limit", 1000), tenant_id=_TENANT,
+        )
+    if nombre == "search_literature":
+        query = tool_input.get("query", "")
+        if verbose:
+            print(f"  -> search_literature: {query[:80]}")
+        return _search_literature_fn(query=query, max_results=tool_input.get("max_results", 10))
+    if nombre == "buscar_corpus_cientifico":
+        consulta = tool_input.get("consulta", "")
+        if verbose:
+            print(f"  -> buscar_corpus_cientifico: {consulta[:80]}")
+        return await _buscar_corpus_cientifico_fn(consulta=consulta, limit=tool_input.get("limit", 100))
+    if nombre == "search_kegg":
+        query = tool_input.get("query", "")
+        if verbose:
+            print(f"  -> search_kegg: {query[:80]}")
+        try:
+            return _search_kegg_fn(query=query, database=tool_input.get("database", "pathway"), max_results=tool_input.get("max_results", 10))
+        except Exception as exc:
+            return {"error": str(exc), "query": query}
+    if nombre == "search_rhea":
+        query = tool_input.get("query", "")
+        if verbose:
+            print(f"  -> search_rhea: {query[:80]}")
+        try:
+            return _search_rhea_fn(query=query, max_results=tool_input.get("max_results", 10))
+        except Exception as exc:
+            return {"error": str(exc), "query": query}
+    if nombre == "search_uniprot":
+        query = tool_input.get("query", "")
+        if verbose:
+            print(f"  -> search_uniprot: {query[:80]}")
+        try:
+            return _search_uniprot_fn(query=query, organism=tool_input.get("organism"), max_results=tool_input.get("max_results", 5))
+        except Exception as exc:
+            return {"error": str(exc), "query": query}
+    if nombre == "search_bacdive":
+        organism = tool_input.get("organism", "")
+        if verbose:
+            print(f"  -> search_bacdive: {organism[:80]}")
+        try:
+            return _search_bacdive_fn(organism=organism, max_results=tool_input.get("max_results", 5))
+        except Exception as exc:
+            return {"error": str(exc), "organism": organism}
+    if verbose:
+        print(f"  -> [tool desconocido: {nombre}]")
+    return {"error": f"Tool '{nombre}' no implementado."}
+
+
 async def _run_loop(
     identificador: str,
     system_blocks: list[dict],
@@ -650,132 +721,14 @@ async def _run_loop(
                         "tool_use_id": block.id,
                         "content": json.dumps({"success": True, "message": "Evaluación registrada."}),
                     })
-                elif block.name == "expand_agrovoc":
-                    term = block.input.get("term", "")
-                    if verbose:
-                        print(f"  -> expand_agrovoc: {term[:60]}")
-                    try:
-                        expanded = _expand_agrovoc_fn(term)
-                        content = json.dumps(expanded, ensure_ascii=False, indent=2) if expanded else json.dumps({"found": False, "term": term})
-                    except Exception as exc:
-                        content = json.dumps({"error": str(exc), "term": term})
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": content,
-                    })
-                elif block.name == "search_corpus_inta":
-                    query = block.input.get("query", "")
-                    if verbose:
-                        print(f"  -> search_corpus_inta: {query[:80]}")
-                    result = await _search_inta_fn(
-                        query=query,
-                        tipo=block.input.get("tipo"),
-                        limit=block.input.get("limit", 1000),
-                        tenant_id=_TENANT,
-                    )
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, ensure_ascii=False, indent=2),
-                    })
-                elif block.name == "search_literature":
-                    query = block.input.get("query", "")
-                    if verbose:
-                        print(f"  -> search_literature: {query[:80]}")
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(
-                            _search_literature_fn(
-                                query=query,
-                                max_results=block.input.get("max_results", 10),
-                            ),
-                            ensure_ascii=False,
-                            indent=2,
-                        ),
-                    })
-                elif block.name == "buscar_corpus_cientifico":
-                    consulta = block.input.get("consulta", "")
-                    if verbose:
-                        print(f"  -> buscar_corpus_cientifico: {consulta[:80]}")
-                    result = await _buscar_corpus_cientifico_fn(
-                        consulta=consulta,
-                        limit=block.input.get("limit", 100),
-                    )
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, ensure_ascii=False, indent=2),
-                    })
-                elif block.name == "search_kegg":
-                    query = block.input.get("query", "")
-                    if verbose:
-                        print(f"  -> search_kegg: {query[:80]}")
-                    try:
-                        result = _search_kegg_fn(
-                            query=query,
-                            database=block.input.get("database", "pathway"),
-                            max_results=block.input.get("max_results", 10),
-                        )
-                    except Exception as exc:
-                        result = {"error": str(exc), "query": query}
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, ensure_ascii=False, indent=2),
-                    })
-                elif block.name == "search_rhea":
-                    query = block.input.get("query", "")
-                    if verbose:
-                        print(f"  -> search_rhea: {query[:80]}")
-                    try:
-                        result = _search_rhea_fn(query=query, max_results=block.input.get("max_results", 10))
-                    except Exception as exc:
-                        result = {"error": str(exc), "query": query}
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, ensure_ascii=False, indent=2),
-                    })
-                elif block.name == "search_uniprot":
-                    query = block.input.get("query", "")
-                    if verbose:
-                        print(f"  -> search_uniprot: {query[:80]}")
-                    try:
-                        result = _search_uniprot_fn(
-                            query=query,
-                            organism=block.input.get("organism"),
-                            max_results=block.input.get("max_results", 5),
-                        )
-                    except Exception as exc:
-                        result = {"error": str(exc), "query": query}
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, ensure_ascii=False, indent=2),
-                    })
-                elif block.name == "search_bacdive":
-                    organism = block.input.get("organism", "")
-                    if verbose:
-                        print(f"  -> search_bacdive: {organism[:80]}")
-                    try:
-                        result = _search_bacdive_fn(organism=organism, max_results=block.input.get("max_results", 5))
-                    except Exception as exc:
-                        result = {"error": str(exc), "organism": organism}
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, ensure_ascii=False, indent=2),
-                    })
-                else:
-                    if verbose:
-                        print(f"  -> [tool desconocido: {block.name}]")
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps({"error": f"Tool '{block.name}' no implementado."}),
-                    })
+                    continue
+
+                resultado = await _despachar_tool(block.name, block.input, verbose)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(resultado, ensure_ascii=False, indent=2, default=str),
+                })
 
             messages.append({"role": "user", "content": tool_results})
 
@@ -996,3 +949,84 @@ async def run(
         "próximo_agente": None,
         "nuevo_conocimiento": lecciones,
     }
+
+
+# ── Chat conversacional (Etapa 10, 2026-08-16) ─────────────────────────────────
+#
+# Distinto de run()/run_agent_desde_frente() (contrato SEB-115, un turno, termina en
+# submit_evaluacion_tecnica, la costura persiste un documento_caso) — esto es para que Sebas
+# pueda CONVERSAR con el especialista (preguntar, pedir que profundice, cuestionar un enfoque)
+# sin que cada intercambio dispare una evaluación formal. TOOLS_CHAT excluye
+# submit_evaluacion_tecnica a propósito: el chat da acceso al mismo conocimiento/herramientas,
+# pero la evaluación formal persistida sigue siendo exclusivamente responsabilidad del camino de
+# un turno vía la costura (mismo principio de "nunca bypasear la costura" que ya rige el
+# Conductor) — si Sebas quiere el documento formal, se lo pide al Conductor.
+
+TOOLS_CHAT = [t for t in TOOLS if t["name"] != "submit_evaluacion_tecnica"]
+
+
+async def iniciar_sesion(frente_id: str, *, tenant: str = _TENANT) -> list[dict]:
+    """Arma el primer mensaje de una sesión de chat contra un frente — mismo contexto que
+    run_agent_desde_frente() arma para una corrida de un turno (build_input_desde_frente),
+    pero acá arranca una conversación en vez de forzar una evaluación formal."""
+    contexto = await obtener_frente_con_caso(frente_id, tenant=tenant)
+    frente_dict, caso_dict = contexto["frente"], contexto["caso"]
+    if not frente_dict:
+        raise ValueError(f"Frente {frente_id} no encontrado en el KM")
+    if not caso_dict:
+        raise ValueError(f"Frente {frente_id} no tiene un caso asociado (conexión tiene_frente ausente)")
+    pendientes = await obtener_pendientes_de_caso(caso_dict["id"], tenant=tenant)
+    user_input = build_input_desde_frente(frente_dict, caso_dict, pendientes)
+    return [{"role": "user", "content": user_input}]
+
+
+async def enviar_mensaje(
+    messages: list[dict],
+    texto_usuario: str,
+    frente_id: str,
+    model: str = DEFAULT_MODEL,
+    verbose: bool = False,
+    tracker: TokenTracker | None = None,
+    tenant: str = _TENANT,
+) -> tuple[str, list[dict]]:
+    """
+    Un turno de chat con el Especialista Microbiólogo sobre un frente puntual. `messages` debe
+    arrancar con lo que devolvió `iniciar_sesion(frente_id)` — se muta y se devuelve, mismo
+    patrón que `conductor.enviar_mensaje()`.
+    """
+    messages.append({"role": "user", "content": texto_usuario})
+    tracker = tracker or TokenTracker(agent=_AGENTE, oportunidad_id=frente_id, model=model)
+
+    contexto = await obtener_frente_con_caso(frente_id, tenant=tenant)
+    caso_dict = contexto["caso"] or {}
+    caso_props = caso_dict.get("props") or {}
+    await aprendizaje.ensure_area(tenant=tenant)
+    bloque = await aprendizaje.bloque_lecciones_para_prompt(
+        agente=_AGENTE, consulta=caso_props.get("descripcion") or caso_props.get("nombre") or frente_id, tenant=tenant,
+    )
+    system_blocks = [{"type": "text", "text": SYSTEM_PROMPT + bloque, "cache_control": {"type": "ephemeral"}}]
+
+    while True:
+        response = await _ai_complete(
+            model=_resolver_modelo(model), max_tokens=4096,
+            system=system_blocks, tools=TOOLS_CHAT, messages=messages,
+        )
+        messages.append({"role": "assistant", "content": response.content})
+        tracker.add(response.usage)
+
+        if response.stop_reason != "tool_use":
+            texto = "".join(b.text for b in response.content if hasattr(b, "text"))
+            return texto, messages
+
+        tool_results = []
+        for block in response.content:
+            if block.type != "tool_use":
+                continue
+            if verbose:
+                print(f"  -> {block.name}({block.input})")
+            resultado = await _despachar_tool(block.name, block.input, verbose)
+            tool_results.append({
+                "type": "tool_result", "tool_use_id": block.id,
+                "content": json.dumps(resultado, ensure_ascii=False, indent=2, default=str),
+            })
+        messages.append({"role": "user", "content": tool_results})

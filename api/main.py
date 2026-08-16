@@ -57,12 +57,64 @@ from utils.casos import (
 )
 from conductor import (
     enviar_mensaje as _enviar_mensaje_conductor,
-    serializar_mensajes as _serializar_mensajes_conductor,
+    # serializar_mensajes no es en realidad específico del Conductor — solo convierte
+    # ContentBlock (utils/ai_client.py) a dict plano — se reusa tal cual para las sesiones de
+    # chat de cada especialista, sin duplicar la misma función 3 veces más.
+    serializar_mensajes as _serializar_mensajes,
     cerrar_sesion as _cerrar_sesion_conductor,
 )
+import importlib.util
+
+
+def _cargar_modulo_agente(nombre: str, archivo: Path):
+    """
+    Carga `archivo` como módulo standalone bajo una clave PROPIA de `sys.modules`
+    (`_api_<nombre>`, nunca `<nombre>`) — ninguno de los dos estilos de import ya en uso en el
+    proyecto para estos 3 agentes sirve acá: bare (`import microbiologo_agent`, el que usan
+    `microbiologo_agent/tests/` y su propio `run.py`) y package-qualificado
+    (`microbiologo_agent.microbiologo_agent`, el que usa `orquestador/registry.py::get_registry()`
+    de forma perezosa) son MUTUAMENTE EXCLUYENTES en el mismo proceso — cualquiera de los dos que
+    toque primero `sys.modules["microbiologo_agent"]` (archivo o paquete) rompe al otro apenas se
+    ejecuta (confirmado corriendo la regresión combinada: `agronomo_agent/tests` colecciona antes
+    que `api/tests` alfabéticamente, cachea el archivo, y el import package-qualificado de acá
+    fallaba con "'agronomo_agent' is not a package"). Cargar bajo una clave separada no colisiona
+    con ninguno de los dos — es un objeto de módulo aparte, no comparte `sys.modules[nombre]`.
+
+    El propio archivo del agente inserta SU carpeta al frente de `sys.path` como efecto de lado
+    (mismo truco de siempre, para que sus propios imports internos resuelvan) — eso por sí solo
+    ya alcanza para romper una resolución package-qualificada de `<nombre>.<nombre>` DESPUÉS de
+    esta función, aunque nunca toquemos `sys.modules[nombre]` (confirmado con una prueba real:
+    alcanza con que la carpeta quede al frente de `sys.path` para que Python encuentre el ARCHIVO
+    antes que el paquete la próxima vez que alguien resuelva `agronomo_agent` desde cero). Por
+    eso se restaura `sys.path` al estado previo al salir — la carga ya completó lo que necesitaba
+    resolver con la carpeta al frente, no hace falta dejarla ahí después.
+    """
+    snapshot = list(sys.path)
+    try:
+        spec = importlib.util.spec_from_file_location(f"_api_{nombre}", archivo)
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        return modulo
+    finally:
+        sys.path[:] = snapshot
+
+
+_mod_microbiologo = _cargar_modulo_agente("microbiologo_agent", _CRIZA_DIR / "microbiologo_agent" / "microbiologo_agent.py")
+_mod_ingeniero_ambiental = _cargar_modulo_agente("ingeniero_ambiental_agent", _CRIZA_DIR / "ingeniero_ambiental_agent" / "ingeniero_ambiental_agent.py")
+_mod_agronomo = _cargar_modulo_agente("agronomo_agent", _CRIZA_DIR / "agronomo_agent" / "agronomo_agent.py")
+
+# Mapea a los MÓDULOS, no a (iniciar_sesion, enviar_mensaje) ya extraídas — así un test puede
+# patchear "main._mod_microbiologo.iniciar_sesion" y que el endpoint lo vea (busca el atributo
+# en el módulo en cada llamada, no una referencia a función capturada una sola vez acá arriba).
+_ESPECIALISTAS_CHAT = {
+    "microbiologo": _mod_microbiologo,
+    "ingeniero_ambiental": _mod_ingeniero_ambiental,
+    "agronomo": _mod_agronomo,
+}
 
 _TENANT = "criza"
 _PLANTILLA_SESIONES = _CRIZA_DIR / "config" / "plantillas" / "conductor_sesiones.yaml"
+_PLANTILLA_SESIONES_ESPECIALISTA = _CRIZA_DIR / "config" / "plantillas" / "especialista_sesiones.yaml"
 
 app = FastAPI(title="CRIZA API", description="API para la app web (Etapa 6) — casos de solo lectura + chat del Conductor")
 
@@ -190,7 +242,7 @@ async def enviar_mensaje_conductor(session_id: str, body: _MensajeIn) -> dict:
     await motor_api.actualizar_props(
         session_id,
         {
-            "mensajes": _serializar_mensajes_conductor(messages),
+            "mensajes": _serializar_mensajes(messages),
             "actualizada_en": datetime.now(timezone.utc).isoformat(),
         },
         tenant=_TENANT,
@@ -218,3 +270,69 @@ async def cerrar_sesion_conductor(session_id: str) -> dict:
     messages = (sesion.get("props") or {}).get("mensajes") or []
     leccion = await _cerrar_sesion_conductor(messages, tenant=_TENANT)
     return {"leccion_guardada": leccion is not None, "id": leccion.get("id") if leccion else None}
+
+
+# ── Chat con un especialista puntual (Etapa 10, 2026-08-16) ────────────────────
+#
+# Distinto del chat del Conductor: acá Sebas habla directo con un especialista sobre un frente
+# concreto — mismo conocimiento/herramientas que la corrida formal de un turno, pero sin producir
+# un documento_caso (eso sigue siendo exclusivo del camino de un turno vía la costura — ver
+# <especialista>_agent.py::TOOLS_CHAT, que excluye submit_evaluacion_tecnica a propósito).
+
+class _CrearSesionEspecialistaIn(BaseModel):
+    frente_id: str
+
+
+@app.post("/especialistas/{nombre}/sesiones")
+async def crear_sesion_especialista(nombre: str, body: _CrearSesionEspecialistaIn) -> dict:
+    if nombre not in _ESPECIALISTAS_CHAT:
+        raise HTTPException(status_code=404, detail=f"'{nombre}' no es un especialista disponible. Opciones: {list(_ESPECIALISTAS_CHAT.keys())}.")
+    modulo = _ESPECIALISTAS_CHAT[nombre]
+
+    try:
+        mensajes_iniciales = await modulo.iniciar_sesion(body.frente_id, tenant=_TENANT)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    await load_plantilla(str(_PLANTILLA_SESIONES_ESPECIALISTA), tenant=_TENANT)
+    ahora = datetime.now(timezone.utc).isoformat()
+    resultado = await motor_api.guardar_ficha(
+        area="especialista_sesiones", tipo="sesion_especialista", tenant=_TENANT,
+        campos={
+            "especialista": nombre,
+            "frente_id": body.frente_id,
+            "mensajes": _serializar_mensajes(mensajes_iniciales),
+            "iniciada_en": ahora,
+            "actualizada_en": ahora,
+        },
+    )
+    if not resultado.get("success"):
+        raise HTTPException(status_code=500, detail=f"No se pudo crear la sesión: {resultado.get('error')}")
+    return {"session_id": resultado["id"]}
+
+
+@app.post("/especialistas/sesiones/{session_id}/mensajes")
+async def enviar_mensaje_especialista(session_id: str, body: _MensajeIn) -> dict:
+    if not body.texto.strip():
+        raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
+
+    try:
+        sesion = await motor_api.obtener(session_id, tenant=_TENANT)
+    except Exception:
+        sesion = None
+    if not sesion or sesion.get("tipo") != "sesion_especialista":
+        raise HTTPException(status_code=404, detail="Sesión no encontrada — crear una nueva con POST /especialistas/{nombre}/sesiones")
+
+    props = sesion.get("props") or {}
+    nombre = props.get("especialista")
+    modulo = _ESPECIALISTAS_CHAT[nombre]  # nombre siempre válido — se validó al crear la sesión
+
+    messages = props.get("mensajes") or []
+    respuesta, messages = await modulo.enviar_mensaje(messages, body.texto, props.get("frente_id"))
+
+    await motor_api.actualizar_props(
+        session_id,
+        {"mensajes": _serializar_mensajes(messages), "actualizada_en": datetime.now(timezone.utc).isoformat()},
+        tenant=_TENANT,
+    )
+    return {"respuesta": respuesta}

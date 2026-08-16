@@ -284,6 +284,49 @@ async def test_run_contract_formato_output():
     assert result["nuevo_conocimiento"] == ["leccion 1"]
 
 
+# ── Chat conversacional (Etapa 10, 2026-08-16) ──────────────────────────────────
+
+@pytest.mark.unit
+def test_tools_chat_excluye_submit_evaluacion_tecnica():
+    nombres = {t["name"] for t in ia.TOOLS_CHAT}
+    assert "submit_evaluacion_tecnica" not in nombres
+    assert nombres == {t["name"] for t in ia.TOOLS} - {"submit_evaluacion_tecnica"}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_iniciar_sesion_arma_primer_mensaje_con_contexto_del_frente():
+    with (
+        patch("ingeniero_ambiental_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})),
+        patch("ingeniero_ambiental_agent.obtener_pendientes_de_caso", new=AsyncMock(return_value=PENDIENTES_TEST)),
+    ):
+        messages = await ia.iniciar_sesion("frente-uuid-1")
+
+    assert len(messages) == 1
+    assert messages[0]["role"] == "user"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_enviar_mensaje_chat_mantiene_historial():
+    mock_text = type("TextBlock", (), {"type": "text", "text": "El balance de masa da..."})()
+    mock_usage = type("Usage", (), {"input_tokens": 10, "output_tokens": 5})()
+    mock_response = type("Response", (), {"stop_reason": "end_turn", "content": [mock_text], "usage": mock_usage})()
+
+    with (
+        patch("ingeniero_ambiental_agent._ai_complete", new=AsyncMock(return_value=mock_response)) as mock_ai,
+        patch("ingeniero_ambiental_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})),
+        patch("ingeniero_ambiental_agent.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("ingeniero_ambiental_agent.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")),
+    ):
+        respuesta, messages = await ia.enviar_mensaje([{"role": "user", "content": "contexto"}], "¿Se puede construir?", "frente-uuid-1")
+
+    assert respuesta == "El balance de masa da..."
+    assert len(messages) == 3
+    _, kwargs = mock_ai.call_args
+    assert kwargs["tools"] == ia.TOOLS_CHAT
+
+
 # ── Integration: corrida real (contra staging) ──────────────────────────────────
 
 @pytest.mark.integration

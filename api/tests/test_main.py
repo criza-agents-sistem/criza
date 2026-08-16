@@ -231,6 +231,71 @@ def test_cerrar_sesion_conductor_sin_leccion():
     assert resp.json() == {"leccion_guardada": False, "id": None}
 
 
+# ── Chat con un especialista puntual (Etapa 10, 2026-08-16) ────────────────────
+
+@pytest.mark.unit
+def test_crear_sesion_especialista_nombre_invalido():
+    resp = client.post("/especialistas/no-existe/sesiones", json={"frente_id": "f1"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_crear_sesion_especialista_ok():
+    with (
+        patch("main._mod_microbiologo.iniciar_sesion", new=AsyncMock(return_value=[{"role": "user", "content": "contexto inicial"}])),
+        patch("main.load_plantilla", new=AsyncMock(return_value={})),
+        patch("main.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "sesion-esp-1"})) as mock_guardar,
+    ):
+        resp = client.post("/especialistas/microbiologo/sesiones", json={"frente_id": "frente-1"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"session_id": "sesion-esp-1"}
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["area"] == "especialista_sesiones"
+    assert kwargs["campos"]["especialista"] == "microbiologo"
+    assert kwargs["campos"]["frente_id"] == "frente-1"
+
+
+@pytest.mark.unit
+def test_crear_sesion_especialista_frente_no_encontrado_es_404():
+    with patch("main._mod_microbiologo.iniciar_sesion", new=AsyncMock(side_effect=ValueError("Frente no encontrado en el KM"))):
+        resp = client.post("/especialistas/microbiologo/sesiones", json={"frente_id": "no-existe"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_especialista_sesion_inexistente():
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=None)):
+        resp = client.post("/especialistas/sesiones/no-existe/mensajes", json={"texto": "hola"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_especialista_vacio_es_400():
+    resp = client.post("/especialistas/sesiones/cualquier-id/mensajes", json={"texto": "   "})
+    assert resp.status_code == 400
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_especialista_devuelve_respuesta():
+    sesion = {"id": "sesion-esp-1", "tipo": "sesion_especialista", "props": {"especialista": "microbiologo", "frente_id": "frente-1", "mensajes": []}}
+
+    async def fake_enviar_mensaje(messages, texto, frente_id):
+        messages.append({"role": "user", "content": texto})
+        messages.append({"role": "assistant", "content": "Respuesta del microbiólogo"})
+        return "Respuesta del microbiólogo", messages
+
+    with (
+        patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)),
+        patch("main.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})),
+        patch("main._mod_microbiologo.enviar_mensaje", new=fake_enviar_mensaje),
+    ):
+        resp = client.post("/especialistas/sesiones/sesion-esp-1/mensajes", json={"texto": "¿Qué opinás?"})
+
+    assert resp.status_code == 200
+    assert resp.json()["respuesta"] == "Respuesta del microbiólogo"
+
+
 @pytest.mark.unit
 def test_cors_permite_localhost_3000():
     resp = client.options(

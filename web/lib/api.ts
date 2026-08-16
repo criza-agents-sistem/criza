@@ -108,3 +108,42 @@ export async function cerrarSesionConductor(sessionId: string): Promise<{ leccio
 export function cerrarSesionConductorBeacon(sessionId: string): void {
   navigator.sendBeacon(`${API_URL}/conductor/sesiones/${sessionId}/cerrar`, new Blob());
 }
+
+// ── Chat con un especialista puntual (Etapa 10) ─────────────────────────────────
+// Distinto del Conductor: acá se habla directo con un especialista sobre un frente concreto —
+// mismo conocimiento/herramientas, pero sin producir un documento_caso formal (eso sigue siendo
+// exclusivo de correr_especialista vía el Conductor).
+
+export const ESPECIALISTAS = [
+  { nombre: "microbiologo", label: "Microbiólogo" },
+  { nombre: "ingeniero_ambiental", label: "Ingeniero Ambiental" },
+  { nombre: "agronomo", label: "Ingeniero Agrónomo" },
+] as const;
+
+export async function crearSesionEspecialista(nombre: string, frenteId: string): Promise<string> {
+  const res = await fetch(`${API_URL}/especialistas/${nombre}/sesiones`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ frente_id: frenteId }),
+  });
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => ({}));
+    throw new Error(detalle.detail || `No se pudo crear la sesión (${res.status})`);
+  }
+  const data = await res.json();
+  return data.session_id as string;
+}
+
+export async function enviarMensajeEspecialista(sessionId: string, texto: string): Promise<string> {
+  const res = await fetch(`${API_URL}/especialistas/sesiones/${sessionId}/mensajes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ texto }),
+  });
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => ({}));
+    throw new Error(detalle.detail || `El especialista respondió ${res.status}`);
+  }
+  const data = await res.json();
+  return data.respuesta as string;
+}

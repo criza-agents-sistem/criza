@@ -55,6 +55,8 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `POST /conductor/sesiones` | Crea una sesión de chat nueva — la ficha creada en el KM (área `conductor_sesiones`) *es* el `session_id`, no hay un id separado que mantener sincronizado. | ✅ construido (v1.2, mismo día; persistencia al KM sumada el mismo día tras la pregunta de Sebas) |
 | `POST /conductor/sesiones/{id}/mensajes` | Un turno de conversación — envuelve `conductor.enviar_mensaje()` tal cual, misma función que usa `run.py` (CLI). | ✅ construido (v1.2, mismo día) |
 | `POST /conductor/sesiones/{id}/cerrar` | Evalúa si la sesión dejó una lección de dominio nueva y, si sí, la guarda al KM (`conductor.cerrar_sesion()`, Etapa 9). Llamado por el botón "Nueva conversación" (awaited) y por `beforeunload` vía `navigator.sendBeacon` (best-effort, sin esperar respuesta). | ✅ construido (Etapa 9, 2026-08-16) |
+| `POST /especialistas/{nombre}/sesiones` | Crea una sesión de chat directo con un especialista (`microbiologo`/`ingeniero_ambiental`/`agronomo`) sobre un `frente_id` — arma el primer mensaje con `<especialista>.iniciar_sesion()` (mismo contexto que una corrida formal). 404 si el nombre no es un especialista válido o si el frente no existe. | ✅ construido (Etapa 10, 2026-08-16) |
+| `POST /especialistas/sesiones/{id}/mensajes` | Un turno de chat — envuelve `<especialista>.enviar_mensaje()`, que usa `TOOLS_CHAT` (todas las tools del especialista MENOS `submit_evaluacion_tecnica`, a propósito: el chat no produce un documento persistido). | ✅ construido (Etapa 10, 2026-08-16) |
 
 ### Páginas — `web/app/`
 
@@ -64,6 +66,7 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `/casos/[id]` | Detalle: frentes (con estado de documentos — "sin documentos producidos todavía" si no hay ninguno), pendientes (abiertos/resueltos visualmente distintos), artefactos externos | ✅ construido |
 | `/documentos/[id]` | Contenido completo de un documento, **renderizado como markdown real** (`react-markdown` + `remark-gfm` + `@tailwindcss/typography`) — no como texto plano con `##`/`**` literales | ✅ construido |
 | `/conductor` | Chat con el Conductor — único **client component** de la app (los otros 3 son Server Components, esta necesita estado de React porque es interactiva). Botón "Nueva conversación" (Etapa 9): cierra la sesión actual (evalúa lección, muestra un aviso en el chat si guardó una) y crea una sesión nueva vacía. | ✅ construido (v1.2 + Etapa 9, mismo día) |
+| `/especialistas/[nombre]` | Chat directo con un especialista puntual (Etapa 10) — toma `frente` como query param (`?frente=<id>`), no navegable sin él. Links "💬 &lt;Especialista&gt;" agregados por frente en `/casos/[id]`, uno por cada especialista disponible. Aviso explícito en la página: esto NO produce un documento persistido (a diferencia de pedirle al Conductor que corra al especialista). | ✅ construido (Etapa 10, 2026-08-16) |
 
 Server Components (Next.js App Router) con `fetch()` directo a la API para las 3 páginas de
 lectura — sin capa de estado cliente, no hace falta para páginas sin interacción. `/conductor`
@@ -167,6 +170,20 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
       clicks del tool no llegaban de forma confiable al DOM aunque el código sí es correcto
       (confirmado inspeccionando el input por JS: el estado de React se actualiza bien). Pendiente
       de una verificación visual real en una sesión donde el pane sí componga.
+- [x] Test (Etapa 10): `POST /especialistas/{nombre}/sesiones` con nombre inválido → 404; con
+      frente inexistente → 404; crea la ficha con `especialista`/`frente_id` correctos
+- [x] Test: `POST /especialistas/sesiones/{id}/mensajes` de sesión inexistente → 404; vacío → 400;
+      devuelve la respuesta del especialista correcto según `props.especialista` de la sesión
+- [x] Verificación real contra el servidor corriendo: sesión de chat real con el Microbiólogo
+      sobre el 'Frente técnico' real de Helios, pregunta puntual → respuesta sustancial y bien
+      fundamentada (evaluación técnica completa con fuentes reales de `buscar_corpus_cientifico`)
+      sin invocar `submit_evaluacion_tecnica` — confirmado leyendo el KM después que NO se creó
+      un 4to `documento_caso` sobre ese frente (seguían siendo exactamente los 3 de las corridas
+      formales anteriores) — la separación chat/persistencia formal funciona como se diseñó
+- [x] `npm run build` sin errores de tipos con las páginas y rutas nuevas
+- [x] Página `/especialistas/[nombre]` carga correctamente con un `frente` real (confirmado con
+      `get_page_text` — título del especialista, sesión creada, sin errores de consola nuevos) y
+      los links "💬 &lt;Especialista&gt;" aparecen en `/casos/[id]` por cada frente
 
 ---
 
@@ -176,7 +193,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 |---|---|---|
 | **Gasto de tokens visible en la web** | v1.1, explícitamente anotado desde el arranque de la sesión (no se pierde como ítem) | El dato ya existe (`utils/token_tracker.py`, `props.token_usage`) — falta solo superficie en `/casos/[id]` o una vista `/equipo`. No entra en el alcance v1 confirmado por Sebas. |
 | Chat con el Conductor vía web | ✅ hecho (v1.2 adelantada, mismo día) | Sebas: "no le encuentro mucha utilidad a lo que hay ahora" al ver solo las páginas de lectura — v1.2 se adelantó en la misma sesión en vez de quedar pendiente. |
-| Chat con cada especialista por separado (no solo con el Conductor) | v2, si hace falta | Hoy la única superficie conversacional es el Conductor — invocar un especialista puntual sigue siendo indirecto (pedírselo al Conductor), no un chat propio por especialista. |
+| Chat con cada especialista por separado (no solo con el Conductor) | ✅ hecho (Etapa 10, mismo día) | Pedido explícito de Sebas el mismo día que se resolvió la persistencia de sesiones. |
 | Entrada por voz, modo documento coautoría, extracción de datos estructurados, vincular artefactos nuevos, dashboard | v2+ | `PROPUESTA_DESTINO.md` §7 los confirma como parte de la visión completa, pero son ideas para sumar al alcance, no lo mínimo de esta etapa. |
 | Autenticación / login real | No planeado todavía | `usuarios.yaml` — decisión ya tomada, sin login real por ahora, un solo usuario (Sebas). |
 
@@ -191,6 +208,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | C | ¿Cómo se renderiza el contenido de un `documento_caso` (es markdown)? | Texto plano (`whitespace-pre-wrap`) / Markdown real | **Markdown real** (`react-markdown`+`remark-gfm`+`@tailwindcss/typography`) — encontrado al verificar en navegador que el texto plano mostraba `##`/`**` literales, ilegible para el caso de uso central de esta etapa ("ver los documentos que se generen", `PROPUESTA_DESTINO.md` §7). | 2026-08-16 |
 | D | ¿Cómo mantiene el chat del Conductor memoria conversacional entre requests HTTP (stateless por naturaleza)? | Cliente sostiene el historial serializado / Sesión en memoria del server / Sesión persistida en el KM | **Sesión en memoria del server** en la primera versión del mismo día (`_sesiones_conductor`, dict `session_id -> messages`) — luego **reemplazada, mismo día**, por sesión persistida en el KM (ver decisión E) al preguntar Sebas por qué se perdía al reiniciar el server. | 2026-08-16 |
 | E | ¿Dónde persiste el historial de una sesión de chat para que sobreviva a un reinicio del server? | Archivo local (JSON en disco) / Área nueva en el KM | **Área nueva en el KM** (`conductor_sesiones`) — mismo mecanismo que ya usa todo lo demás del proyecto (`pipeline_status`, `token_usage`), no un archivo local que solo esta instancia vería. `session_id` que ve el browser es directamente el id de la ficha. | 2026-08-16 |
+| F | Etapa 10 (2026-08-16) — `api/main.py` necesita las funciones `iniciar_sesion`/`enviar_mensaje` de los 3 especialistas (`microbiologo_agent`, `ingeniero_ambiental_agent`, `agronomo_agent`). ¿Bare import (`from microbiologo_agent import ...`, como `conductor/`) o package-qualificado (`from microbiologo_agent.microbiologo_agent import ...`, como usa `orquestador/registry.py::get_registry()`)? | Bare / package-qualificado / un tercer mecanismo | **Ninguno de los dos — carga por ruta de archivo bajo una clave propia de `sys.modules`** (`importlib.util.spec_from_file_location`, `_api_<nombre>`). Los 3 agentes tienen DOS consumidores reales incompatibles en el mismo proceso del server: `get_registry()` (package-qualificado, perezoso, para cuando el Conductor invoca al especialista) y el propio `conftest.py`/`run.py` de cada agente (bare) — cualquiera de los dos estilos que se usara acá rompía al otro apenas se ejecutaba, confirmado corriendo la regresión combinada y con pruebas reales aisladas. Cargar por ruta de archivo bajo una clave separada no colisiona con ninguno — además hace falta restaurar `sys.path` al estado previo después de cargar cada módulo, porque el archivo del agente inserta su propia carpeta al frente como efecto de lado (eso solo, sin tocar `sys.modules[nombre]`, ya alcanza para romper una resolución package-qualificada posterior si no se deshace). Verificado real: `get_registry()` sigue funcionando después de que `api/main.py` carga los 3 especialistas. | 2026-08-16 |
 
 ---
 
@@ -198,14 +216,15 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-E cerradas, ninguna abierta.
+Decisiones A-F cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Gasto de tokens visible en la web → v1.1, anotado explícitamente para no perderse
-- Chat con cada especialista por separado (no solo el Conductor) → en construcción (Etapa 10 del
-  plan), pedido explícito de Sebas el mismo día que se resolvió la persistencia de sesiones
 - Entrada por voz, modo documento, extracción de datos, dashboard → v2+
 - Login real → no planeado todavía
-- Historial *destilado* de una sesión (lecciones reusables, no el transcript crudo) → en
-  construcción (Etapa 9 del plan) — el transcript crudo ya persiste (decisión E), destilarlo en
-  una lección buscable es un problema distinto, todavía sin resolver
+- Historial *destilado* de una sesión de chat con un especialista puntual (a diferencia del
+  Conductor, Etapa 9) → no pedido explícitamente, mismo backlog que las lecciones de caso
+- Verificación visual completa (click-driven) del botón "Nueva conversación" y del flujo de chat
+  con un especialista en el navegador → bloqueada esta sesión por el Browser pane sin compositar
+  frames (ver progreso del 16/08) — verificado en cambio por API real (curl) + lectura directa del
+  KM + carga de página confirmada (`get_page_text`)
