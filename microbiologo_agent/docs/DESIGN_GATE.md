@@ -47,7 +47,17 @@ migración a la costura (2026-08-15) — no hay que rehacer ese trabajo, solo cl
 | `buscar_corpus_cientifico` | Búsqueda semántica CONICET+INTA vía `utils/corpus.py` (compartido con market_agent/evidence_generalista). | ✅ incluido | ✅ construido |
 | `search_corpus_inta` | FTS exhaustivo sobre el corpus INTA vía `km_tools/search.py::get_sector_corpus` (mismo patrón que evidence_generalista). | ✅ incluido | ✅ construido |
 | `expand_agrovoc` | Expansión de términos vía tesauro AGROVOC (`utils/agrovoc.py`). | ✅ incluido | ✅ construido |
+| `search_kegg` | Rutas metabólicas/módulos/compuestos/genes vía `utils/kegg.py` (REST, sin auth). Sumado 2026-08-16, decisión F. | ✅ incluido | ✅ construido |
+| `search_rhea` | Reacciones bioquímicas con EC number vía `utils/rhea.py` (REST, sin auth). Sumado 2026-08-16, decisión F. | ✅ incluido | ✅ construido |
+| `search_uniprot` | Identidad de enzima/proteína (función, organismo, EC) vía `utils/uniprot.py` (REST, sin auth). Sumado 2026-08-16, decisión F. | ✅ incluido | ✅ construido |
+| `search_bacdive` | Fenotipo de cepas bacterianas vía `utils/bacdive.py` (REST + Basic Auth, requiere cuenta gratis DSMZ). Sumado 2026-08-16, decisión F. | ✅ incluido | ✅ construido, credenciales pendientes (Sebas debe registrarse en https://api.bacdive.dsmz.de/) |
 | `submit_evaluacion_tecnica` | Output estructurado obligatorio. Nombre genérico a propósito (no `submit_microbiologia`) — mismo schema se reusa para el ingeniero ambiental (Etapa 7 del plan), así el futuro Armador/Conductor pueden leer especialistas distintos con el mismo shape. | ✅ incluido | ✅ construido |
+
+**BRENDA (cinética de enzimas — Km, kcat, Ki) queda deliberadamente afuera de esta ronda** — su
+API es SOAP-only (WSDL verificado en vivo, sin equivalente REST), fricción real de integración
+distinta a las 4 anteriores. Ver Etapa 8 del plan (`C:\Users\sebab\.claude\plans\
+greedy-cooking-llama.md`) — decisión de Sebas 2026-08-16: sumar las 4 REST ahora, BRENDA en una
+etapa separada.
 
 ### Schema de `evaluacion_tecnica`
 
@@ -128,7 +138,7 @@ persistir es responsabilidad de la costura, no del agente — este agente no tie
 
 ### Testing
 
-- [ ] Test: TOOLS tiene exactamente 5 tools (4 de corpus + `submit_evaluacion_tecnica`)
+- [x] Test: TOOLS tiene exactamente 9 tools (4 de corpus + 4 bioquímicas + `submit_evaluacion_tecnica`, decisión F)
 - [ ] Test: `submit_evaluacion_tecnica` tiene los 6 campos del schema como required
 - [ ] **Test explícito del checklist anti-sesgo: `SYSTEM_PROMPT` no contiene ninguna de las
       strings "Helios", "biogás", "biodigestor", "efluente de biogás", "Mateo", "Andrés"** — el
@@ -148,7 +158,8 @@ persistir es responsabilidad de la costura, no del agente — este agente no tie
 |---|---|---|
 | Conexión al modelo de datos `casos.yaml` (leer/escribir `frente`/`documento_caso` de Helios) | Etapa 4 del plan | Decisión explícita: no mezclar "especialista nuevo" con "nueva integración de datos" en el mismo paso — la Etapa 4 además introduce staging (Neon branching) antes de escribir contra el modelo de casos reales. |
 | Persistencia de lecciones de caso (`aprendizaje.guardar_leccion_caso`) | backlog | Misma deuda intencional que `evidence_generalista` — no bloquea nada hoy. |
-| Tools de dominio específicas (más allá de las 4 de corpus genéricas) | v2, si hace falta | No se identificó ninguna necesidad concreta todavía — agregar solo si una corrida real contra Helios muestra un hueco. |
+| Tools bioquímicas (KEGG/Rhea/UniProt/BacDive) | ✅ v1 (2026-08-16, decisión F) | Sebas confirmó necesidad real y concreta del caso que trae ("bacterias, encimas") — se suman de una en vez de esperar una corrida que la muestre, con el mismo rigor de verificación en vivo (curl real de cada API antes de codear, no asumido). |
+| BRENDA (cinética de enzimas, SOAP) | Etapa 8 del plan | Fricción de integración real y distinta (SOAP vs REST) — Sebas pidió sumarla en una etapa separada, no ahora. |
 
 ---
 
@@ -161,6 +172,7 @@ persistir es responsabilidad de la costura, no del agente — este agente no tie
 | C | ¿Tool set? | Solo las 4 genéricas de corpus / sumar algo nuevo de entrada | **Solo las 4 genéricas** (`search_literature`, `buscar_corpus_cientifico`, `search_corpus_inta`, `expand_agrovoc`) — cero trabajo nuevo de integración, mismo patrón ya probado. Nada de dominio-específico hasta que una corrida real muestre que hace falta. | 2026-08-16 |
 | D | ¿Conecta con `casos.yaml` (Helios) en esta etapa? | Sí / No, todavía contra `props` de `oportunidad` | **No** — sigue el patrón viejo (`props` de `oportunidad`) como los 4 agentes activos hoy. La integración con `casos.yaml` es la Etapa 4 del plan, después de introducir staging. | 2026-08-16 |
 | E | ¿Nombre del tool de submit y del schema? | `submit_microbiologia` (específico) / `submit_evaluacion_tecnica` (genérico) | **Genérico** (`submit_evaluacion_tecnica`) — mismo schema se va a reusar para el ingeniero ambiental (Etapa 7), así el futuro Armador/Conductor leen especialistas distintos con la misma forma. | 2026-08-16 |
+| F | ¿Sumar tools de bases de datos bioquímicas (KEGG/Rhea/UniProt/BacDive/BRENDA) ahora o esperar señal de una corrida real? | Esperar señal (decisión C original) / Sumar ahora, Sebas confirma necesidad real del caso | **Sumar las 4 REST ahora** (KEGG, Rhea, UniProt, BacDive) — Sebas: "sé que este caso real que tengo las va a pedir". Cada API se verificó en vivo antes de codear (curl real, no asumido): las 4 son REST sin auth o con auth simple (BacDive). **BRENDA queda afuera de esta ronda** — confirmado en vivo que es SOAP-only (WSDL real, sin equivalente REST), fricción de integración genuinamente distinta — Sebas pidió sumarla en una etapa separada (Etapa 8 del plan). | 2026-08-16 |
 
 ---
 

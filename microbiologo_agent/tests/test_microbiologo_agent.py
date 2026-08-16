@@ -79,16 +79,45 @@ EVALUACION_MOCK = {
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(ma.TOOLS) == 5, f"Esperado 5 tools, tiene {len(ma.TOOLS)}"
+    assert len(ma.TOOLS) == 9, f"Esperado 9 tools, tiene {len(ma.TOOLS)}"
 
 
 @pytest.mark.unit
 def test_tools_names():
     nombres = {t["name"] for t in ma.TOOLS}
     assert nombres == {
-        "search_literature", "buscar_corpus_cientifico", "search_corpus_inta",
-        "expand_agrovoc", "submit_evaluacion_tecnica",
+        "search_literature", "buscar_corpus_cientifico", "search_corpus_inta", "expand_agrovoc",
+        "search_kegg", "search_rhea", "search_uniprot", "search_bacdive",
+        "submit_evaluacion_tecnica",
     }
+
+
+@pytest.mark.unit
+def test_search_kegg_schema():
+    tool = next(t for t in ma.TOOLS if t["name"] == "search_kegg")
+    assert "query" in tool["input_schema"]["required"]
+    assert set(tool["input_schema"]["properties"]["database"]["enum"]) == {
+        "pathway", "module", "compound", "ko", "genome",
+    }
+
+
+@pytest.mark.unit
+def test_search_rhea_schema():
+    tool = next(t for t in ma.TOOLS if t["name"] == "search_rhea")
+    assert "query" in tool["input_schema"]["required"]
+
+
+@pytest.mark.unit
+def test_search_uniprot_schema():
+    tool = next(t for t in ma.TOOLS if t["name"] == "search_uniprot")
+    assert "query" in tool["input_schema"]["required"]
+    assert "organism" in tool["input_schema"]["properties"]
+
+
+@pytest.mark.unit
+def test_search_bacdive_schema():
+    tool = next(t for t in ma.TOOLS if t["name"] == "search_bacdive")
+    assert "organism" in tool["input_schema"]["required"]
 
 
 @pytest.mark.unit
@@ -187,6 +216,13 @@ def test_system_prompt_veracidad_por_dato():
 def test_system_prompt_menciona_las_4_fuentes():
     sp = ma.SYSTEM_PROMPT
     for fuente in ("search_literature", "buscar_corpus_cientifico", "search_corpus_inta", "expand_agrovoc"):
+        assert fuente in sp
+
+
+@pytest.mark.unit
+def test_system_prompt_menciona_las_4_fuentes_bioquimicas():
+    sp = ma.SYSTEM_PROMPT
+    for fuente in ("search_kegg", "search_rhea", "search_uniprot", "search_bacdive"):
         assert fuente in sp
 
 
@@ -306,6 +342,120 @@ async def test_run_agent_despacha_expand_agrovoc():
         await ma.run_agent("uuid-agrovoc", verbose=False)
 
     mock_agrovoc.assert_called_once_with("efluente")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_despacha_search_kegg():
+    kegg_call = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "search_kegg", "id": "tool_kegg_01",
+        "input": {"query": "methane metabolism", "database": "pathway"},
+    })()
+    mock_submit = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "submit_evaluacion_tecnica", "id": "tool_ev_05", "input": EVALUACION_MOCK,
+    })()
+    mock_usage = type("Usage", (), {"input_tokens": 100, "output_tokens": 50})()
+    mock_r1 = type("Response", (), {"stop_reason": "tool_use", "content": [kegg_call], "usage": mock_usage})()
+    mock_r2 = type("Response", (), {"stop_reason": "tool_use", "content": [mock_submit], "usage": mock_usage})()
+    mock_oportunidad = {"id": "uuid-kegg", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
+    kegg_result = {"query": "methane metabolism", "database": "pathway", "resultados": [{"id": "map00680", "nombre": "Methane metabolism"}]}
+
+    with patch("microbiologo_agent._ai_complete", new=AsyncMock(side_effect=[mock_r1, mock_r2])), \
+         patch("microbiologo_agent.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
+         patch("microbiologo_agent.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
+         patch("microbiologo_agent.aprendizaje.ensure_area", new=AsyncMock()), \
+         patch("microbiologo_agent.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")), \
+         patch("microbiologo_agent.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
+         patch("microbiologo_agent._search_kegg_fn", return_value=kegg_result) as mock_kegg:
+
+        await ma.run_agent("uuid-kegg", verbose=False)
+
+    mock_kegg.assert_called_once_with(query="methane metabolism", database="pathway", max_results=10)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_despacha_search_rhea():
+    rhea_call = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "search_rhea", "id": "tool_rhea_01", "input": {"query": "methane"},
+    })()
+    mock_submit = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "submit_evaluacion_tecnica", "id": "tool_ev_06", "input": EVALUACION_MOCK,
+    })()
+    mock_usage = type("Usage", (), {"input_tokens": 100, "output_tokens": 50})()
+    mock_r1 = type("Response", (), {"stop_reason": "tool_use", "content": [rhea_call], "usage": mock_usage})()
+    mock_r2 = type("Response", (), {"stop_reason": "tool_use", "content": [mock_submit], "usage": mock_usage})()
+    mock_oportunidad = {"id": "uuid-rhea", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
+    rhea_result = {"query": "methane", "resultados": [{"rhea_id": "RHEA:13637", "ecuacion": "methane + ... = methanol"}]}
+
+    with patch("microbiologo_agent._ai_complete", new=AsyncMock(side_effect=[mock_r1, mock_r2])), \
+         patch("microbiologo_agent.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
+         patch("microbiologo_agent.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
+         patch("microbiologo_agent.aprendizaje.ensure_area", new=AsyncMock()), \
+         patch("microbiologo_agent.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")), \
+         patch("microbiologo_agent.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
+         patch("microbiologo_agent._search_rhea_fn", return_value=rhea_result) as mock_rhea:
+
+        await ma.run_agent("uuid-rhea", verbose=False)
+
+    mock_rhea.assert_called_once_with(query="methane", max_results=10)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_despacha_search_uniprot():
+    uniprot_call = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "search_uniprot", "id": "tool_uniprot_01",
+        "input": {"query": "methane monooxygenase", "organism": "Methylococcus capsulatus"},
+    })()
+    mock_submit = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "submit_evaluacion_tecnica", "id": "tool_ev_07", "input": EVALUACION_MOCK,
+    })()
+    mock_usage = type("Usage", (), {"input_tokens": 100, "output_tokens": 50})()
+    mock_r1 = type("Response", (), {"stop_reason": "tool_use", "content": [uniprot_call], "usage": mock_usage})()
+    mock_r2 = type("Response", (), {"stop_reason": "tool_use", "content": [mock_submit], "usage": mock_usage})()
+    mock_oportunidad = {"id": "uuid-uniprot", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
+    uniprot_result = {"query": "methane monooxygenase", "resultados": [{"accession": "G1UBD1", "ec_number": "1.14.18.3"}]}
+
+    with patch("microbiologo_agent._ai_complete", new=AsyncMock(side_effect=[mock_r1, mock_r2])), \
+         patch("microbiologo_agent.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
+         patch("microbiologo_agent.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
+         patch("microbiologo_agent.aprendizaje.ensure_area", new=AsyncMock()), \
+         patch("microbiologo_agent.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")), \
+         patch("microbiologo_agent.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
+         patch("microbiologo_agent._search_uniprot_fn", return_value=uniprot_result) as mock_uniprot:
+
+        await ma.run_agent("uuid-uniprot", verbose=False)
+
+    mock_uniprot.assert_called_once_with(query="methane monooxygenase", organism="Methylococcus capsulatus", max_results=5)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_despacha_search_bacdive():
+    bacdive_call = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "search_bacdive", "id": "tool_bacdive_01", "input": {"organism": "Methanosarcina"},
+    })()
+    mock_submit = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "submit_evaluacion_tecnica", "id": "tool_ev_08", "input": EVALUACION_MOCK,
+    })()
+    mock_usage = type("Usage", (), {"input_tokens": 100, "output_tokens": 50})()
+    mock_r1 = type("Response", (), {"stop_reason": "tool_use", "content": [bacdive_call], "usage": mock_usage})()
+    mock_r2 = type("Response", (), {"stop_reason": "tool_use", "content": [mock_submit], "usage": mock_usage})()
+    mock_oportunidad = {"id": "uuid-bacdive", "tipo": "oportunidad", "props": {"nombre": "T", "descripcion": "d"}}
+    bacdive_result = {"organism": "Methanosarcina", "resultados": [{"bacdive_id": "590", "nombre_cientifico": "Methanosarcina barkeri"}]}
+
+    with patch("microbiologo_agent._ai_complete", new=AsyncMock(side_effect=[mock_r1, mock_r2])), \
+         patch("microbiologo_agent.motor_api.obtener", new=AsyncMock(return_value=mock_oportunidad)), \
+         patch("microbiologo_agent.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})), \
+         patch("microbiologo_agent.aprendizaje.ensure_area", new=AsyncMock()), \
+         patch("microbiologo_agent.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")), \
+         patch("microbiologo_agent.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
+         patch("microbiologo_agent._search_bacdive_fn", return_value=bacdive_result) as mock_bacdive:
+
+        await ma.run_agent("uuid-bacdive", verbose=False)
+
+    mock_bacdive.assert_called_once_with(organism="Methanosarcina", max_results=5)
 
 
 @pytest.mark.unit

@@ -9,8 +9,11 @@ evidence_generalista/investigacion_amplia/armador: ese marco define qué es un b
 CRIZA, y este agente da una evaluación técnica, no esa evaluación).
 
 Tools: search_literature (OpenAlex), buscar_corpus_cientifico (CONICET+INTA),
-       search_corpus_inta (INTA legacy, exhaustivo), expand_agrovoc, submit_evaluacion_tecnica.
-Ver docs/DESIGN_GATE.md — decisiones A-E (2026-08-16).
+       search_corpus_inta (INTA legacy, exhaustivo), expand_agrovoc,
+       search_kegg (rutas metabólicas), search_rhea (reacciones/EC), search_uniprot (enzimas),
+       search_bacdive (fenotipo de cepas), submit_evaluacion_tecnica.
+Ver docs/DESIGN_GATE.md — decisiones A-F (2026-08-16). BRENDA (cinética de enzimas, requiere
+SOAP) queda deliberadamente afuera — ver Etapa 8 del plan de construcción.
 
 El input entra SOLO por contract_input (caso/tarea/contexto) — el SYSTEM_PROMPT no menciona
 ningún caso concreto, a propósito (ver decisión A del Design Gate: specialist_proteins.py quedó
@@ -38,6 +41,10 @@ from utils.openalex import search_literature as _search_literature_fn
 from km_tools.search import get_sector_corpus as _get_sector_corpus_fn
 from utils.agrovoc import expand_term as _expand_agrovoc_fn
 from utils.corpus import buscar_corpus_cientifico as _buscar_corpus_cientifico_fn
+from utils.kegg import search_kegg as _search_kegg_fn
+from utils.rhea import search_rhea as _search_rhea_fn
+from utils.uniprot import search_uniprot as _search_uniprot_fn
+from utils.bacdive import search_bacdive as _search_bacdive_fn
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
@@ -178,6 +185,84 @@ TOOLS = [
                 "limit": {"type": "integer", "description": "Máximo de papers (default 100).", "default": 100},
             },
             "required": ["consulta"],
+        },
+    },
+    {
+        "name": "search_kegg",
+        "description": (
+            "Busca en KEGG (rutas metabólicas, módulos, compuestos, ortólogos, genomas).\n"
+            "Usar para: identificar la ruta metabólica/proceso bioquímico exacto que explica un\n"
+            "mecanismo (ej. metanogénesis, degradación de un compuesto), o qué genes/enzimas la\n"
+            "componen. Trae el detalle completo de los primeros 3 resultados automáticamente.\n"
+            "Query en inglés."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Búsqueda en inglés (proceso, compuesto u organismo)."},
+                "database": {
+                    "type": "string",
+                    "description": "Base de KEGG a buscar.",
+                    "enum": ["pathway", "module", "compound", "ko", "genome"],
+                    "default": "pathway",
+                },
+                "max_results": {"type": "integer", "description": "Cantidad de resultados (default 10).", "default": 10},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "search_rhea",
+        "description": (
+            "Busca reacciones bioquímicas en Rhea — base curada cross-referenciada a EC number\n"
+            "y ChEBI. Usar para confirmar la reacción exacta (con EC number) que media una\n"
+            "transformación química específica (ej. 'methane' -> reacciones de oxidación de\n"
+            "metano con su EC number). Complementa search_kegg (rutas) con el detalle de\n"
+            "reacción individual. Query en inglés, nombre de compuesto, EC number o RHEA:ID."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Compuesto, EC number o RHEA:ID a buscar."},
+                "max_results": {"type": "integer", "description": "Cantidad de resultados (default 10).", "default": 10},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "search_uniprot",
+        "description": (
+            "Busca proteínas/enzimas en UniProt por nombre. Trae función, organismo, EC number\n"
+            "(si aplica) y longitud. Usar para identificar qué enzima específica media un\n"
+            "proceso y en qué organismo está documentada. Complementa search_rhea (reacción) y\n"
+            "search_kegg (ruta) con la identidad de la proteína. Query en inglés."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Nombre de la proteína/enzima en inglés."},
+                "organism": {"type": "string", "description": "Organismo opcional, en latín (ej. 'Methylococcus capsulatus')."},
+                "max_results": {"type": "integer", "description": "Cantidad de resultados (default 5).", "default": 5},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "search_bacdive",
+        "description": (
+            "Busca cepas bacterianas por género/especie en BacDive (DSMZ) — la mayor base de\n"
+            "fenotipos bacterianos: metabolismo, tolerancia a oxígeno, rango de temperatura,\n"
+            "hábitat. Usar para confirmar si una bacteria candidata tiene el fenotipo que el\n"
+            "problema requiere (ej. anaerobia estricta, termófila). Requiere credenciales\n"
+            "BacDive configuradas — si no están, devuelve error explícito, no fallar en silencio."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "organism": {"type": "string", "description": "Género o especie, en latín (ej. 'Methanosarcina')."},
+                "max_results": {"type": "integer", "description": "Cantidad de cepas a detallar (default 5).", "default": 5},
+            },
+            "required": ["organism"],
         },
     },
     {
@@ -343,20 +428,35 @@ FUENTES DISPONIBLES:
   inglés. Útil para problemas ligados a producción agropecuaria argentina.
 - expand_agrovoc: expande un término contra el tesauro AGROVOC (FAO). Usar antes de
   search_corpus_inta cuando tenés un término en inglés para buscar en el corpus español.
+- search_kegg: rutas metabólicas/módulos/compuestos/genes KEGG. Usar cuando necesites precisar
+  la ruta bioquímica exacta detrás de un proceso (ej. qué ruta metaboliza un compuesto dado).
+- search_rhea: reacciones bioquímicas individuales con su EC number. Usar para confirmar la
+  reacción exacta (y la enzima que la cataliza, por EC number) detrás de una transformación.
+- search_uniprot: identidad de una enzima/proteína específica — función, organismo, EC number.
+  Usar cuando ya identificaste una enzima candidata (por nombre o por EC number de Rhea/KEGG)
+  y necesitás confirmar en qué organismo está documentada y con qué evidencia.
+- search_bacdive: fenotipo de cepas bacterianas — metabolismo, tolerancia a oxígeno, temperatura,
+  hábitat. Usar para confirmar si una bacteria candidata tiene el fenotipo que el problema
+  requiere (ej. anaerobia estricta, termófila, halotolerante).
 
 Flujo sugerido: buscar_corpus_cientifico primero (cualquier problema) → expand_agrovoc si hace
 falta traducir el término → search_corpus_inta con términos ES → search_literature con términos
-EN para contexto global.
+EN para contexto global. Si el problema requiere precisión bioquímica (qué microorganismo/enzima
+exacta, qué ruta): search_kegg (ruta) → search_rhea (reacción/EC) → search_uniprot (proteína) →
+search_bacdive (fenotipo de la cepa candidata) — en ese orden, solo hasta donde la evidencia lo
+justifique, no es obligatorio agotar los cuatro.
 
 TU PROCESO:
 1. Identificá la pregunta técnica central del problema
 2. Buscá en literatura (3-5 búsquedas en total, usando la fuente más apropiada) — incluí
    siempre buscar_corpus_cientifico
-3. Evaluá qué microorganismos/procesos/enfoques aplican y con qué madurez
-4. Identificá riesgos, limitaciones y brechas de conocimiento
-5. Decidí si un análisis especializado adicional (de otro dominio) aportaría valor que vos no
+3. Si la pregunta requiere precisión bioquímica (microorganismo/enzima/ruta exacta), sumá
+   search_kegg/search_rhea/search_uniprot/search_bacdive según haga falta
+4. Evaluá qué microorganismos/procesos/enfoques aplican y con qué madurez
+5. Identificá riesgos, limitaciones y brechas de conocimiento
+6. Decidí si un análisis especializado adicional (de otro dominio) aportaría valor que vos no
    podés dar — sin nombrar qué tipo de especialista, solo qué falta evaluar
-6. Llamá submit_evaluacion_tecnica con el análisis estructurado
+7. Llamá submit_evaluacion_tecnica con el análisis estructurado
 
 CUÁNDO CERRAR: cuando tengas suficiente evidencia para responder la pregunta técnica central. No
 acumulés papers si ya podés responder.
@@ -381,7 +481,11 @@ INPUT_CONTRACT = {
         "tarea": "Evaluación técnica pedida en esta corrida",
         "contexto": "Opcional — contexto adicional de otro agente o de quien invoca",
         "conocimiento": "{'oportunidad_id': str} — requerido para leer el KM y persistir resultados",
-        "herramientas": ["search_literature", "buscar_corpus_cientifico", "expand_agrovoc", "search_corpus_inta", "submit_evaluacion_tecnica"],
+        "herramientas": [
+            "search_literature", "buscar_corpus_cientifico", "expand_agrovoc", "search_corpus_inta",
+            "search_kegg", "search_rhea", "search_uniprot", "search_bacdive",
+            "submit_evaluacion_tecnica",
+        ],
     },
 }
 
@@ -589,6 +693,66 @@ async def run_agent(
                         consulta=consulta,
                         limit=block.input.get("limit", 100),
                     )
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result, ensure_ascii=False, indent=2),
+                    })
+                elif block.name == "search_kegg":
+                    query = block.input.get("query", "")
+                    if verbose:
+                        print(f"  -> search_kegg: {query[:80]}")
+                    try:
+                        result = _search_kegg_fn(
+                            query=query,
+                            database=block.input.get("database", "pathway"),
+                            max_results=block.input.get("max_results", 10),
+                        )
+                    except Exception as exc:
+                        result = {"error": str(exc), "query": query}
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result, ensure_ascii=False, indent=2),
+                    })
+                elif block.name == "search_rhea":
+                    query = block.input.get("query", "")
+                    if verbose:
+                        print(f"  -> search_rhea: {query[:80]}")
+                    try:
+                        result = _search_rhea_fn(query=query, max_results=block.input.get("max_results", 10))
+                    except Exception as exc:
+                        result = {"error": str(exc), "query": query}
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result, ensure_ascii=False, indent=2),
+                    })
+                elif block.name == "search_uniprot":
+                    query = block.input.get("query", "")
+                    if verbose:
+                        print(f"  -> search_uniprot: {query[:80]}")
+                    try:
+                        result = _search_uniprot_fn(
+                            query=query,
+                            organism=block.input.get("organism"),
+                            max_results=block.input.get("max_results", 5),
+                        )
+                    except Exception as exc:
+                        result = {"error": str(exc), "query": query}
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result, ensure_ascii=False, indent=2),
+                    })
+                elif block.name == "search_bacdive":
+                    organism = block.input.get("organism", "")
+                    if verbose:
+                        print(f"  -> search_bacdive: {organism[:80]}")
+                    try:
+                        result = _search_bacdive_fn(organism=organism, max_results=block.input.get("max_results", 5))
+                    except Exception as exc:
+                        result = {"error": str(exc), "organism": organism}
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,

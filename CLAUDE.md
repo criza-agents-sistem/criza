@@ -172,6 +172,23 @@ desarrollo. El gate es un issue en Linear que bloquea los issues de desarrollo.
 - Si surge un bloqueador → label **Bloqueado** + nota en Linear con el motivo
 - Si surge una tarea nueva → crearla en Linear antes de arrancar
 
+### Granularidad de issues
+
+- **Un issue = un resultado entregable** (feature, módulo, capacidad visible)
+- Las subtareas técnicas van como **sub-issues**, no como issues separados
+- Nunca crear issues con sufijos tipo "parte 1", "parte 2" — eso va dentro del issue padre como sub-issue
+- Al completar un issue, marcarlo Done inmediatamente para que el auto-archive lo limpie
+
+### Limpieza inicial — solo la primera sesión con este CLAUDE.md actualizado
+
+Al inicio de la próxima sesión, **una sola vez**:
+1. Revisar todos los issues existentes en Linear (proyecto CRIZA)
+2. Identificar cuáles tienen trabajo concreto pendiente → dejarlos activos
+3. Los que no tienen trabajo pendiente real → cancelarlos
+4. Los que en realidad ya están hechos → marcarlos Done y borrarlos
+5. Reestructurar los issues activos al nuevo esquema: si hay issues con "parte 1/2/3" o subtareas como issues separados, consolidarlos en un issue padre con sub-issues
+6. Una vez hecha la limpieza, eliminar este bloque "Limpieza inicial" del CLAUDE.md
+
 ### Labels y prioridades de Linear
 
 | Label | Uso |
