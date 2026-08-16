@@ -36,6 +36,28 @@ async def obtener_frente_con_caso(frente_id: str, tenant: str) -> dict:
     return {"frente": frente, "caso": caso}
 
 
+async def listar_casos(tenant: str, limit: int = 20) -> list[dict]:
+    """Lista los casos existentes — para que un cliente (ej. el Conductor) pueda listar sin
+    conocer IDs de antemano."""
+    return await motor_api.listar(area=_AREA, tipo="caso", tenant=tenant, limit=limit)
+
+
+async def obtener_frentes_de_caso(caso_id: str, tenant: str) -> list[dict]:
+    return await motor_api.conexiones_de(
+        caso_id, tipo_conexion="tiene_frente", direccion="salientes", tenant=tenant
+    )
+
+
+async def obtener_documentos_de_frente(frente_id: str, tenant: str) -> list[dict]:
+    """Documentos (`documento_caso`) que un frente ya produjo — el análogo, para el modelo de
+    `casos.yaml`, de "¿este step ya corrió?" que `orquestador.motor.inspeccionar_caso` responde
+    para el modelo `oportunidad`+flow (ver docs/PROTOCOLO_LECTURA_CONDUCTOR.md, nota del paso 2:
+    ambos modelos coexisten, no hay una sola función que vea los dos)."""
+    return await motor_api.conexiones_de(
+        frente_id, tipo_conexion="frente_produce_documento", direccion="salientes", tenant=tenant
+    )
+
+
 async def obtener_pendientes_de_caso(caso_id: str, tenant: str, solo_abiertos: bool = True) -> list[dict]:
     """
     Pendientes de un caso — cuelgan del caso completo, no de un frente específico
