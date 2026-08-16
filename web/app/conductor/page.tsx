@@ -88,13 +88,23 @@ export default function ConductorPage() {
     <div className="flex h-[calc(100vh-140px)] flex-col">
       <div className="mb-1 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Conductor</h1>
-        <button
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
-          disabled={!sessionId || cerrandoSesion || turnos.length === 0}
-          onClick={nuevaConversacion}
-        >
-          {cerrandoSesion ? "Cerrando..." : "Nueva conversación"}
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="/agentes/conductor"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+          >
+            ℹ️ Características
+          </a>
+          <button
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+            disabled={!sessionId || cerrandoSesion || turnos.length === 0}
+            onClick={nuevaConversacion}
+          >
+            {cerrandoSesion ? "Cerrando..." : "Nueva conversación"}
+          </button>
+        </div>
       </div>
       <p className="mb-4 text-sm text-neutral-500">
         Puede invocar especialistas cuando se lo pedís — eso gasta tokens reales y escribe al KM.

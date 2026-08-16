@@ -63,6 +63,7 @@ from conductor import (
     serializar_mensajes as _serializar_mensajes,
     cerrar_sesion as _cerrar_sesion_conductor,
 )
+import conductor as _mod_conductor  # el módulo en sí, para leer TOOLS/SYSTEM_PROMPT en vivo (Etapa 11)
 import importlib.util
 
 
@@ -111,6 +112,10 @@ _ESPECIALISTAS_CHAT = {
     "ingeniero_ambiental": _mod_ingeniero_ambiental,
     "agronomo": _mod_agronomo,
 }
+
+# Todos los agentes con superficie de chat, incluido el Conductor — para el panel de
+# características (Etapa 11). Reusa los mismos objetos de módulo que _ESPECIALISTAS_CHAT.
+_AGENTES_INFO = {"conductor": _mod_conductor, **_ESPECIALISTAS_CHAT}
 
 _TENANT = "criza"
 _PLANTILLA_SESIONES = _CRIZA_DIR / "config" / "plantillas" / "conductor_sesiones.yaml"
@@ -336,3 +341,35 @@ async def enviar_mensaje_especialista(session_id: str, body: _MensajeIn) -> dict
         tenant=_TENANT,
     )
     return {"respuesta": respuesta}
+
+
+# ── Características de un agente (Etapa 11, 2026-08-16) ────────────────────────
+#
+# "¿Qué puede hacer este agente y a qué herramientas está conectado?" — leído en vivo desde
+# TOOLS/SYSTEM_PROMPT de cada módulo, no desde un doc paralelo que se desincroniza: si mañana se
+# suma o saca una tool, esto se actualiza solo, porque es la MISMA lista que el agente usa para
+# operar (ver TOOLS_CHAT más arriba — no una copia).
+
+@app.get("/agentes/{nombre}")
+async def obtener_info_agente(nombre: str) -> dict:
+    if nombre not in _AGENTES_INFO:
+        raise HTTPException(status_code=404, detail=f"'{nombre}' no es un agente disponible. Opciones: {list(_AGENTES_INFO.keys())}.")
+    modulo = _AGENTES_INFO[nombre]
+
+    tools = getattr(modulo, "TOOLS", None) or []
+    # El Conductor no tiene TOOLS_CHAT (no distingue chat de "corrida formal", es 100% chat) —
+    # todas sus tools son "de chat" por default.
+    nombres_chat = {t["name"] for t in getattr(modulo, "TOOLS_CHAT", tools)}
+
+    return {
+        "nombre": nombre,
+        "system_prompt": modulo.SYSTEM_PROMPT,
+        "tools": [
+            {
+                "name": t["name"],
+                "description": t["description"],
+                "disponible_en_chat": t["name"] in nombres_chat,
+            }
+            for t in tools
+        ],
+    }

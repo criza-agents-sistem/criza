@@ -57,6 +57,7 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `POST /conductor/sesiones/{id}/cerrar` | Evalúa si la sesión dejó una lección de dominio nueva y, si sí, la guarda al KM (`conductor.cerrar_sesion()`, Etapa 9). Llamado por el botón "Nueva conversación" (awaited) y por `beforeunload` vía `navigator.sendBeacon` (best-effort, sin esperar respuesta). | ✅ construido (Etapa 9, 2026-08-16) |
 | `POST /especialistas/{nombre}/sesiones` | Crea una sesión de chat directo con un especialista (`microbiologo`/`ingeniero_ambiental`/`agronomo`) sobre un `frente_id` — arma el primer mensaje con `<especialista>.iniciar_sesion()` (mismo contexto que una corrida formal). 404 si el nombre no es un especialista válido o si el frente no existe. | ✅ construido (Etapa 10, 2026-08-16) |
 | `POST /especialistas/sesiones/{id}/mensajes` | Un turno de chat — envuelve `<especialista>.enviar_mensaje()`, que usa `TOOLS_CHAT` (todas las tools del especialista MENOS `submit_evaluacion_tecnica`, a propósito: el chat no produce un documento persistido). | ✅ construido (Etapa 10, 2026-08-16) |
+| `GET /agentes/{nombre}` | Características de un agente (`conductor`/`microbiologo`/`ingeniero_ambiental`/`agronomo`) — `SYSTEM_PROMPT` y `TOOLS` leídos EN VIVO del módulo del agente (no una copia), con `disponible_en_chat` marcando qué tools son exclusivas de la corrida formal (`submit_evaluacion_tecnica`). | ✅ construido (Etapa 11, 2026-08-16) |
 
 ### Páginas — `web/app/`
 
@@ -67,6 +68,7 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `/documentos/[id]` | Contenido completo de un documento, **renderizado como markdown real** (`react-markdown` + `remark-gfm` + `@tailwindcss/typography`) — no como texto plano con `##`/`**` literales | ✅ construido |
 | `/conductor` | Chat con el Conductor — único **client component** de la app (los otros 3 son Server Components, esta necesita estado de React porque es interactiva). Botón "Nueva conversación" (Etapa 9): cierra la sesión actual (evalúa lección, muestra un aviso en el chat si guardó una) y crea una sesión nueva vacía. | ✅ construido (v1.2 + Etapa 9, mismo día) |
 | `/especialistas/[nombre]` | Chat directo con un especialista puntual (Etapa 10) — toma `frente` como query param (`?frente=<id>`), no navegable sin él. Links "💬 &lt;Especialista&gt;" agregados por frente en `/casos/[id]`, uno por cada especialista disponible. Aviso explícito en la página: esto NO produce un documento persistido (a diferencia de pedirle al Conductor que corra al especialista). | ✅ construido (Etapa 10, 2026-08-16) |
+| `/agentes/[nombre]` | Panel de características de un agente (Etapa 11) — herramientas (con descripción y si están disponibles en chat o solo en la corrida formal) + el `SYSTEM_PROMPT` completo. Server Component de solo lectura, sin interacción. Link "ℹ️ Características" en `/conductor` y en `/especialistas/[nombre]`, abre en pestaña nueva (`target="_blank"` — Sebas pidió "puede ser con un acceso a otra ventana"). | ✅ construido (Etapa 11, 2026-08-16) |
 
 Server Components (Next.js App Router) con `fetch()` directo a la API para las 3 páginas de
 lectura — sin capa de estado cliente, no hace falta para páginas sin interacción. `/conductor`
@@ -184,6 +186,15 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 - [x] Página `/especialistas/[nombre]` carga correctamente con un `frente` real (confirmado con
       `get_page_text` — título del especialista, sesión creada, sin errores de consola nuevos) y
       los links "💬 &lt;Especialista&gt;" aparecen en `/casos/[id]` por cada frente
+- [x] Test (Etapa 11): `GET /agentes/{nombre}` con nombre inválido → 404; el Conductor devuelve
+      todas sus tools con `disponible_en_chat=true`; un especialista marca
+      `submit_evaluacion_tecnica` como `disponible_en_chat=false` y el resto como `true`
+- [x] Verificación real contra el servidor corriendo: `GET /agentes/conductor` (5 tools reales,
+      `SYSTEM_PROMPT` completo) y `GET /agentes/microbiologo` (9 tools reales, incluidas las 4
+      bioquímicas — KEGG/Rhea/UniProt/BacDive — y `submit_evaluacion_tecnica` correctamente
+      marcada como solo-corrida-formal)
+- [x] Página `/agentes/[nombre]` verificada en el navegador con `get_page_text`: título correcto,
+      las 9 tools del Microbiólogo con sus descripciones reales renderizadas
 
 ---
 
@@ -209,6 +220,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | D | ¿Cómo mantiene el chat del Conductor memoria conversacional entre requests HTTP (stateless por naturaleza)? | Cliente sostiene el historial serializado / Sesión en memoria del server / Sesión persistida en el KM | **Sesión en memoria del server** en la primera versión del mismo día (`_sesiones_conductor`, dict `session_id -> messages`) — luego **reemplazada, mismo día**, por sesión persistida en el KM (ver decisión E) al preguntar Sebas por qué se perdía al reiniciar el server. | 2026-08-16 |
 | E | ¿Dónde persiste el historial de una sesión de chat para que sobreviva a un reinicio del server? | Archivo local (JSON en disco) / Área nueva en el KM | **Área nueva en el KM** (`conductor_sesiones`) — mismo mecanismo que ya usa todo lo demás del proyecto (`pipeline_status`, `token_usage`), no un archivo local que solo esta instancia vería. `session_id` que ve el browser es directamente el id de la ficha. | 2026-08-16 |
 | F | Etapa 10 (2026-08-16) — `api/main.py` necesita las funciones `iniciar_sesion`/`enviar_mensaje` de los 3 especialistas (`microbiologo_agent`, `ingeniero_ambiental_agent`, `agronomo_agent`). ¿Bare import (`from microbiologo_agent import ...`, como `conductor/`) o package-qualificado (`from microbiologo_agent.microbiologo_agent import ...`, como usa `orquestador/registry.py::get_registry()`)? | Bare / package-qualificado / un tercer mecanismo | **Ninguno de los dos — carga por ruta de archivo bajo una clave propia de `sys.modules`** (`importlib.util.spec_from_file_location`, `_api_<nombre>`). Los 3 agentes tienen DOS consumidores reales incompatibles en el mismo proceso del server: `get_registry()` (package-qualificado, perezoso, para cuando el Conductor invoca al especialista) y el propio `conftest.py`/`run.py` de cada agente (bare) — cualquiera de los dos estilos que se usara acá rompía al otro apenas se ejecutaba, confirmado corriendo la regresión combinada y con pruebas reales aisladas. Cargar por ruta de archivo bajo una clave separada no colisiona con ninguno — además hace falta restaurar `sys.path` al estado previo después de cargar cada módulo, porque el archivo del agente inserta su propia carpeta al frente como efecto de lado (eso solo, sin tocar `sys.modules[nombre]`, ya alcanza para romper una resolución package-qualificada posterior si no se deshace). Verificado real: `get_registry()` sigue funcionando después de que `api/main.py` carga los 3 especialistas. | 2026-08-16 |
+| G | Etapa 11 (2026-08-16) — Sebas pidió ver, por agente, qué puede hacer y a qué herramientas está conectado, "que se actualice cuando hay cambios de características o de herramientas". ¿Doc mantenido a mano / endpoint que lee `TOOLS`/`SYSTEM_PROMPT` en vivo de cada módulo? | Doc paralelo / lectura en vivo desde el código | **Lectura en vivo** (`GET /agentes/{nombre}`) — cada agente ya declara `TOOLS` (con `description` por tool, el mismo formato que ya consume el modelo para tool-calling) y `SYSTEM_PROMPT` como constantes de código; el endpoint las lee directo del objeto de módulo (los mismos `_mod_microbiologo`/etc. de la decisión F) — no hay copia que pueda desincronizarse, es literalmente la fuente que el agente usa para operar. `disponible_en_chat` se deriva comparando contra `TOOLS_CHAT` (Etapa 10) para marcar qué tools son exclusivas de la corrida formal. | 2026-08-16 |
 
 ---
 
@@ -216,7 +228,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-F cerradas, ninguna abierta.
+Decisiones A-G cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Gasto de tokens visible en la web → v1.1, anotado explícitamente para no perderse

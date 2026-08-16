@@ -147,3 +147,23 @@ export async function enviarMensajeEspecialista(sessionId: string, texto: string
   const data = await res.json();
   return data.respuesta as string;
 }
+
+// ── Características de un agente (Etapa 11) ─────────────────────────────────────
+// Leído en vivo desde TOOLS/SYSTEM_PROMPT del módulo del agente en el server — no un doc
+// paralelo, se actualiza solo cuando cambian las herramientas o el prompt.
+
+export type ToolInfo = {
+  name: string;
+  description: string;
+  disponible_en_chat: boolean;
+};
+
+export type InfoAgente = {
+  nombre: string;
+  system_prompt: string;
+  tools: ToolInfo[];
+};
+
+export function obtenerInfoAgente(nombre: string): Promise<InfoAgente | null> {
+  return apiFetch<InfoAgente>(`/agentes/${nombre}`);
+}

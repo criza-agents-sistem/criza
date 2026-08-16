@@ -58,7 +58,17 @@ export default function EspecialistaChatPage({
 
   return (
     <div className="flex h-[calc(100vh-140px)] flex-col">
-      <h1 className="text-2xl font-semibold mb-1">{label}</h1>
+      <div className="mb-1 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{label}</h1>
+        <a
+          href={`/agentes/${nombre}`}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+        >
+          ℹ️ Características
+        </a>
+      </div>
       <p className="mb-4 text-sm text-neutral-500">
         Chat directo con el especialista sobre este frente — mismo conocimiento que una corrida
         formal, pero esto NO produce un documento persistido. Para eso, pedíselo al Conductor.

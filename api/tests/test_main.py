@@ -296,6 +296,37 @@ def test_enviar_mensaje_especialista_devuelve_respuesta():
     assert resp.json()["respuesta"] == "Respuesta del microbiólogo"
 
 
+# ── Características de un agente (Etapa 11, 2026-08-16) ─────────────────────────
+
+@pytest.mark.unit
+def test_obtener_info_agente_nombre_invalido():
+    resp = client.get("/agentes/no-existe")
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_obtener_info_agente_conductor():
+    resp = client.get("/agentes/conductor")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["nombre"] == "conductor"
+    assert data["system_prompt"]
+    nombres = {t["name"] for t in data["tools"]}
+    assert "ver_caso" in nombres
+    # el Conductor no distingue chat de corrida formal — todas sus tools están disponibles en chat
+    assert all(t["disponible_en_chat"] for t in data["tools"])
+
+
+@pytest.mark.unit
+def test_obtener_info_agente_especialista_marca_submit_fuera_del_chat():
+    resp = client.get("/agentes/microbiologo")
+    assert resp.status_code == 200
+    data = resp.json()
+    tools_por_nombre = {t["name"]: t for t in data["tools"]}
+    assert tools_por_nombre["submit_evaluacion_tecnica"]["disponible_en_chat"] is False
+    assert tools_por_nombre["search_kegg"]["disponible_en_chat"] is True
+
+
 @pytest.mark.unit
 def test_cors_permite_localhost_3000():
     resp = client.options(
