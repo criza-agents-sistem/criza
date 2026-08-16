@@ -44,13 +44,13 @@ _NOMBRE_DISPLAY = {
     "cientifico_especialista": "Especialista Proteínas",
 }
 
-_MODULO_DIR = {
-    "mercado": "market_agent",
-    "evidencia": "evidence_generalista",
-    "investigacion_amplia": "investigacion_amplia",
-    "armador": "armador",
-    "cientifico_especialista": "scientific_agent",
-}
+# Antes era un dict hardcodeado paralelo al registry — se desactualizaba cada vez que se
+# sumaba un agente nuevo (encontrado 2026-08-16 al agregar el microbiólogo: quedó mostrando
+# "microbiologo/" en vez de "microbiologo_agent/", "sin tests/" y "sin DESIGN_GATE.md" pese a
+# que ambos existían). agents_registry.yaml ya declara `modulo: <carpeta>.<archivo>` — se deriva
+# de ahí, nunca se desactualiza porque es la misma fuente que ya usa el loader real del agente.
+def _carpeta_de(agente: dict) -> str:
+    return agente["modulo"].split(".")[0]
 
 
 def _correr_tests(carpeta: str) -> str:
@@ -102,8 +102,8 @@ async def generar_secciones() -> dict[str, str]:
     filas = ["| Agente | Módulo | Tests | Registrado | Última decisión |", "|---|---|---|---|---|"]
     for a in agentes:
         nombre = a["nombre"]
-        carpeta = _MODULO_DIR.get(nombre, nombre)
-        display = _NOMBRE_DISPLAY.get(nombre, nombre)
+        carpeta = _carpeta_de(a)
+        display = a.get("nombre_display") or _NOMBRE_DISPLAY.get(nombre, nombre.replace("_", " ").title())
         tests = _correr_tests(carpeta)
         gate = _design_gate_estado(carpeta)
         activo = "✅ activo" if a.get("activo") else "🟡 registrado, inactivo"
@@ -118,9 +118,7 @@ async def generar_secciones() -> dict[str, str]:
     seccion_agentes = "\n".join(filas)
 
     # ── Estado operativo (decisiones vigentes que no son de un agente) ──
-    componentes_agentes = {_MODULO_DIR.get(a["nombre"], a["nombre"]) for a in agentes} | {
-        a["nombre"] for a in agentes
-    }
+    componentes_agentes = {_carpeta_de(a) for a in agentes} | {a["nombre"] for a in agentes}
     todas = await listar_decisiones_vigentes()
     generales = [d for d in todas if d.get("componente") not in componentes_agentes
                  and d.get("componente") != "knowledge_module"]

@@ -57,3 +57,15 @@ agentes:
       prop_key: cientifico_especialista
     activo: false  # C16/C17 sin resolver: sin contrato SEB-115 (no expone run() estándar) ni
                    # escritura al KM propia. Habilitar cuando se cierre esa deuda.
+
+  - nombre: microbiologo
+    nombre_display: Especialista Microbiólogo
+    modulo: microbiologo_agent.microbiologo_agent
+    descripcion: >
+      Especialista en microbiología aplicada al tratamiento biológico de efluentes/aguas
+      residuales. Primer agente de la biblioteca de especialistas (docs/PROPUESTA_DESTINO.md
+      §5) — genérico por diseño, sin ningún caso mencionado en su SYSTEM_PROMPT (ver
+      microbiologo_agent/docs/DESIGN_GATE.md).
+    km:
+      prop_key: microbiologo
+    activo: true

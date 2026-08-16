@@ -1,0 +1,178 @@
+# Design Gate — Especialista Microbiólogo
+
+**Versión:** 1.0
+**Fecha:** 2026-08-16
+**Módulo:** `criza/microbiologo_agent/`
+**Capa:** 2 (instancia CRIZA)
+**Estado:** ✅ LISTO
+
+---
+
+## 1. Identidad
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿Qué es? | Agente LLM especialista en microbiología aplicada al tratamiento biológico de efluentes/aguas residuales — evalúa qué microorganismos, procesos y enfoques técnicos aplican a un problema dado. |
+| ¿Qué problema resuelve en una oración? | El primer especialista de la "biblioteca de especialistas" (`docs/PROPUESTA_DESTINO.md` §5) más allá de los 4 agentes del expediente viejo — cubre el ángulo científico que hoy ningún agente activo cubre. |
+| ¿Quién lo usa? | Sebas, directo o vía el Motor (dos puertas de entrada, `PROPUESTA_CONDUCTOR.md` §3.1) — no hay Conductor todavía que lo invoque por su cuenta. |
+| ¿De qué depende? | `utils/ai_client.py` (LiteLLM), `utils/corpus.py::buscar_corpus_cientifico`, `km_tools/search.py::get_sector_corpus`, `utils/openalex.py`, `utils/agrovoc.py`, `knowledge_module.preflight`, `knowledge_module.aprendizaje`. |
+| ¿Qué depende de él? | Nada todavía — es el primer consumidor de este patrón fuera de Evidence Generalista/Investigación Amplia. El futuro Armador/Conductor podrían leer `props.microbiologo` más adelante. |
+| ¿Milestone? | Etapa 1 del plan de construcción del nuevo sistema de agentes (`docs/progress/2026-08-16.md`). |
+
+---
+
+## 2. Trazabilidad diseño → implementación
+
+### Por qué este agente y no reciclar `scientific_agent/specialist_proteins.py`
+
+Investigado antes de diseñar (no asumido): `specialist_proteins.py` tiene tools de ingeniería de
+proteínas (UniProt, ESMFold, ProteinMPNN, FoldX) — no calzan con biología ambiental de
+biodigestores. Peor: su `SYSTEM_PROMPT` (líneas 397-407) está clavado a un caso específico
+cancelado ("Andrés — Buenas Maltas", con restricciones tecnológicas hardcodeadas del tipo "NO
+tiene capacidad de ingeniería genética"). Es exactamente el patrón de sesgo que
+`PROPUESTA_CONDUCTOR.md` §6 describe como el motivo por el que ese agente "contaminaría
+cualquier análisis" si se enchufa tal cual. No se recicla como base — se abandona salvo lo que
+ya es genérico y compartido (`utils/openalex.py`, que este agente sí reusa).
+
+**Template real: `evidence_generalista/evidence_generalista.py`.** Ya es technology-agnostic,
+ya conecta las 4 tools de corpus que este agente necesita, ya usa el contrato SEB-115 completo,
+ya usa `knowledge_module.preflight` para declarar cobertura en vez de asumirla, y ya pasó por la
+migración a la costura (2026-08-15) — no hay que rehacer ese trabajo, solo clonarlo.
+
+### Entidades
+
+| Entidad | Descripción | Scope v1 | Estado |
+|---|---|---|---|
+| `search_literature` | OpenAlex vía `utils/openalex.py` (compartido). | ✅ incluido | ✅ construido |
+| `buscar_corpus_cientifico` | Búsqueda semántica CONICET+INTA vía `utils/corpus.py` (compartido con market_agent/evidence_generalista). | ✅ incluido | ✅ construido |
+| `search_corpus_inta` | FTS exhaustivo sobre el corpus INTA vía `km_tools/search.py::get_sector_corpus` (mismo patrón que evidence_generalista). | ✅ incluido | ✅ construido |
+| `expand_agrovoc` | Expansión de términos vía tesauro AGROVOC (`utils/agrovoc.py`). | ✅ incluido | ✅ construido |
+| `submit_evaluacion_tecnica` | Output estructurado obligatorio. Nombre genérico a propósito (no `submit_microbiologia`) — mismo schema se reusa para el ingeniero ambiental (Etapa 7 del plan), así el futuro Armador/Conductor pueden leer especialistas distintos con el mismo shape. | ✅ incluido | ✅ construido |
+
+### Schema de `evaluacion_tecnica`
+
+```json
+{
+  "resumen": {
+    "valor": "síntesis de la evaluación técnica, en prosa",
+    "estado": "establecido|asumido|a-confirmar",
+    "fuente": "..."
+  },
+  "microorganismos_o_procesos_relevantes": [
+    {"nombre": "...", "rol": "...", "estado": "establecido|asumido|a-confirmar", "fuente": "..."}
+  ],
+  "enfoques_tecnicos_identificados": [
+    {"enfoque": "...", "madurez": "maduro|emergente|experimental|conceptual", "fuente": "..."}
+  ],
+  "riesgos_o_limitaciones": [
+    {"riesgo": "...", "estado": "establecido|asumido|a-confirmar"}
+  ],
+  "brechas_de_conocimiento": [
+    {"brecha": "...", "impacto_en_decision": "alto|medio|bajo", "donde_confirmar": "..."}
+  ],
+  "especialista_adicional_recomendado": {
+    "si_no": true,
+    "descripcion": "qué análisis adicional aportaría valor — sin nombrar el tipo de especialista (principio 7b)",
+    "razon": "..."
+  }
+}
+```
+
+Mismo principio que `evidence_generalista` (Design Gate, decisión D): el agente NO nombra qué
+tipo de especialista hace falta, describe QUÉ análisis falta. Quien invoque decide si hay
+alguien disponible para eso.
+
+### Contrato SEB-115
+
+```python
+INPUT_CONTRACT  = {"agent": "microbiologo", "version": "1.0",
+                   "fields": {caso, tarea, contexto, conocimiento, herramientas}}
+OUTPUT_CONTRACT = {"agent": "microbiologo", "version": "1.0",
+                   "fields": {análisis, nivel_confianza, recomendaciones, próximo_agente, nuevo_conocimiento}}
+
+async def run(contract_input: dict, verbose: bool = False, model: str = DEFAULT_MODEL) -> dict:
+    """Interfaz estándar del Orquestador. `análisis` incluye siempre `informe_completo`
+    (convención 2026-08-15) — es lo que la costura persiste tal cual en `props.microbiologo`."""
+```
+
+**No escribe al KM él mismo.** Desde la migración del 2026-08-15 (`orquestador/invocador.py`),
+persistir es responsabilidad de la costura, no del agente — este agente no tiene ningún
+`motor_api.actualizar_props` propio, ni falta que le haga.
+
+### KM write — Especialista Microbiólogo
+
+| Tipo de output | Qué contiene | Key en KM | Cómo | Estado |
+|---|---|---|---|---|
+| **Resultado estructurado + informe** | `evaluacion_tecnica` + `especialista_adicional_recomendado` + `informe_completo` (markdown íntegro) | `props.microbiologo` | La costura (`invocador.py::invocar_agente`), no el agente | ✅ construido (por diseño, no hay nada que construir acá) |
+| **Token usage** | Tokens consumidos | `props.token_usage.microbiologo` | `TokenTracker` + `motor_api.actualizar_props` (el agente sí escribe esto — mismo patrón que los 4 activos, es local a la corrida, no al resultado) | ✅ construido |
+| **Aprendizaje** | Lecciones del caso | área `lecciones` | `aprendizaje` | 🔵 pendiente — misma deuda intencional que evidence_generalista, no se cierra en esta etapa |
+
+---
+
+## 3. Checklist del playbook
+
+### Seguridad Nivel 1
+
+- [x] Credenciales en `.env`, nunca en código — usa `.env` propio de `microbiologo_agent/`, mismo patrón que los otros agentes
+- [x] `.env` en `.gitignore` (ya cubierto por el `.gitignore` raíz del repo)
+- [x] `.env.example` completo
+- [x] Sin credenciales en historial de git
+
+### Estructura de archivos
+
+- [x] `microbiologo_agent.py` — SYSTEM_PROMPT + TOOLS + `run_agent()` + `run()`
+- [x] `run.py` — runner interactivo
+- [x] `docs/DESIGN_GATE.md` — este archivo
+- [x] `.env.example`
+- [x] `tests/`
+
+### Testing
+
+- [ ] Test: TOOLS tiene exactamente 5 tools (4 de corpus + `submit_evaluacion_tecnica`)
+- [ ] Test: `submit_evaluacion_tecnica` tiene los 6 campos del schema como required
+- [ ] **Test explícito del checklist anti-sesgo: `SYSTEM_PROMPT` no contiene ninguna de las
+      strings "Helios", "biogás", "biodigestor", "efluente de biogás", "Mateo", "Andrés"** — el
+      control concreto contra repetir el sesgo de `specialist_proteins.py`. El caso entra solo
+      por `contract_input`, nunca por el prompt.
+- [ ] Test: `SYSTEM_PROMPT` no nombra tipos de especialista en `especialista_adicional_recomendado`
+      (principio 7b, mismo patrón que evidence_generalista)
+- [ ] Test: `run_agent` mock captura `submit_evaluacion_tecnica`
+- [ ] Test: `run()` arma `análisis` con `informe_completo` adentro, no escribe al KM directamente
+- [ ] Al menos 1 integration test real contra el corpus INTA/CONICET
+
+---
+
+## 4. Scope explícito por versión
+
+| Feature | Versión | Razón |
+|---|---|---|
+| Conexión al modelo de datos `casos.yaml` (leer/escribir `frente`/`documento_caso` de Helios) | Etapa 4 del plan | Decisión explícita: no mezclar "especialista nuevo" con "nueva integración de datos" en el mismo paso — la Etapa 4 además introduce staging (Neon branching) antes de escribir contra el modelo de casos reales. |
+| Persistencia de lecciones de caso (`aprendizaje.guardar_leccion_caso`) | backlog | Misma deuda intencional que `evidence_generalista` — no bloquea nada hoy. |
+| Tools de dominio específicas (más allá de las 4 de corpus genéricas) | v2, si hace falta | No se identificó ninguna necesidad concreta todavía — agregar solo si una corrida real contra Helios muestra un hueco. |
+
+---
+
+## 5. Decisiones requeridas antes de arrancar
+
+| # | Pregunta | Opciones | Decisión tomada | Fecha |
+|---|---|---|---|---|
+| A | ¿Reciclar `specialist_proteins.py` o construir nuevo? | Reciclar / Nuevo | **Nuevo**, clonando `evidence_generalista.py`. Confirmado por Sebas — ver diagnóstico arriba y `docs/progress/2026-08-16.md`. | 2026-08-16 |
+| B | ¿Cuántos especialistas científicos se construyen en esta etapa? | 1 (microbiólogo) / los 3 candidatos de §5 de una | **1 solo.** El patrón nunca se probó fuera de 2 agentes — clonarlo 3 veces antes de validarlo una vez multiplica el riesgo de repetir un defecto no visto todavía. Ingeniero ambiental y agrónomo quedan para la Etapa 7 del plan, con el patrón ya probado en uso real. | 2026-08-16 |
+| C | ¿Tool set? | Solo las 4 genéricas de corpus / sumar algo nuevo de entrada | **Solo las 4 genéricas** (`search_literature`, `buscar_corpus_cientifico`, `search_corpus_inta`, `expand_agrovoc`) — cero trabajo nuevo de integración, mismo patrón ya probado. Nada de dominio-específico hasta que una corrida real muestre que hace falta. | 2026-08-16 |
+| D | ¿Conecta con `casos.yaml` (Helios) en esta etapa? | Sí / No, todavía contra `props` de `oportunidad` | **No** — sigue el patrón viejo (`props` de `oportunidad`) como los 4 agentes activos hoy. La integración con `casos.yaml` es la Etapa 4 del plan, después de introducir staging. | 2026-08-16 |
+| E | ¿Nombre del tool de submit y del schema? | `submit_microbiologia` (específico) / `submit_evaluacion_tecnica` (genérico) | **Genérico** (`submit_evaluacion_tecnica`) — mismo schema se va a reusar para el ingeniero ambiental (Etapa 7), así el futuro Armador/Conductor leen especialistas distintos con la misma forma. | 2026-08-16 |
+
+---
+
+## 6. Estado del gate
+
+**Estado actual:** ✅ LISTO
+
+Decisiones A–E cerradas, ninguna abierta. El agente clona un patrón ya probado (evidence_generalista) —
+no hay diseño nuevo de fondo, solo aplicación a un dominio distinto con el checklist anti-sesgo
+como control explícito.
+
+**Deuda intencional documentada:**
+- Conexión a `casos.yaml` → Etapa 4 del plan, no esta
+- Persistencia de lecciones de caso → backlog, misma deuda que evidence_generalista
+- Tools de dominio específicas → solo si una corrida real las requiere
