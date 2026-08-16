@@ -747,6 +747,30 @@ async def test_enviar_mensaje_chat_despacha_tool_sin_forzar_submit():
     assert respuesta == "Según AGROVOC, biodigestor se relaciona con..."
 
 
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_enviar_mensaje_consulta_libre_sin_frente_no_busca_caso():
+    """Etapa 12 — sin frente_id no debe llamar obtener_frente_con_caso, y la consulta de
+    lecciones usa el texto de la pregunta (no una descripción de caso que no existe)."""
+    mock_text = type("TextBlock", (), {"type": "text", "text": "En general, para metanogénesis..."})()
+    mock_usage = type("Usage", (), {"input_tokens": 10, "output_tokens": 5})()
+    mock_response = type("Response", (), {"stop_reason": "end_turn", "content": [mock_text], "usage": mock_usage})()
+
+    with (
+        patch("microbiologo_agent._ai_complete", new=AsyncMock(return_value=mock_response)),
+        patch("microbiologo_agent.obtener_frente_con_caso", new=AsyncMock()) as mock_frente,
+        patch("microbiologo_agent.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("microbiologo_agent.aprendizaje.bloque_lecciones_para_prompt", new=AsyncMock(return_value="")) as mock_lecciones,
+    ):
+        respuesta, messages = await ma.enviar_mensaje([], "¿Qué microorganismo hace metanogénesis?")
+
+    mock_frente.assert_not_awaited()
+    _, kwargs = mock_lecciones.call_args
+    assert kwargs["consulta"] == "¿Qué microorganismo hace metanogénesis?"
+    assert respuesta == "En general, para metanogénesis..."
+    assert len(messages) == 2  # pregunta + respuesta, sin contexto inicial de caso
+
+
 # ── Integration: corrida real ─────────────────────────────────────────────────
 
 @pytest.mark.integration

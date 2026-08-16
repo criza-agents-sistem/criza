@@ -16,6 +16,7 @@ export default function EspecialistaChatPage({
   const { nombre } = use(params);
   const searchParams = useSearchParams();
   const frenteId = searchParams.get("frente");
+  const modoLibre = !frenteId;
   const label = ESPECIALISTAS.find((e) => e.nombre === nombre)?.label ?? nombre;
 
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -26,11 +27,7 @@ export default function EspecialistaChatPage({
   const finRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!frenteId) {
-      setErrorSesion("Falta el frente sobre el que hablar — entrá a este chat desde la página de un caso.");
-      return;
-    }
-    crearSesionEspecialista(nombre, frenteId)
+    crearSesionEspecialista(nombre, frenteId ?? undefined)
       .then(setSessionId)
       .catch((e) => setErrorSesion(e.message));
   }, [nombre, frenteId]);
@@ -70,8 +67,14 @@ export default function EspecialistaChatPage({
         </a>
       </div>
       <p className="mb-4 text-sm text-neutral-500">
-        Chat directo con el especialista sobre este frente — mismo conocimiento que una corrida
-        formal, pero esto NO produce un documento persistido. Para eso, pedíselo al Conductor.
+        {modoLibre ? (
+          <>Consulta libre, sin caso asociado — más rápida y más barata en tokens. Si la pregunta
+          termina siendo sobre un caso real, entrá a este chat desde ese caso en vez de acá, para
+          que el especialista tenga el contexto completo.</>
+        ) : (
+          <>Chat directo con el especialista sobre este frente — mismo conocimiento que una corrida
+          formal, pero esto NO produce un documento persistido. Para eso, pedíselo al Conductor.</>
+        )}
       </p>
 
       {errorSesion && (

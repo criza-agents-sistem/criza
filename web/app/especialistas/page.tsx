@@ -6,19 +6,24 @@ export default function EspecialistasPage() {
     <div>
       <h1 className="text-2xl font-semibold mb-1">Especialistas</h1>
       <p className="mb-6 text-sm text-neutral-500">
-        Para chatear con uno, entrá desde un caso (<Link href="/" className="text-blue-600 hover:underline">Casos</Link>) y elegí el frente sobre el que querés hablar — cada especialista necesita saber contra qué frente está trabajando. Acá podés ver qué puede hacer cada uno.
+        "Consulta libre" es una pregunta puntual, sin caso asociado — rápida y barata en tokens.
+        Para hablar sobre un caso real (con contexto completo), entrá desde ese caso
+        (<Link href="/" className="text-blue-600 hover:underline">Casos</Link>) y elegí el frente.
       </p>
 
       <div className="flex flex-col gap-3">
         {ESPECIALISTAS.map((esp) => (
-          <Link
-            key={esp.nombre}
-            href={`/agentes/${esp.nombre}`}
-            className="block rounded-lg border border-neutral-200 bg-white p-4 hover:border-neutral-300"
-          >
+          <div key={esp.nombre} className="rounded-lg border border-neutral-200 bg-white p-4">
             <h2 className="font-medium">{esp.label}</h2>
-            <p className="mt-1 text-sm text-neutral-500">Ver características →</p>
-          </Link>
+            <div className="mt-2 flex gap-3 text-sm">
+              <Link href={`/especialistas/${esp.nombre}`} className="text-blue-600 hover:underline">
+                💬 Consulta libre
+              </Link>
+              <Link href={`/agentes/${esp.nombre}`} className="text-neutral-500 hover:underline">
+                ℹ️ Características
+              </Link>
+            </div>
+          </div>
         ))}
       </div>
     </div>

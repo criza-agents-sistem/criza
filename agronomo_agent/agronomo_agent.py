@@ -749,22 +749,26 @@ async def iniciar_sesion(frente_id: str, *, tenant: str = _TENANT) -> list[dict]
 async def enviar_mensaje(
     messages: list[dict],
     texto_usuario: str,
-    frente_id: str,
+    frente_id: str | None = None,
     model: str = DEFAULT_MODEL,
     verbose: bool = False,
     tracker: TokenTracker | None = None,
     tenant: str = _TENANT,
 ) -> tuple[str, list[dict]]:
+    """`frente_id=None` es el modo "consulta libre" (Etapa 12, 2026-08-16) — ver
+    microbiologo_agent.py::enviar_mensaje, mismo patrón."""
     messages.append({"role": "user", "content": texto_usuario})
-    tracker = tracker or TokenTracker(agent=_AGENTE, oportunidad_id=frente_id, model=model)
+    tracker = tracker or TokenTracker(agent=_AGENTE, oportunidad_id=frente_id or "", model=model)
 
-    contexto = await obtener_frente_con_caso(frente_id, tenant=tenant)
-    caso_dict = contexto["caso"] or {}
-    caso_props = caso_dict.get("props") or {}
     await aprendizaje.ensure_area(tenant=tenant)
-    bloque = await aprendizaje.bloque_lecciones_para_prompt(
-        agente=_AGENTE, consulta=caso_props.get("descripcion") or caso_props.get("nombre") or frente_id, tenant=tenant,
-    )
+    if frente_id:
+        contexto = await obtener_frente_con_caso(frente_id, tenant=tenant)
+        caso_dict = contexto["caso"] or {}
+        caso_props = caso_dict.get("props") or {}
+        consulta_lecciones = caso_props.get("descripcion") or caso_props.get("nombre") or frente_id
+    else:
+        consulta_lecciones = texto_usuario
+    bloque = await aprendizaje.bloque_lecciones_para_prompt(agente=_AGENTE, consulta=consulta_lecciones, tenant=tenant)
     system_blocks = [{"type": "text", "text": SYSTEM_PROMPT + bloque, "cache_control": {"type": "ephemeral"}}]
 
     while True:

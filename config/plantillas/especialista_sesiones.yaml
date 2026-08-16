@@ -26,7 +26,8 @@ tipos_ficha:
       `session_id` que ve el browser es directamente el id de esta ficha.
     campos:
       - especialista      # "microbiologo" / "ingeniero_ambiental" / "agronomo"
-      - frente_id          # UUID del frente sobre el que es la conversación
+      - frente_id          # UUID del frente, o null (Etapa 12) — sesión de "consulta libre",
+                            # sin caso/frente asociado, arrancada sin ese contexto a propósito
       - mensajes           # lista serializada de {role, content} — content: str o list[dict]
       - iniciada_en        # ISO timestamp
       - actualizada_en     # ISO timestamp, se actualiza en cada turno

@@ -285,7 +285,10 @@ async def cerrar_sesion_conductor(session_id: str) -> dict:
 # <especialista>_agent.py::TOOLS_CHAT, que excluye submit_evaluacion_tecnica a propósito).
 
 class _CrearSesionEspecialistaIn(BaseModel):
-    frente_id: str
+    # Opcional (Etapa 12, 2026-08-16) — "consulta libre": Sebas pidió poder preguntarle algo
+    # puntual a un especialista sin necesitar un caso/frente ya creado, y sin pagar el costo de
+    # armar ese contexto. Sin frente_id, la sesión arranca vacía (ver <especialista>.enviar_mensaje).
+    frente_id: str | None = None
 
 
 @app.post("/especialistas/{nombre}/sesiones")
@@ -294,10 +297,13 @@ async def crear_sesion_especialista(nombre: str, body: _CrearSesionEspecialistaI
         raise HTTPException(status_code=404, detail=f"'{nombre}' no es un especialista disponible. Opciones: {list(_ESPECIALISTAS_CHAT.keys())}.")
     modulo = _ESPECIALISTAS_CHAT[nombre]
 
-    try:
-        mensajes_iniciales = await modulo.iniciar_sesion(body.frente_id, tenant=_TENANT)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+    if body.frente_id:
+        try:
+            mensajes_iniciales = await modulo.iniciar_sesion(body.frente_id, tenant=_TENANT)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+    else:
+        mensajes_iniciales = []  # consulta libre — nada de contexto de caso que armar
 
     await load_plantilla(str(_PLANTILLA_SESIONES_ESPECIALISTA), tenant=_TENANT)
     ahora = datetime.now(timezone.utc).isoformat()

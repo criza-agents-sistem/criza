@@ -983,27 +983,35 @@ async def iniciar_sesion(frente_id: str, *, tenant: str = _TENANT) -> list[dict]
 async def enviar_mensaje(
     messages: list[dict],
     texto_usuario: str,
-    frente_id: str,
+    frente_id: str | None = None,
     model: str = DEFAULT_MODEL,
     verbose: bool = False,
     tracker: TokenTracker | None = None,
     tenant: str = _TENANT,
 ) -> tuple[str, list[dict]]:
     """
-    Un turno de chat con el Especialista Microbiólogo sobre un frente puntual. `messages` debe
-    arrancar con lo que devolvió `iniciar_sesion(frente_id)` — se muta y se devuelve, mismo
+    Un turno de chat con el Especialista Microbiólogo. `messages` se muta y se devuelve, mismo
     patrón que `conductor.enviar_mensaje()`.
+
+    `frente_id=None` es el modo "consulta libre" (Etapa 12, 2026-08-16) — Sebas pidió poder
+    hacerle una pregunta puntual al especialista sin necesitar un caso/frente ya creado (y sin
+    pagar el costo de armar ese contexto). Con `frente_id`, `messages` debe arrancar con lo que
+    devolvió `iniciar_sesion(frente_id)` (modo caso/frente, sin cambios).
     """
     messages.append({"role": "user", "content": texto_usuario})
-    tracker = tracker or TokenTracker(agent=_AGENTE, oportunidad_id=frente_id, model=model)
+    tracker = tracker or TokenTracker(agent=_AGENTE, oportunidad_id=frente_id or "", model=model)
 
-    contexto = await obtener_frente_con_caso(frente_id, tenant=tenant)
-    caso_dict = contexto["caso"] or {}
-    caso_props = caso_dict.get("props") or {}
     await aprendizaje.ensure_area(tenant=tenant)
-    bloque = await aprendizaje.bloque_lecciones_para_prompt(
-        agente=_AGENTE, consulta=caso_props.get("descripcion") or caso_props.get("nombre") or frente_id, tenant=tenant,
-    )
+    if frente_id:
+        contexto = await obtener_frente_con_caso(frente_id, tenant=tenant)
+        caso_dict = contexto["caso"] or {}
+        caso_props = caso_dict.get("props") or {}
+        consulta_lecciones = caso_props.get("descripcion") or caso_props.get("nombre") or frente_id
+    else:
+        # sin caso, la pregunta en sí es la mejor consulta para lecciones análogas —
+        # más específica que cualquier descripción de caso genérica.
+        consulta_lecciones = texto_usuario
+    bloque = await aprendizaje.bloque_lecciones_para_prompt(agente=_AGENTE, consulta=consulta_lecciones, tenant=tenant)
     system_blocks = [{"type": "text", "text": SYSTEM_PROMPT + bloque, "cache_control": {"type": "ephemeral"}}]
 
     while True:

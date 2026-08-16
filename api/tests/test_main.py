@@ -264,6 +264,25 @@ def test_crear_sesion_especialista_frente_no_encontrado_es_404():
 
 
 @pytest.mark.unit
+def test_crear_sesion_especialista_consulta_libre_sin_frente_id():
+    """Etapa 12 — sin frente_id en el body, no debe llamar iniciar_sesion (no hay contexto de
+    caso que armar) y la ficha se crea con frente_id=None."""
+    with (
+        patch("main._mod_microbiologo.iniciar_sesion", new=AsyncMock()) as mock_iniciar,
+        patch("main.load_plantilla", new=AsyncMock(return_value={})),
+        patch("main.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "sesion-libre-1"})) as mock_guardar,
+    ):
+        resp = client.post("/especialistas/microbiologo/sesiones", json={})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"session_id": "sesion-libre-1"}
+    mock_iniciar.assert_not_awaited()
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["campos"]["frente_id"] is None
+    assert kwargs["campos"]["mensajes"] == []
+
+
+@pytest.mark.unit
 def test_enviar_mensaje_especialista_sesion_inexistente():
     with patch("main.motor_api.obtener", new=AsyncMock(return_value=None)):
         resp = client.post("/especialistas/sesiones/no-existe/mensajes", json={"texto": "hola"})

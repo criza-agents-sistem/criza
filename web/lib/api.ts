@@ -120,11 +120,12 @@ export const ESPECIALISTAS = [
   { nombre: "agronomo", label: "Ingeniero Agrónomo" },
 ] as const;
 
-export async function crearSesionEspecialista(nombre: string, frenteId: string): Promise<string> {
+// frenteId ausente = "consulta libre" (Etapa 12) — sin caso, sin ese contexto que armar.
+export async function crearSesionEspecialista(nombre: string, frenteId?: string): Promise<string> {
   const res = await fetch(`${API_URL}/especialistas/${nombre}/sesiones`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ frente_id: frenteId }),
+    body: JSON.stringify(frenteId ? { frente_id: frenteId } : {}),
   });
   if (!res.ok) {
     const detalle = await res.json().catch(() => ({}));

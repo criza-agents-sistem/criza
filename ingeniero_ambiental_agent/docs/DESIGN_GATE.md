@@ -121,6 +121,7 @@ por la razón de arriba.
 | C | ¿Tool set? | Solo las 4 genéricas / sumar algo de dominio (ingeniería de procesos) | **Solo las 4 genéricas** — mismo criterio que el Microbiólogo en v1: nada de dominio-específico hasta que una corrida real muestre el hueco. | 2026-08-16 |
 | D | ¿Schema de `submit_evaluacion_tecnica`? | Nuevo, específico de ingeniería / Reusar el del Microbiólogo | **Reusar tal cual** — decisión E del Design Gate del Microbiólogo ya lo anticipó explícitamente ("mismo schema se reusa para el ingeniero ambiental"). | 2026-08-16 |
 | E | Etapa 10 (2026-08-16) — mismo pedido de Sebas que recibió el Microbiólogo: chat directo, no solo vía el Conductor. | Mismo patrón que `microbiologo_agent.py` (decisión H de ese gate) / uno propio | **Mismo patrón, sin variación.** `_despachar_tool` extraído de `_run_loop`, `TOOLS_CHAT = TOOLS - {submit_evaluacion_tecnica}`, `iniciar_sesion(frente_id)` + `enviar_mensaje(messages, texto, frente_id)`. No hay tools de dominio propias acá (decisión C) así que el dispatch extraído es más chico que el del Microbiólogo, pero la forma es idéntica — mismo razonamiento: la evaluación formal persistida sigue siendo exclusiva de la corrida de un turno vía la costura. | 2026-08-16 |
+| F | Etapa 12 (2026-08-16) — Sebas pidió poder consultar sin necesitar un caso ya creado. | Mismo patrón que `microbiologo_agent.py` (decisión I de ese gate) / uno propio | **Mismo patrón** — `frente_id: str \| None = None` en `enviar_mensaje`; sin frente, la consulta de lecciones usa el texto de la pregunta en vez de una descripción de caso. | 2026-08-16 |
 
 ---
 
@@ -128,7 +129,7 @@ por la razón de arriba.
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-E cerradas, ninguna abierta. Segundo consumidor del patrón validado en la Etapa 1 y
+Decisiones A-F cerradas, ninguna abierta. Segundo consumidor del patrón validado en la Etapa 1 y
 probado en uso real durante las Etapas 4-6 — no hay diseño nuevo de fondo.
 
 **Deuda intencional documentada:**
