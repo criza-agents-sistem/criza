@@ -97,6 +97,66 @@ def test_obtener_documento_id_de_otro_tipo_es_404():
     assert resp.status_code == 404
 
 
+# ── Chat del Conductor ─────────────────────────────────────────────────────
+
+@pytest.mark.unit
+def test_crear_sesion_conductor():
+    resp = client.post("/conductor/sesiones")
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+    assert session_id
+    assert session_id in api_main._sesiones_conductor
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_sesion_inexistente():
+    resp = client.post("/conductor/sesiones/no-existe/mensajes", json={"texto": "hola"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_vacio_es_400():
+    session_id = client.post("/conductor/sesiones").json()["session_id"]
+    resp = client.post(f"/conductor/sesiones/{session_id}/mensajes", json={"texto": "   "})
+    assert resp.status_code == 400
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_conductor_devuelve_respuesta():
+    session_id = client.post("/conductor/sesiones").json()["session_id"]
+
+    async def fake_enviar_mensaje(messages, texto, model=None, verbose=False, tracker=None):
+        messages.append({"role": "user", "content": texto})
+        messages.append({"role": "assistant", "content": "Hola, ¿en qué te ayudo?"})
+        return "Hola, ¿en qué te ayudo?", messages
+
+    with patch("main._enviar_mensaje_conductor", new=fake_enviar_mensaje):
+        resp = client.post(f"/conductor/sesiones/{session_id}/mensajes", json={"texto": "Hola"})
+
+    assert resp.status_code == 200
+    assert resp.json()["respuesta"] == "Hola, ¿en qué te ayudo?"
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_conductor_mantiene_historial_entre_turnos():
+    """El segundo mensaje del mismo session_id debe operar sobre los mismos `messages`
+    acumulados — la sesión en memoria es lo que le da memoria conversacional."""
+    session_id = client.post("/conductor/sesiones").json()["session_id"]
+    historiales_vistos = []
+
+    async def fake_enviar_mensaje(messages, texto, model=None, verbose=False, tracker=None):
+        historiales_vistos.append(len(messages))
+        messages.append({"role": "user", "content": texto})
+        messages.append({"role": "assistant", "content": "ok"})
+        return "ok", messages
+
+    with patch("main._enviar_mensaje_conductor", new=fake_enviar_mensaje):
+        client.post(f"/conductor/sesiones/{session_id}/mensajes", json={"texto": "primero"})
+        client.post(f"/conductor/sesiones/{session_id}/mensajes", json={"texto": "segundo"})
+
+    assert historiales_vistos == [0, 2]  # el segundo turno arrancó con los 2 mensajes del primero
+
+
 @pytest.mark.unit
 def test_cors_permite_localhost_3000():
     resp = client.options(

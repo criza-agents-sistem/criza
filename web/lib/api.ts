@@ -69,3 +69,29 @@ export function obtenerCaso(id: string): Promise<CasoDetalle | null> {
 export function obtenerDocumento(id: string): Promise<Documento | null> {
   return apiFetch<Documento>(`/documentos/${id}`);
 }
+
+// ── Conductor (chat) ─────────────────────────────────────────────────────────
+// A diferencia de listarCasos/obtenerCaso/obtenerDocumento (server components, GET,
+// cache: "no-store"), estas se llaman desde un client component — el Conductor puede tardar
+// varios minutos si invoca un especialista, y necesita mantener la sesión entre mensajes.
+
+export async function crearSesionConductor(): Promise<string> {
+  const res = await fetch(`${API_URL}/conductor/sesiones`, { method: "POST" });
+  if (!res.ok) throw new Error(`No se pudo crear la sesión del Conductor (${res.status})`);
+  const data = await res.json();
+  return data.session_id as string;
+}
+
+export async function enviarMensajeConductor(sessionId: string, texto: string): Promise<string> {
+  const res = await fetch(`${API_URL}/conductor/sesiones/${sessionId}/mensajes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ texto }),
+  });
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => ({}));
+    throw new Error(detalle.detail || `El Conductor respondió ${res.status}`);
+  }
+  const data = await res.json();
+  return data.respuesta as string;
+}
