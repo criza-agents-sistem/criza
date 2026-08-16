@@ -30,6 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <nav className="flex gap-4 text-sm text-neutral-500">
               <a href="/" className="hover:text-neutral-900">Casos</a>
               <a href="/conductor" className="hover:text-neutral-900">Conductor</a>
+              <a href="/especialistas" className="hover:text-neutral-900">Especialistas</a>
             </nav>
           </div>
         </header>
