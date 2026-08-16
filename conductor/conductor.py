@@ -58,6 +58,7 @@ _TENANT = "criza"
 _ESPECIALISTAS_CASOS = {
     "microbiologo": "Especialista Microbiólogo",
     "ingeniero_ambiental": "Especialista Ingeniero Ambiental",
+    "agronomo": "Especialista Ingeniero Agrónomo",
 }
 
 
@@ -289,7 +290,9 @@ TOOLS DISPONIBLES:
   a Sebas primero (puede que igual quiera reintentar, pero es su decisión, no la tuya). Elegí el
   especialista según qué pregunta hay que responder — el microbiólogo evalúa si un enfoque es
   biológica/químicamente viable, el ingeniero ambiental evalúa si ese enfoque ya identificado se
-  puede construir y operar de verdad (balances de masa/energía, dimensionamiento).
+  puede construir y operar de verdad (balances de masa/energía, dimensionamiento), el ingeniero
+  agrónomo evalúa si un producto/enfoque funciona de verdad como insumo agrícola/ganadero (dosis,
+  compatibilidad de cultivo/suelo, normativa de aplicación).
 - ver_documento: el texto completo de un documento puntual, cuando Sebas quiere profundizar.
 
 CÓMO RESPONDER (PROPUESTA_CONDUCTOR.md §3.2 — la atención de Sebas es el recurso escaso):
@@ -300,8 +303,8 @@ es exactamente el tipo de cosa que solo vos podés ver.
 
 LÍMITES EXPLÍCITOS DE ESTA VERSIÓN (no prometas lo que no hacés todavía):
 - Solo podés invocar los especialistas conectados al modelo de casos.yaml (hoy: microbiólogo,
-  ingeniero ambiental) — los 4 agentes del expediente viejo (mercado, evidencia, investigación
-  amplia, armador) todavía no están conectados a este modelo.
+  ingeniero ambiental, ingeniero agrónomo) — los 4 agentes del expediente viejo (mercado,
+  evidencia, investigación amplia, armador) todavía no están conectados a este modelo.
 - No persistís en ningún lado qué se decidió en esta conversación — si Sebas necesita que quede
   un registro de una decisión de negocio sobre el caso, avisale que eso todavía no está resuelto
   (gap conocido, no lo inventes ni finjas que lo guardaste).

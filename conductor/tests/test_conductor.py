@@ -51,9 +51,9 @@ def test_correr_especialista_requiere_especialista_caso_y_frente():
 
 
 @pytest.mark.unit
-def test_correr_especialista_enum_incluye_los_dos_especialistas():
+def test_correr_especialista_enum_incluye_los_especialistas_disponibles():
     tool = next(t for t in cond.TOOLS if t["name"] == "correr_especialista")
-    assert set(tool["input_schema"]["properties"]["especialista"]["enum"]) == {"microbiologo", "ingeniero_ambiental"}
+    assert set(tool["input_schema"]["properties"]["especialista"]["enum"]) == {"microbiologo", "ingeniero_ambiental", "agronomo"}
 
 
 # ── _resolver_caso ───────────────────────────────────────────────────────────

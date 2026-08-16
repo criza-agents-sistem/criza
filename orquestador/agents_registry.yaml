@@ -83,3 +83,17 @@ agentes:
     km:
       prop_key: ingeniero_ambiental
     activo: true
+
+  - nombre: agronomo
+    nombre_display: Especialista Ingeniero Agrónomo
+    modulo: agronomo_agent.agronomo_agent
+    descripcion: >
+      Especialista en uso agronómico (dosis, compatibilidad de cultivo/suelo, normativa de
+      aplicación) de un producto/enfoque ya identificado por otro especialista. Tercer agente de
+      la biblioteca de especialistas — construido con señal real explícita de Sebas (Helios
+      necesita destino para su efluente, el sector agropecuario es un destino probable), no en
+      abstracto (ver agronomo_agent/docs/DESIGN_GATE.md). Solo invocable vía frente_id
+      (config/plantillas/casos.yaml) — no soporta oportunidad_id.
+    km:
+      prop_key: agronomo
+    activo: true
