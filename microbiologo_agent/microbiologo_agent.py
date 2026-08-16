@@ -253,8 +253,7 @@ TOOLS = [
             "Busca cepas bacterianas por género/especie en BacDive (DSMZ) — la mayor base de\n"
             "fenotipos bacterianos: metabolismo, tolerancia a oxígeno, rango de temperatura,\n"
             "hábitat. Usar para confirmar si una bacteria candidata tiene el fenotipo que el\n"
-            "problema requiere (ej. anaerobia estricta, termófila). Requiere credenciales\n"
-            "BacDive configuradas — si no están, devuelve error explícito, no fallar en silencio."
+            "problema requiere (ej. anaerobia estricta, termófila)."
         ),
         "input_schema": {
             "type": "object",
