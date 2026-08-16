@@ -35,13 +35,13 @@ FRENTE_ASOCIACION = {"id": "frente-asociacion", "tipo": "frente", "props": {"nom
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(cond.TOOLS) == 4
+    assert len(cond.TOOLS) == 5
 
 
 @pytest.mark.unit
 def test_tools_names():
     nombres = {t["name"] for t in cond.TOOLS}
-    assert nombres == {"listar_casos", "ver_caso", "correr_especialista", "ver_documento"}
+    assert nombres == {"listar_casos", "ver_caso", "correr_especialista", "ver_documento", "anotar_leccion"}
 
 
 @pytest.mark.unit
@@ -215,6 +215,130 @@ async def test_tool_ver_documento_no_encontrado():
     with patch("conductor.motor_api.obtener", new=AsyncMock(return_value=None)):
         result = await cond._tool_ver_documento("no-existe")
     assert "error" in result
+
+
+# ── _tool_anotar_leccion (trigger explícito, Etapa 9) ───────────────────────
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_anotar_leccion_guarda_con_fuente_humano():
+    with (
+        patch("conductor.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("conductor.aprendizaje.guardar_leccion_caso", new=AsyncMock(return_value={"success": True, "id": "leccion-1"})) as mock_guardar,
+    ):
+        result = await cond._tool_anotar_leccion("Siempre validar el flete antes de recomendar.", "Helios, logística")
+
+    assert result == {"guardado": True, "id": "leccion-1"}
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["agente"] == "conductor"
+    assert kwargs["fuente"] == "humano"
+    assert kwargs["contenido"] == "Siempre validar el flete antes de recomendar."
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_anotar_leccion_contenido_vacio_es_error():
+    result = await cond._tool_anotar_leccion("   ", "contexto")
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_anotar_leccion():
+    with patch("conductor._tool_anotar_leccion", new=AsyncMock(return_value={"guardado": True, "id": "x"})) as mock_tool:
+        result = await cond._despachar_tool("anotar_leccion", {"contenido": "c", "contexto": "ctx"}, verbose=False)
+    mock_tool.assert_awaited_once_with("c", "ctx")
+    assert result == {"guardado": True, "id": "x"}
+
+
+# ── cerrar_sesion (trigger automático, Etapa 9) ─────────────────────────────
+
+def _mock_response_leccion(hay_leccion: bool, contenido: str = "", contexto: str = ""):
+    tool_call = type("ToolUseBlock", (), {
+        "type": "tool_use", "name": "submit_leccion", "id": "tool_1",
+        "input": {"hay_leccion_nueva": hay_leccion, "contenido": contenido, "contexto": contexto},
+    })()
+    usage = type("Usage", (), {"input_tokens": 10, "output_tokens": 5})()
+    return type("Response", (), {"stop_reason": "tool_use", "content": [tool_call], "usage": usage})()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_cerrar_sesion_conversacion_muy_corta_no_evalua():
+    """Menos de 2 turnos reales de Sebas — ni vale la pena llamar al modelo."""
+    with patch("conductor._ai_complete", new=AsyncMock()) as mock_ai:
+        result = await cond.cerrar_sesion([{"role": "user", "content": "hola"}])
+    mock_ai.assert_not_called()
+    assert result is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_cerrar_sesion_sin_leccion_nueva_no_guarda():
+    messages = [
+        {"role": "user", "content": "¿Qué casos tenemos?"},
+        {"role": "assistant", "content": "Dos casos."},
+        {"role": "user", "content": "Contame de Helios."},
+        {"role": "assistant", "content": "Viene así."},
+    ]
+    with (
+        patch("conductor.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("conductor.aprendizaje.leer_lecciones_caso", new=AsyncMock(return_value=[])),
+        patch("conductor._ai_complete", new=AsyncMock(return_value=_mock_response_leccion(False))),
+        patch("conductor.aprendizaje.guardar_leccion_caso", new=AsyncMock()) as mock_guardar,
+    ):
+        result = await cond.cerrar_sesion(messages)
+
+    mock_guardar.assert_not_called()
+    assert result is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_cerrar_sesion_con_leccion_nueva_guarda_con_fuente_agente_auto():
+    messages = [
+        {"role": "user", "content": "¿Qué casos tenemos?"},
+        {"role": "assistant", "content": "Dos casos."},
+        {"role": "user", "content": "Contame de Helios."},
+        {"role": "assistant", "content": "Viene así."},
+    ]
+    with (
+        patch("conductor.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("conductor.aprendizaje.leer_lecciones_caso", new=AsyncMock(return_value=[])),
+        patch("conductor._ai_complete", new=AsyncMock(return_value=_mock_response_leccion(
+            True, contenido="Chequear el flete antes de avanzar.", contexto="Helios, logística",
+        ))),
+        patch("conductor.aprendizaje.guardar_leccion_caso", new=AsyncMock(return_value={"success": True, "id": "leccion-2"})) as mock_guardar,
+    ):
+        result = await cond.cerrar_sesion(messages)
+
+    assert result == {"success": True, "id": "leccion-2"}
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["fuente"] == "agente_auto"
+    assert kwargs["contenido"] == "Chequear el flete antes de avanzar."
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_cerrar_sesion_no_llama_submit_leccion_se_trata_como_sin_leccion():
+    messages = [
+        {"role": "user", "content": "¿Qué casos tenemos?"},
+        {"role": "assistant", "content": "Dos casos."},
+        {"role": "user", "content": "Gracias."},
+        {"role": "assistant", "content": "De nada."},
+    ]
+    texto_block = type("TextBlock", (), {"type": "text", "text": "no llamé la tool"})()
+    usage = type("Usage", (), {"input_tokens": 1, "output_tokens": 1})()
+    response = type("Response", (), {"stop_reason": "end_turn", "content": [texto_block], "usage": usage})()
+
+    with (
+        patch("conductor.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("conductor.aprendizaje.leer_lecciones_caso", new=AsyncMock(return_value=[])),
+        patch("conductor._ai_complete", new=AsyncMock(return_value=response)),
+    ):
+        result = await cond.cerrar_sesion(messages)
+
+    assert result is None
 
 
 # ── enviar_mensaje — loop conversacional ────────────────────────────────────

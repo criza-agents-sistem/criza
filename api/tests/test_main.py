@@ -201,6 +201,37 @@ def test_enviar_mensaje_conductor_mantiene_historial_entre_turnos():
 
 
 @pytest.mark.unit
+def test_cerrar_sesion_conductor_no_encontrada():
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=None)):
+        resp = client.post("/conductor/sesiones/no-existe/cerrar")
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_cerrar_sesion_conductor_con_leccion():
+    sesion = {"id": "sesion-1", "tipo": "sesion", "props": {"mensajes": [{"role": "user", "content": "hola"}]}}
+    with (
+        patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)),
+        patch("main._cerrar_sesion_conductor", new=AsyncMock(return_value={"success": True, "id": "leccion-1"})),
+    ):
+        resp = client.post("/conductor/sesiones/sesion-1/cerrar")
+    assert resp.status_code == 200
+    assert resp.json() == {"leccion_guardada": True, "id": "leccion-1"}
+
+
+@pytest.mark.unit
+def test_cerrar_sesion_conductor_sin_leccion():
+    sesion = {"id": "sesion-1", "tipo": "sesion", "props": {"mensajes": []}}
+    with (
+        patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)),
+        patch("main._cerrar_sesion_conductor", new=AsyncMock(return_value=None)),
+    ):
+        resp = client.post("/conductor/sesiones/sesion-1/cerrar")
+    assert resp.status_code == 200
+    assert resp.json() == {"leccion_guardada": False, "id": None}
+
+
+@pytest.mark.unit
 def test_cors_permite_localhost_3000():
     resp = client.options(
         "/casos",

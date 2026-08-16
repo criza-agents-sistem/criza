@@ -3,27 +3,69 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { crearSesionConductor, enviarMensajeConductor } from "@/lib/api";
+import {
+  crearSesionConductor,
+  enviarMensajeConductor,
+  cerrarSesionConductor,
+  cerrarSesionConductorBeacon,
+} from "@/lib/api";
 
-type Turno = { rol: "vos" | "conductor" | "error"; texto: string };
+type Turno = { rol: "vos" | "conductor" | "error" | "sistema"; texto: string };
 
 export default function ConductorPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [cerrandoSesion, setCerrandoSesion] = useState(false);
   const [errorSesion, setErrorSesion] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     crearSesionConductor()
-      .then(setSessionId)
+      .then((id) => {
+        setSessionId(id);
+        sessionIdRef.current = id;
+      })
       .catch((e) => setErrorSesion(e.message));
+  }, []);
+
+  // Best-effort: si Sebas cierra la pestaña sin apretar "Nueva conversación", igual intentamos
+  // evaluar la lección — sendBeacon no garantiza entrega, pero es lo más confiable disponible
+  // en beforeunload (un fetch normal puede cortarse antes de salir).
+  useEffect(() => {
+    function alCerrar() {
+      if (sessionIdRef.current) cerrarSesionConductorBeacon(sessionIdRef.current);
+    }
+    window.addEventListener("beforeunload", alCerrar);
+    return () => window.removeEventListener("beforeunload", alCerrar);
   }, []);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turnos, enviando]);
+
+  async function nuevaConversacion() {
+    if (!sessionId || cerrandoSesion) return;
+    setCerrandoSesion(true);
+    try {
+      const { leccion_guardada } = await cerrarSesionConductor(sessionId);
+      if (leccion_guardada) {
+        setTurnos((t) => [...t, { rol: "sistema", texto: "📝 El Conductor guardó una lección nueva de esta conversación." }]);
+      }
+    } catch {
+      // best-effort — si falla, igual arrancamos la conversación nueva
+    }
+    const nuevoId = await crearSesionConductor().catch((e) => {
+      setErrorSesion(e.message);
+      return null;
+    });
+    setSessionId(nuevoId);
+    sessionIdRef.current = nuevoId;
+    setTurnos([]);
+    setCerrandoSesion(false);
+  }
 
   async function enviar() {
     const mensaje = texto.trim();
@@ -44,7 +86,16 @@ export default function ConductorPage() {
 
   return (
     <div className="flex h-[calc(100vh-140px)] flex-col">
-      <h1 className="text-2xl font-semibold mb-1">Conductor</h1>
+      <div className="mb-1 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Conductor</h1>
+        <button
+          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+          disabled={!sessionId || cerrandoSesion || turnos.length === 0}
+          onClick={nuevaConversacion}
+        >
+          {cerrandoSesion ? "Cerrando..." : "Nueva conversación"}
+        </button>
+      </div>
       <p className="mb-4 text-sm text-neutral-500">
         Puede invocar especialistas cuando se lo pedís — eso gasta tokens reales y escribe al KM.
       </p>
@@ -62,25 +113,31 @@ export default function ConductorPage() {
           </p>
         )}
         <div className="flex flex-col gap-4">
-          {turnos.map((t, i) => (
-            <div key={i} className={t.rol === "vos" ? "self-end max-w-[80%]" : "self-start max-w-[80%]"}>
-              <div
-                className={
-                  t.rol === "vos"
-                    ? "rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white"
-                    : t.rol === "error"
-                      ? "rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700"
-                      : "prose prose-sm max-w-none rounded-lg bg-neutral-100 px-4 py-2"
-                }
-              >
-                {t.rol === "conductor" ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{t.texto}</ReactMarkdown>
-                ) : (
-                  t.texto
-                )}
+          {turnos.map((t, i) =>
+            t.rol === "sistema" ? (
+              <div key={i} className="self-center rounded-lg bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs text-amber-800">
+                {t.texto}
               </div>
-            </div>
-          ))}
+            ) : (
+              <div key={i} className={t.rol === "vos" ? "self-end max-w-[80%]" : "self-start max-w-[80%]"}>
+                <div
+                  className={
+                    t.rol === "vos"
+                      ? "rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white"
+                      : t.rol === "error"
+                        ? "rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700"
+                        : "prose prose-sm max-w-none rounded-lg bg-neutral-100 px-4 py-2"
+                  }
+                >
+                  {t.rol === "conductor" ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{t.texto}</ReactMarkdown>
+                  ) : (
+                    t.texto
+                  )}
+                </div>
+              </div>
+            )
+          )}
           {enviando && (
             <div className="self-start rounded-lg bg-neutral-100 px-4 py-2 text-sm text-neutral-400">
               Pensando... (puede tardar unos minutos si invoca un especialista)

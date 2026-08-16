@@ -54,6 +54,7 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `GET /documentos/{id}` | Contenido completo de un `documento_caso` puntual | ✅ construido |
 | `POST /conductor/sesiones` | Crea una sesión de chat nueva — la ficha creada en el KM (área `conductor_sesiones`) *es* el `session_id`, no hay un id separado que mantener sincronizado. | ✅ construido (v1.2, mismo día; persistencia al KM sumada el mismo día tras la pregunta de Sebas) |
 | `POST /conductor/sesiones/{id}/mensajes` | Un turno de conversación — envuelve `conductor.enviar_mensaje()` tal cual, misma función que usa `run.py` (CLI). | ✅ construido (v1.2, mismo día) |
+| `POST /conductor/sesiones/{id}/cerrar` | Evalúa si la sesión dejó una lección de dominio nueva y, si sí, la guarda al KM (`conductor.cerrar_sesion()`, Etapa 9). Llamado por el botón "Nueva conversación" (awaited) y por `beforeunload` vía `navigator.sendBeacon` (best-effort, sin esperar respuesta). | ✅ construido (Etapa 9, 2026-08-16) |
 
 ### Páginas — `web/app/`
 
@@ -62,7 +63,7 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `/` | Lista de casos, tarjetas con nombre/estadío/descripción | ✅ construido |
 | `/casos/[id]` | Detalle: frentes (con estado de documentos — "sin documentos producidos todavía" si no hay ninguno), pendientes (abiertos/resueltos visualmente distintos), artefactos externos | ✅ construido |
 | `/documentos/[id]` | Contenido completo de un documento, **renderizado como markdown real** (`react-markdown` + `remark-gfm` + `@tailwindcss/typography`) — no como texto plano con `##`/`**` literales | ✅ construido |
-| `/conductor` | Chat con el Conductor — único **client component** de la app (los otros 3 son Server Components, esta necesita estado de React porque es interactiva). | ✅ construido (v1.2, mismo día) |
+| `/conductor` | Chat con el Conductor — único **client component** de la app (los otros 3 son Server Components, esta necesita estado de React porque es interactiva). Botón "Nueva conversación" (Etapa 9): cierra la sesión actual (evalúa lección, muestra un aviso en el chat si guardó una) y crea una sesión nueva vacía. | ✅ construido (v1.2 + Etapa 9, mismo día) |
 
 Server Components (Next.js App Router) con `fetch()` directo a la API para las 3 páginas de
 lectura — sin capa de estado cliente, no hace falta para páginas sin interacción. `/conductor`
@@ -153,6 +154,19 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
       activos?" (listó los 2 casos reales) → "Contame cómo viene Helios" (reportó correctamente
       los 3 documentos reales recién promovidos a producción, sintetizó que el frente de
       asociación está vacío y que los 2 pendientes de negocio son el cuello de botella real)
+- [x] Test: `POST /conductor/sesiones/{id}/cerrar` de una sesión inexistente → 404; con/sin
+      lección guardada devuelve `leccion_guardada` correcto (Etapa 9)
+- [x] Verificación real contra el servidor corriendo (no solo tests): sesión real con 2 mensajes
+      sobre Helios, `POST .../cerrar` — la lección explícita (`anotar_leccion`, pedida en el chat)
+      quedó guardada con `fuente="humano"` en 3 corridas reales distintas; el cierre automático
+      dijo correctamente "no hay lección nueva" sobre una conversación de solo-lectura y
+      reconoció como "ya cubierta" una lección que el trigger explícito ya había guardado en la
+      misma sesión (anti-duplicación funcionando)
+- [ ] Verificación visual del botón "Nueva conversación" en el navegador — bloqueada esta sesión:
+      el Browser pane no compositó frames (`screenshot` falló explícitamente por eso), así que los
+      clicks del tool no llegaban de forma confiable al DOM aunque el código sí es correcto
+      (confirmado inspeccionando el input por JS: el estado de React se actualiza bien). Pendiente
+      de una verificación visual real en una sesión donde el pane sí componga.
 
 ---
 

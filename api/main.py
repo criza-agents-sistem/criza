@@ -55,7 +55,11 @@ from utils.casos import (
     obtener_documentos_de_frente as _obtener_documentos_fn,
     obtener_pendientes_de_caso as _obtener_pendientes_fn,
 )
-from conductor import enviar_mensaje as _enviar_mensaje_conductor, serializar_mensajes as _serializar_mensajes_conductor
+from conductor import (
+    enviar_mensaje as _enviar_mensaje_conductor,
+    serializar_mensajes as _serializar_mensajes_conductor,
+    cerrar_sesion as _cerrar_sesion_conductor,
+)
 
 _TENANT = "criza"
 _PLANTILLA_SESIONES = _CRIZA_DIR / "config" / "plantillas" / "conductor_sesiones.yaml"
@@ -193,3 +197,24 @@ async def enviar_mensaje_conductor(session_id: str, body: _MensajeIn) -> dict:
     )
 
     return {"respuesta": respuesta}
+
+
+@app.post("/conductor/sesiones/{session_id}/cerrar")
+async def cerrar_sesion_conductor(session_id: str) -> dict:
+    """
+    Llamar cuando Sebas termina una conversación (ej. arranca una nueva desde la web) — evalúa
+    si la sesión dejó una lección de dominio nueva y, si sí, la guarda al KM (Etapa 9, ver
+    docs/DESIGN_GATE.md). Idempotente en la práctica: llamarla dos veces sobre la misma sesión
+    no duplica nada porque la segunda evaluación ve la lección que la primera ya guardó (vía
+    `aprendizaje.leer_lecciones_caso`) y la reconoce como ya cubierta.
+    """
+    try:
+        sesion = await motor_api.obtener(session_id, tenant=_TENANT)
+    except Exception:
+        sesion = None
+    if not sesion or sesion.get("tipo") != "sesion":
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+
+    messages = (sesion.get("props") or {}).get("mensajes") or []
+    leccion = await _cerrar_sesion_conductor(messages, tenant=_TENANT)
+    return {"leccion_guardada": leccion is not None, "id": leccion.get("id") if leccion else None}

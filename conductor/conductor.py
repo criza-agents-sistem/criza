@@ -146,6 +146,24 @@ TOOLS = [
             "required": ["documento_id"],
         },
     },
+    {
+        "name": "anotar_leccion",
+        "description": (
+            "Guarda una lección de dominio nueva en el KM (área lecciones, misma que usan los "
+            "especialistas) — para cuando Sebas pide explícitamente 'anotá esto', 'que quede "
+            "como lección', o equivalente. No la uses por tu cuenta sin que Sebas lo pida — el "
+            "cierre automático de sesión ya cubre el caso de 'algo nuevo que valga la pena "
+            "recordar' sin que haga falta pedirlo cada vez."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "contenido": {"type": "string", "description": "La lección en sí, redactada de forma reusable — no una transcripción literal del chat."},
+                "contexto": {"type": "string", "description": "Palabras clave del caso/tema al que aplica, para que se recupere en casos análogos futuros."},
+            },
+            "required": ["contenido", "contexto"],
+        },
+    },
 ]
 
 
@@ -249,6 +267,20 @@ async def _tool_correr_especialista(nombre_especialista: str, caso_ident: str, f
     }
 
 
+async def _tool_anotar_leccion(contenido: str, contexto: str) -> dict:
+    contenido = (contenido or "").strip()
+    if not contenido:
+        return {"error": "contenido no puede estar vacío."}
+    await aprendizaje.ensure_area(tenant=_TENANT)
+    resultado = await aprendizaje.guardar_leccion_caso(
+        contenido=contenido, agente="conductor", contexto=(contexto or "").strip(),
+        fuente="humano", tenant=_TENANT,
+    )
+    if not resultado.get("success"):
+        return {"error": f"No se pudo guardar la lección: {resultado.get('error')}"}
+    return {"guardado": True, "id": resultado["id"]}
+
+
 async def _tool_ver_documento(documento_id: str) -> dict:
     doc = await motor_api.obtener(documento_id, tenant=_TENANT)
     if not doc or doc.get("tipo") != "documento_caso":
@@ -295,6 +327,10 @@ TOOLS DISPONIBLES:
   agrónomo evalúa si un producto/enfoque funciona de verdad como insumo agrícola/ganadero (dosis,
   compatibilidad de cultivo/suelo, normativa de aplicación).
 - ver_documento: el texto completo de un documento puntual, cuando Sebas quiere profundizar.
+- anotar_leccion: cuando Sebas pide explícitamente "anotá esto" o "que quede como lección" —
+  redactala de forma reusable (un patrón, no una transcripción literal de lo que dijo). No la
+  llames por tu cuenta sin que te lo pida: el cierre de sesión ya evalúa solo si hay algo nuevo
+  que valga la pena guardar, no hace falta que también lo intentes vos en cada turno.
 
 CÓMO RESPONDER (PROPUESTA_CONDUCTOR.md §3.2 — la atención de Sebas es el recurso escaso):
 Llegá con la decisión masticada — qué falta, qué ya está, qué recomendás y por qué — no le
@@ -308,9 +344,9 @@ LÍMITES EXPLÍCITOS DE ESTA VERSIÓN (no prometas lo que no hacés todavía):
   evidencia, investigación amplia, armador) todavía no están conectados a este modelo.
 - Esta conversación SÍ queda guardada (el historial completo vive en el KM, sobrevive a un
   reinicio del servidor) — podés decirle a Sebas que si vuelve a esta misma sesión más tarde vas
-  a recordar lo que se habló. Lo que todavía NO hacés es destilar una lección reusable a partir
-  de la charla (eso es un paso aparte, todavía no construido) — si Sebas te pide "anotá esto como
-  lección", avisale que ese gap sigue abierto, no lo inventes ni finjas que lo guardaste como tal.
+  a recordar lo que se habló. Además, al cerrar la sesión se evalúa automáticamente si hay una
+  lección nueva y reusable para guardar (sin que Sebas tenga que pedirlo) — y si te lo pide en
+  cualquier momento del chat, usá anotar_leccion.
 """
 
 
@@ -328,6 +364,8 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
         )
     if nombre == "ver_documento":
         return await _tool_ver_documento(tool_input.get("documento_id", ""))
+    if nombre == "anotar_leccion":
+        return await _tool_anotar_leccion(tool_input.get("contenido", ""), tool_input.get("contexto", ""))
     return {"error": f"Tool '{nombre}' no implementado."}
 
 
@@ -400,3 +438,117 @@ def serializar_mensajes(messages: list[dict]) -> list[dict]:
                 "content": [asdict(b) if isinstance(b, ContentBlock) else b for b in content],
             })
     return out
+
+
+# ── Cierre de sesión — lección automática (Etapa 9, 2026-08-16) ───────────────
+
+_TOOL_SUBMIT_LECCION = {
+    "name": "submit_leccion",
+    "description": "Registrá tu evaluación de si esta conversación dejó una lección nueva y reusable.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "hay_leccion_nueva": {
+                "type": "boolean",
+                "description": "true solo si hay un patrón/error-a-evitar/acierto genuinamente nuevo, no ya cubierto por las lecciones existentes.",
+            },
+            "contenido": {"type": "string", "description": "La lección en sí, redactada de forma reusable (requerido si hay_leccion_nueva=true)."},
+            "contexto": {"type": "string", "description": "Palabras clave del caso/tema al que aplica (requerido si hay_leccion_nueva=true)."},
+        },
+        "required": ["hay_leccion_nueva"],
+    },
+}
+
+_SYSTEM_PROMPT_CIERRE = """Evaluás conversaciones cerradas del Conductor de CRIZA para decidir si dejaron
+una lección de dominio nueva y reusable — la misma área de lecciones que ya alimentan los
+especialistas (Microbiólogo, Ingeniero Ambiental, Agrónomo).
+
+Sé exigente: la mayoría de las conversaciones NO dejan una lección nueva — son consultas de
+estado ("¿cómo viene X?"), lectura de documentos, o charla que no aporta un patrón reusable.
+Marcá hay_leccion_nueva=true solo si hay algo que valga la pena que un agente futuro lea antes
+de actuar en un caso análogo — no repitas lo obvio, ni algo ya cubierto por las lecciones
+existentes que te paso abajo. Ante la duda, false.
+
+Llamá siempre submit_leccion para terminar, incluso si hay_leccion_nueva=false."""
+
+
+def _transcript_legible(messages: list[dict]) -> str:
+    """Renderiza `messages` (mezcla de dicts planos y ContentBlock) a texto legible para el
+    juez de cierre — omite la plomería de tool_use/tool_result, conserva solo lo conversacional."""
+    lineas = []
+    for m in messages:
+        content = m["content"]
+        if isinstance(content, str):
+            quien = "Sebas" if m["role"] == "user" else "Conductor"
+            lineas.append(f"{quien}: {content}")
+            continue
+        for block in content:
+            b = block if isinstance(block, dict) else asdict(block)
+            if b.get("type") == "text" and b.get("text"):
+                quien = "Sebas" if m["role"] == "user" else "Conductor"
+                lineas.append(f"{quien}: {b['text']}")
+    return "\n".join(lineas)
+
+
+def _resumen_para_busqueda(messages: list[dict]) -> str:
+    """Primeros mensajes de Sebas, para buscar lecciones ya existentes sobre un tema análogo."""
+    textos = []
+    for m in messages:
+        if m["role"] != "user" or not isinstance(m["content"], str):
+            continue
+        textos.append(m["content"])
+        if len(textos) >= 2:
+            break
+    return " ".join(textos) or "conversación con el Conductor"
+
+
+async def cerrar_sesion(messages: list[dict], *, tenant: str = _TENANT, verbose: bool = False) -> dict | None:
+    """
+    Llamar al cerrar una conversación (Sebas dice 'salir' en el CLI, o el frontend cierra la
+    sesión) — evalúa si la conversación completa dejó una lección de dominio nueva y, si sí, la
+    guarda en el KM (`fuente="agente_auto"`, a diferencia de `anotar_leccion`, que es
+    `fuente="humano"` porque Sebas la pidió explícitamente).
+
+    Devuelve la lección guardada (`{"success": True, "id": ...}`) o `None` si no había nada nuevo
+    que valga la pena guardar (el caso más común — no es un error, es el resultado esperado).
+    """
+    turnos_reales = sum(1 for m in messages if m["role"] == "user" and isinstance(m["content"], str))
+    if turnos_reales < 2:
+        return None  # conversación demasiado corta para dejar un patrón reusable
+
+    await aprendizaje.ensure_area(tenant=tenant)
+    consulta = _resumen_para_busqueda(messages)
+    existentes = await aprendizaje.leer_lecciones_caso(consulta=consulta, agente="conductor", tenant=tenant)
+    existentes_texto = "\n".join(f"- {l['props']['contenido']}" for l in existentes) or "(ninguna)"
+
+    prompt = [{"role": "user", "content": (
+        f"LECCIONES YA EXISTENTES SOBRE TEMAS ANÁLOGOS:\n{existentes_texto}\n\n"
+        f"CONVERSACIÓN A EVALUAR:\n{_transcript_legible(messages)}"
+    )}]
+    response = await _ai_complete(
+        model=_resolver_modelo(DEFAULT_MODEL), max_tokens=1024,
+        system=[{"type": "text", "text": _SYSTEM_PROMPT_CIERRE}],
+        tools=[_TOOL_SUBMIT_LECCION], messages=prompt,
+    )
+    if verbose:
+        print(f"  [cierre] stop={response.stop_reason}")
+
+    for block in response.content:
+        if getattr(block, "type", None) != "tool_use" or block.name != "submit_leccion":
+            continue
+        datos = block.input or {}
+        if not datos.get("hay_leccion_nueva"):
+            return None
+        contenido = (datos.get("contenido") or "").strip()
+        if not contenido:
+            return None
+        resultado = await aprendizaje.guardar_leccion_caso(
+            contenido=contenido, agente="conductor",
+            contexto=(datos.get("contexto") or consulta).strip(),
+            fuente="agente_auto", tenant=tenant,
+        )
+        if verbose and resultado.get("success"):
+            print(f"  [cierre] lección guardada: {contenido[:80]}")
+        return resultado if resultado.get("success") else None
+
+    return None  # no llamó submit_leccion — tratado igual que "no hay lección"

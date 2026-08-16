@@ -95,3 +95,16 @@ export async function enviarMensajeConductor(sessionId: string, texto: string): 
   const data = await res.json();
   return data.respuesta as string;
 }
+
+export async function cerrarSesionConductor(sessionId: string): Promise<{ leccion_guardada: boolean; id: string | null }> {
+  const res = await fetch(`${API_URL}/conductor/sesiones/${sessionId}/cerrar`, { method: "POST" });
+  if (!res.ok) throw new Error(`No se pudo cerrar la sesión (${res.status})`);
+  return res.json();
+}
+
+// `sendBeacon` (no fetch) porque se llama desde `beforeunload` — a esa altura el browser puede
+// matar cualquier fetch en curso antes de que salga; sendBeacon está pensado justo para esto
+// (entrega best-effort, no garantizada, pero no bloquea ni se cancela al cerrar la pestaña).
+export function cerrarSesionConductorBeacon(sessionId: string): void {
+  navigator.sendBeacon(`${API_URL}/conductor/sesiones/${sessionId}/cerrar`, new Blob());
+}

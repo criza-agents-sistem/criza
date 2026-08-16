@@ -23,7 +23,7 @@ sys.path.insert(0, str(_AGENT_DIR))
 if str(_CRIZA_DIR) not in sys.path:
     sys.path.insert(0, str(_CRIZA_DIR))
 
-from conductor import enviar_mensaje, DEFAULT_MODEL
+from conductor import enviar_mensaje, cerrar_sesion, DEFAULT_MODEL
 from utils.token_tracker import TokenTracker
 
 _SALIR = {"salir", "exit", "quit", "chau"}
@@ -55,6 +55,11 @@ async def main() -> None:
         print(f"\nConductor: {respuesta}")
 
     tracker.log(verbose=True)
+
+    leccion = await cerrar_sesion(messages, verbose=True)
+    if leccion:
+        print(f"\n[Lección nueva guardada en el KM: {leccion['id']}]")
+
     print("\nChau.")
 
 
