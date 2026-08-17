@@ -257,6 +257,7 @@ export const ESPECIALISTAS = [
   { nombre: "microbiologo", label: "Microbiólogo" },
   { nombre: "ingeniero_ambiental", label: "Ingeniero Ambiental" },
   { nombre: "agronomo", label: "Ingeniero Agrónomo" },
+  { nombre: "biotecnologo", label: "Biotecnólogo" },
 ] as const;
 
 // frenteId ausente = "consulta libre" (Etapa 12) — sin caso, sin ese contexto que armar.

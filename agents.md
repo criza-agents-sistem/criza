@@ -36,6 +36,7 @@ de qué es CRIZA de acá en más — ver "Estado operativo" abajo y `docs/PROPUE
 | Especialista Microbiólogo | `microbiologo_agent/` | 52/52 ✅ (+2 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 4 (parte 2) del plan — Microbiólogo conectado al modelo de casos.yaml |
 | Especialista Ingeniero Ambiental | `ingeniero_ambiental_agent/` | 23/23 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 7 del plan — segundo especialista, Ingeniero Ambiental |
 | Especialista Ingeniero Agrónomo | `agronomo_agent/` | 23/23 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Tercer especialista — Ingeniero Agrónomo, pedido explícito de Sebas con señal real |
+| Especialista Biotecnólogo | `biotecnologo_agent/` | 29/29 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-17] Etapa 18 — cuarto especialista: Biotecnólogo |
 <!-- GENERADO:AGENTES_ACTIVOS:FIN -->
 
 ## Borrado (histórico)

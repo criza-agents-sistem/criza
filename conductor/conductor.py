@@ -62,6 +62,7 @@ _ESPECIALISTAS_CASOS = {
     "microbiologo": "Especialista Microbiólogo",
     "ingeniero_ambiental": "Especialista Ingeniero Ambiental",
     "agronomo": "Especialista Ingeniero Agrónomo",
+    "biotecnologo": "Especialista Biotecnólogo",
 }
 
 

@@ -97,3 +97,19 @@ agentes:
     km:
       prop_key: agronomo
     activo: true
+
+  - nombre: biotecnologo
+    nombre_display: Especialista Biotecnólogo
+    modulo: biotecnologo_agent.biotecnologo_agent
+    descripcion: >
+      Especialista en biotecnología e ingeniería de bioprocesos — evalúa qué producto de valor
+      se puede construir vía bioproceso a partir de un material/subproducto ya identificado, y
+      con qué ruta biotecnológica. Cuarto agente de la biblioteca de especialistas — sugerido
+      por Andrés (colaborador de Sebas) y confirmado por Sebas (ver
+      biotecnologo_agent/docs/DESIGN_GATE.md). Distinto del Microbiólogo (trata el material),
+      Ingeniero Ambiental (factibilidad de ingeniería) y Agrónomo (uso agronómico del
+      resultado) — este responde qué FABRICAR, no cómo tratar ni cómo usar. Solo invocable vía
+      frente_id (config/plantillas/casos.yaml) — no soporta oportunidad_id.
+    km:
+      prop_key: biotecnologo
+    activo: true
