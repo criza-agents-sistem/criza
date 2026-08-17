@@ -23,9 +23,11 @@ export default async function DocumentoPage({
           >
             ⬇ Descargar (.md)
           </a>
-          <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-600">
-            {doc.estado}
-          </span>
+          {doc.estado && (
+            <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-600">
+              {doc.estado}
+            </span>
+          )}
         </div>
       </div>
       {doc.agente && <p className="mt-1 text-sm text-neutral-500">Producido por: {doc.agente}</p>}

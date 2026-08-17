@@ -108,6 +108,47 @@ async def crear_caso(
     return {"success": True, "caso_id": resultado["id"], "error": None}
 
 
+async def obtener_documentos_aportados_de_frente(frente_id: str, tenant: str) -> list[dict]:
+    """Documentos (`documento_aportado`) que Sebas subió y conectó a este frente — Etapa 17b,
+    2026-08-17. Distinto de `obtener_documentos_de_frente` (esos los PRODUCE un especialista)."""
+    return await motor_api.conexiones_de(
+        frente_id, tipo_conexion="frente_tiene_documento_aportado", direccion="salientes", tenant=tenant
+    )
+
+
+async def guardar_documento_aportado(
+    frente_id: str,
+    titulo: str,
+    contenido: str,
+    tenant: str,
+    fuente: str = "archivo_subido",
+) -> dict:
+    """
+    Persiste un documento que Sebas aporta al caso (no producido por un agente), conectado al
+    frente vía `frente_tiene_documento_aportado` — Etapa 17b, 2026-08-17. A diferencia del
+    upload original (Etapa 17), esto SÍ persiste: cualquier conversación futura del Conductor
+    sobre este caso, y cualquier corrida formal de un especialista sobre este frente, lo tienen
+    disponible, no solo la conversación en la que se subió.
+
+    Returns: {"success": bool, "documento_id": str | None, "error": str | None}
+    """
+    doc = await motor_api.guardar_ficha(
+        area=_AREA, tipo="documento_aportado", tenant=tenant,
+        campos={"titulo": titulo, "contenido": contenido, "fuente": fuente},
+    )
+    if not doc.get("success"):
+        return {"success": False, "documento_id": None, "error": doc.get("error")}
+
+    conexion = await motor_api.guardar_conexion(
+        area=_AREA, tipo="frente_tiene_documento_aportado",
+        desde_ficha_id=frente_id, hacia_ficha_id=doc["id"], tenant=tenant,
+    )
+    if not conexion.get("success"):
+        return {"success": False, "documento_id": doc["id"], "error": conexion.get("error")}
+
+    return {"success": True, "documento_id": doc["id"], "error": None}
+
+
 async def guardar_documento_de_frente(
     frente_id: str,
     titulo: str,

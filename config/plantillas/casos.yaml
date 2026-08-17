@@ -102,6 +102,23 @@ tipos_ficha:
     vectorizar: contenido
     dedup_por: null
 
+  - nombre: documento_aportado
+    descripcion: >
+      Un documento que Sebas aporta al caso (Etapa 17b, 2026-08-17) — distinto de
+      `documento_caso` (lo produce un especialista) y de `artefacto_externo` (un link a algo que
+      vive afuera, sin contenido propio acá). Texto extraído de un archivo que Sebas sube desde
+      el chat (PDF/.docx/.txt/.md, ver `POST /frentes/{id}/documentos-aportados` en `api/main.py`)
+      — persistido para que CUALQUIER conversación futura del Conductor y CUALQUIER corrida
+      formal de un especialista sobre ese frente lo tengan disponible, no solo la conversación en
+      la que se subió (gap real que Sebas señaló: "no entiendo la lógica de que no quede
+      guardada... esperaba que se sintiera como con vos").
+    campos:
+      - titulo           # nombre del archivo original
+      - contenido         # texto extraído
+      - fuente            # "archivo_subido" — deja lugar a otras fuentes futuras (pegado directo, etc.)
+    vectorizar: contenido
+    dedup_por: null
+
   - nombre: dato_extraido
     descripcion: >
       Un dato estructurado sacado de la prosa de un caso (§7.4 — contactos, cifras, plazos que
@@ -138,4 +155,9 @@ tipos_conexion:
   - nombre: frente_produce_documento
     desde: frente
     hacia: documento_caso
+    campos: []
+
+  - nombre: frente_tiene_documento_aportado
+    desde: frente
+    hacia: documento_aportado
     campos: []

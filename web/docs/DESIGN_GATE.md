@@ -52,8 +52,8 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `GET /casos` | Lista de casos (id, nombre, descripción, estadío) — `utils/casos.py::listar_casos` | ✅ construido |
 | `POST /casos` | Crea un caso nuevo (Etapa 13, 2026-08-17) — `nombre`/`descripcion` obligatorios (400 si faltan), el resto opcional. Escribe directo a producción, sin staging intermedio (mismo criterio que `/conductor/*` y `/especialistas/*` — Sebas es dueño de qué se crea). | ✅ construido (Etapa 13, 2026-08-17) |
 | `GET /casos/{id}` | Detalle completo: identidad + frentes (con documentos y artefactos externos de cada uno) + pendientes | ✅ construido |
-| `GET /documentos/{id}` | Contenido completo de un `documento_caso` puntual | ✅ construido |
-| `GET /documentos/{id}/descargar` | Descarga el contenido como archivo `.md` (Etapa 14, 2026-08-17) — `Content-Disposition: attachment`, nombre de archivo derivado del título. | ✅ construido (Etapa 14, 2026-08-17) |
+| `GET /documentos/{id}` | Contenido completo de un `documento_caso` o `documento_aportado` puntual (Etapa 17b sumó el segundo tipo — misma ruta, mismo criterio que `conductor.py::_tool_ver_documento`) | ✅ construido |
+| `GET /documentos/{id}/descargar` | Descarga el contenido como archivo `.md` (Etapa 14, 2026-08-17) — `Content-Disposition: attachment`, nombre de archivo derivado del título. Acepta `documento_caso` y `documento_aportado` (Etapa 17b). | ✅ construido (Etapa 14, 2026-08-17) |
 | `POST /conductor/sesiones` | Crea una sesión de chat nueva — la ficha creada en el KM (área `conductor_sesiones`) *es* el `session_id`, no hay un id separado que mantener sincronizado. | ✅ construido (v1.2, mismo día; persistencia al KM sumada el mismo día tras la pregunta de Sebas) |
 | `POST /conductor/sesiones/{id}/mensajes` | Un turno de conversación — envuelve `conductor.enviar_mensaje()` tal cual, misma función que usa `run.py` (CLI). | ✅ construido (v1.2, mismo día) |
 | `POST /conductor/sesiones/{id}/cerrar` | Evalúa si la sesión dejó una lección de dominio nueva y, si sí, la guarda al KM (`conductor.cerrar_sesion()`, Etapa 9). Llamado por el botón "Nueva conversación" (awaited) y por `beforeunload` vía `navigator.sendBeacon` (best-effort, sin esperar respuesta). | ✅ construido (Etapa 9, 2026-08-16) |
@@ -65,7 +65,8 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `GET /conductor/sesiones/{id}` | Detalle completo de una sesión — `modelo` + `turnos` reconstruidos, para hidratar el chat al volver a una conversación anterior. | ✅ construido (Etapa 16, 2026-08-17) |
 | `GET /especialistas/sesiones?especialista={nombre}` | Historial de conversaciones con un especialista puntual (Etapa 16) — mismo criterio que la versión del Conductor, incluye `frente_id` de cada sesión (`null` = consulta libre). | ✅ construido (Etapa 16, 2026-08-17) |
 | `GET /especialistas/sesiones/{id}` | Detalle completo de una sesión de especialista — `especialista`/`frente_id`/`modelo`/`turnos`. | ✅ construido (Etapa 16, 2026-08-17) |
-| `POST /archivos/extraer` | Extrae texto de un archivo adjunto (Etapa 17, 2026-08-17) — PDF/`.docx`/`.txt`/`.md`. NO persiste el archivo en ningún lado (ni KM ni disco), solo devuelve el texto; el frontend lo suma al próximo mensaje del chat, como si Sebas lo hubiera tipeado. Cap de 60.000 caracteres con `truncado: true` si lo excede. Ver Decisión M. | ✅ construido (Etapa 17, 2026-08-17) |
+| `POST /archivos/extraer` | Extrae texto de un archivo adjunto (Etapa 17, 2026-08-17) — PDF/`.docx`/`.txt`/`.md`. Paso stateless (no persiste nada, no sabe de casos/frentes) — solo devuelve el texto. Cap de 60.000 caracteres con `truncado: true` si lo excede. Ver Decisión M. | ✅ construido (Etapa 17, 2026-08-17) |
+| `POST /frentes/{id}/documentos-aportados` | Persiste el texto ya extraído como `documento_aportado`, conectado al frente (Etapa 17b, 2026-08-17) — cierra el gap que Sebas señaló ("esperaba que se sintiera como con vos"): cualquier conversación futura del Conductor y cualquier corrida formal de un especialista sobre ese frente lo tienen disponible. Ver Decisión N. | ✅ construido (Etapa 17b, 2026-08-17) |
 
 ### Páginas — `web/app/`
 
@@ -250,6 +251,56 @@ del análisis ("digestato rico en nutrientes... perfil típico de buen candidato
 biofertilizante"). Confirmado leyendo la ficha del KM después que el mensaje persistido tiene el
 texto extraído completo.
 
+### Decisión N — el archivo queda conectado al caso, no solo a la conversación (Etapa 17b, 2026-08-17)
+
+**Feedback real de Sebas sobre la Etapa 17** (mismo día, después de usarla): "pero si quiero que
+esa información que subo quede guardada para que la analicen los agentes? no entiendo la lógica
+de que no quede guardada. Yo esperaba que actuar con el agente se sintiera como con vos, pero no
+es igual." Diagnóstico correcto: el diseño de la Etapa 17 sumaba el texto extraído al mensaje de
+**esa conversación puntual** — quedaba en el historial de esa sesión (así que técnicamente "se
+guardaba"), pero ninguna conversación futura del Conductor, y ninguna corrida formal de un
+especialista, tenía forma de saber que ese documento existía.
+
+**Confirmado con Sebas antes de diseñar:** los archivos que sube siempre son sobre un caso/frente
+puntual (no hay un caso "sin caso" real para este uso) — elegido explícitamente entre "siempre
+atado a un caso/frente" y "a veces sin caso, como la consulta libre".
+
+**Modelo de datos nuevo:** `documento_aportado` (`config/plantillas/casos.yaml`) — un tipo de
+ficha nuevo, distinto de `documento_caso` (lo produce un especialista) y de `artefacto_externo`
+(un link a algo que vive afuera, sin contenido propio). Conectado al frente vía
+`frente_tiene_documento_aportado`, mismo patrón que `frente_produce_documento`.
+
+**Flujo, en dos pasos separados a propósito:** `POST /archivos/extraer` (stateless, ya existía de
+la Etapa 17) extrae el texto; `POST /frentes/{id}/documentos-aportados` (nuevo) lo persiste
+conectado a un frente. Si la página ya sabe el frente (`/especialistas/[nombre]?frente=<id>`), se
+persiste directo. Si no (`/conductor`, o el chat de especialista en consulta libre), un picker
+inline (caso → frente, poblado desde `GET /casos` y `GET /casos/{id}`) pregunta antes de guardar
+— el archivo original en sí sigue sin persistirse, solo su texto.
+
+**Quién más lo ve, además del chat donde se subió:**
+- El Conductor: `_tool_ver_caso` ahora incluye `documentos_aportados_por_sebas` en el briefing de
+  cada frente; `_tool_ver_documento` trae el contenido completo de un `documento_aportado` igual
+  que ya hacía con `documento_caso`.
+- Una corrida formal de un especialista: `build_input_desde_frente()` (los 3 agentes —
+  microbiólogo, ingeniero ambiental, agrónomo) ahora recibe `documentos_aportados` y los suma al
+  input, igual que ya sumaba los pendientes del caso. Mismo camino para el chat directo con un
+  especialista (`iniciar_sesion`).
+- `/casos/[id]`: cada frente lista sus `documentos_aportados` con el link "📎 ... (aportado por
+  vos)" — `GET /documentos/{id}` y la descarga `.md` ahora aceptan `documento_aportado` además de
+  `documento_caso` (mismo patrón de "compartir la ruta de lectura" que ya usa el Conductor).
+
+**Verificación real (no solo tests):** el mismo PDF de ejemplo (composición química de Helios) se
+adjuntó desde `/conductor`, se eligió el caso Helios y el Frente técnico en el picker real, y se
+confirmó — persistido en el KM, conectado al frente correcto (verificado leyendo
+`obtener_documentos_aportados_de_frente` directo). Apareció en `/casos/[id]` con el link correcto.
+Una conversación **nueva y separada** del Conductor (sin `localStorage`, sesión nueva, sin
+mencionar el archivo) preguntó "¿tenemos algún documento aportado sobre el frente técnico de
+Helios?" y el Conductor citó el dato exacto (nitrógeno amoniacal 1.200 mg/L) con análisis
+correcto — confirma que el gap que señaló Sebas está cerrado: el documento sobrevive a la
+conversación en la que se subió. La inyección en una corrida formal de especialista se verificó
+por código + tests unitarios (no se corrió una corrida real completa, para no gastar tokens ni
+generar un `documento_caso` de prueba en producción sin necesidad).
+
 ### KM write — vía el Conductor, no la API en sí
 
 Los 3 endpoints de lectura no escriben nada. `/conductor/sesiones/{id}/mensajes` **sí puede
@@ -404,6 +455,22 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
       capturaba un ID inválido pasado por el modelo, tirando abajo el turno completo con un 500 —
       corregido con el mismo patrón try/except que ya usa `_resolver_caso()`, test nuevo agregado
       en `conductor/tests/test_conductor.py`
+- [x] Test (Etapa 17b): `POST /frentes/{id}/documentos-aportados` persiste y conecta
+      correctamente / 500 si falla; `GET /casos/{id}` incluye `documentos_aportados` por frente;
+      `GET /documentos/{id}` y la descarga aceptan `documento_aportado` además de
+      `documento_caso`; `utils/casos.py::guardar_documento_aportado`/
+      `obtener_documentos_aportados_de_frente` con éxito/fallo; `conductor.py::_tool_ver_caso`
+      incluye `documentos_aportados_por_sebas`; `_tool_ver_documento` trae contenido de un
+      `documento_aportado`; `build_input_desde_frente` de los 3 especialistas incluye el bloque
+      "Documentos aportados por Sebas" cuando hay alguno, y no lo incluye si no hay ninguno
+- [x] `npm run build` sin errores de tipos con el picker de caso/frente en ambas páginas de chat
+- [x] Verificación real de punta a punta contra producción: el mismo PDF de ejemplo se adjuntó
+      desde `/conductor`, se eligió Helios + Frente técnico en el picker real, se confirmó —
+      persistido en el KM (verificado leyendo `obtener_documentos_aportados_de_frente` directo),
+      apareció en `/casos/[id]` con el link "📎 ... (aportado por vos)". Una conversación **nueva
+      y separada** del Conductor (sesión nueva, sin mencionar el archivo) preguntó por él y citó
+      el dato exacto (nitrógeno amoniacal 1.200 mg/L) con análisis correcto — confirma que el
+      documento sobrevive a la conversación en la que se subió, cerrando el gap que señaló Sebas
 
 ---
 
@@ -420,6 +487,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | Elegir modelo de IA por sesión de chat | ✅ hecho (Etapa 15, 2026-08-17) | La abstracción de backend (`utils/ai_client.py`) ya existía; faltaba la superficie. Selector en `/conductor` y `/especialistas/[nombre]`, lista curada vía `GET /modelos` — ver Decisión K. |
 | Historial de conversaciones + recordar sesión activa | ✅ hecho (Etapa 16, 2026-08-17) | Bug real: una respuesta del Conductor "se perdió" desde la perspectiva de Sebas — en realidad seguía intacta en el KM, solo inalcanzable desde la web. Ver Decisión L. |
 | Adjuntar un archivo al chat | ✅ hecho (Etapa 17, 2026-08-17) | Sebas: "cómo le subo un archivo al conductor? Andrés me pasó información de la composición del efluente". No persiste el archivo, solo extrae texto y lo suma al mensaje. Ver Decisión M. |
+| El archivo queda conectado al caso (no solo a la conversación) | ✅ hecho (Etapa 17b, 2026-08-17) | Feedback real de Sebas: "no entiendo la lógica de que no quede guardada... esperaba que se sintiera como con vos". Nuevo tipo `documento_aportado`, disponible para el Conductor en cualquier conversación futura y para corridas formales de especialistas. Ver Decisión N. |
 | Entrada por voz, modo documento coautoría, extracción de datos estructurados, vincular artefactos nuevos, dashboard | v2+ | `PROPUESTA_DESTINO.md` §7 los confirma como parte de la visión completa, pero son ideas para sumar al alcance, no lo mínimo de esta etapa. |
 | Autenticación / login real | No planeado todavía | `usuarios.yaml` — decisión ya tomada, sin login real por ahora, un solo usuario (Sebas). |
 
@@ -442,6 +510,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | K | Etapa 15 (2026-08-17) — ¿granularidad para elegir modelo de IA (por sesión de chat / por agente / global) y qué modelos ofrecer (lista curada / texto libre)? | Ver detalle en la sección "Decisión K" arriba | **Por sesión de chat, lista curada.** Sesiones ya son la unidad natural del sistema — no hizo falta persistencia nueva, solo un campo (`modelo`) en las plantillas ya existentes. Lista curada porque hoy solo hay `ANTHROPIC_API_KEY` configurada — texto libre ofrecería proveedores que romperían al elegirlos. | 2026-08-17 |
 | L | Etapa 16 (2026-08-17) — bug real: una respuesta del Conductor "se perdió" al volver más tarde. ¿Cómo evitar que vuelva a pasar? | `localStorage` solo / historial completo solo / los dos | **Los dos**, elegido explícitamente por Sebas entre 3 opciones. `localStorage` (clave por página/especialista+frente) cubre el caso común (recargar, cerrar/abrir pestaña) sin ningún request extra al montar si ya hay sesión guardada. El historial (`GET /conductor/sesiones`, `GET /especialistas/sesiones?especialista=`) cubre lo que `localStorage` no puede (otro dispositivo/navegador, storage borrado) leyendo directo del KM, que siempre fue la fuente de verdad real — el bug nunca fue de datos, fue de que la web no sabía cómo volver a encontrarlos. | 2026-08-17 |
 | M | Etapa 17 (2026-08-17) — Sebas pidió poder adjuntar un archivo al chat. ¿Fix rápido (pegar texto a mano) o construir carga real? ¿Qué formatos? ¿Se persiste el archivo original? | Fix rápido / carga real — ver detalle en "Decisión M" arriba | **Carga real**, elegido explícitamente por Sebas ("recomendado si vas a subir más seguido"). PDF/`.docx`/`.txt`/`.md`. NO se persiste el archivo original — solo se extrae el texto, que se suma al mensaje como si Sebas lo hubiera tipeado (mismo mecanismo de siempre, sin inventar un tipo de contenido nuevo en el KM). PDF reusa `knowledge_module.document_store.store.extract_text()` (ya genérico de plataforma); `.docx`/`.txt`/`.md` se implementa en CRIZA por ahora, anotado como candidato a promover si hace falta. | 2026-08-17 |
+| N | Etapa 17b (2026-08-17) — feedback real de Sebas: "no entiendo la lógica de que no quede guardada... esperaba que se sintiera como con vos". ¿El archivo queda atado siempre a un caso/frente, o a veces sin caso? | Siempre atado a un caso/frente / A veces sin caso, como la consulta libre | **Siempre atado**, elegido explícitamente por Sebas. Nuevo tipo `documento_aportado` (`config/plantillas/casos.yaml`), conectado al frente vía `frente_tiene_documento_aportado`. `POST /frentes/{id}/documentos-aportados` lo persiste; si la página no sabe el frente todavía (`/conductor`, especialista en consulta libre), un picker inline (caso → frente) pregunta antes de guardar. El Conductor (`ver_caso`/`ver_documento`) y las 3 corridas formales de especialista (`build_input_desde_frente`) ahora lo tienen disponible — no solo la conversación en la que se subió. Ver detalle en "Decisión N" arriba. | 2026-08-17 |
 
 ---
 
@@ -449,7 +518,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-M cerradas, ninguna abierta.
+Decisiones A-N cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Gasto de tokens visible en la web → v1.1, anotado explícitamente para no perderse

@@ -91,6 +91,7 @@ def test_obtener_caso_completo():
         patch("main._obtener_documentos_fn", new=AsyncMock(return_value=[
             {"id": "doc-1", "props": {"titulo": "Evaluación", "modo": "chat", "estado": "borrador"}},
         ])),
+        patch("main._obtener_documentos_aportados_fn", new=AsyncMock(return_value=[])),
         patch("main.motor_api.conexiones_de", new=AsyncMock(return_value=[])),
         patch("main._obtener_pendientes_fn", new=AsyncMock(return_value=[
             {"id": "p1", "props": {"descripcion": "Confirmar flete", "estado": "abierto"}},
@@ -104,6 +105,25 @@ def test_obtener_caso_completo():
     assert len(data["frentes"]) == 1
     assert data["frentes"][0]["documentos"][0]["titulo"] == "Evaluación"
     assert data["pendientes"][0]["descripcion"] == "Confirmar flete"
+
+
+@pytest.mark.unit
+def test_obtener_caso_incluye_documentos_aportados():
+    with (
+        patch("main.motor_api.obtener", new=AsyncMock(return_value=CASO_HELIOS)),
+        patch("main._obtener_frentes_fn", new=AsyncMock(return_value=[FRENTE_TECNICO])),
+        patch("main._obtener_documentos_fn", new=AsyncMock(return_value=[])),
+        patch("main._obtener_documentos_aportados_fn", new=AsyncMock(return_value=[
+            {"id": "doc-aportado-1", "props": {"titulo": "Helios_Informe_Tecnico_Digerido.pdf"}},
+        ])),
+        patch("main.motor_api.conexiones_de", new=AsyncMock(return_value=[])),
+        patch("main._obtener_pendientes_fn", new=AsyncMock(return_value=[])),
+    ):
+        resp = client.get("/casos/caso-helios")
+
+    assert resp.status_code == 200
+    aportados = resp.json()["frentes"][0]["documentos_aportados"]
+    assert aportados == [{"id": "doc-aportado-1", "titulo": "Helios_Informe_Tecnico_Digerido.pdf"}]
 
 
 @pytest.mark.unit
@@ -130,6 +150,18 @@ def test_obtener_documento_id_de_otro_tipo_es_404():
     assert resp.status_code == 404
 
 
+@pytest.mark.unit
+def test_obtener_documento_aportado_encontrado():
+    """Etapa 17b — GET /documentos/{id} también sirve documento_aportado (lo que sube Sebas)."""
+    doc = {"id": "doc-aportado-1", "tipo": "documento_aportado", "props": {"titulo": "informe.pdf", "contenido": "texto extraído"}}
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=doc)):
+        resp = client.get("/documentos/doc-aportado-1")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["contenido"] == "texto extraído"
+    assert data["agente"] == "Sebas (aportado)"
+
+
 # ── Descargar documento (Etapa 14, 2026-08-17) ───────────────────────────────
 
 @pytest.mark.unit
@@ -152,6 +184,15 @@ def test_descargar_documento_ok():
     assert resp.headers["content-type"].startswith("text/markdown")
     assert 'filename="evaluacion-microbiologo.md"' in resp.headers["content-disposition"]
     assert "attachment" in resp.headers["content-disposition"]
+
+
+@pytest.mark.unit
+def test_descargar_documento_aportado_ok():
+    doc = {"id": "doc-aportado-1", "tipo": "documento_aportado", "props": {"titulo": "informe.pdf", "contenido": "texto extraído"}}
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=doc)):
+        resp = client.get("/documentos/doc-aportado-1/descargar")
+    assert resp.status_code == 200
+    assert resp.text == "texto extraído"
 
 
 @pytest.mark.unit
@@ -254,6 +295,40 @@ def test_extraer_trunca_archivo_largo():
     data = resp.json()
     assert data["truncado"] is True
     assert len(data["texto"]) == 60_000
+
+
+# ── Persistir un documento aportado (Etapa 17b, 2026-08-17) ─────────────────────
+
+@pytest.mark.unit
+def test_crear_documento_aportado_exito():
+    with patch(
+        "main._guardar_documento_aportado_fn",
+        new=AsyncMock(return_value={"success": True, "documento_id": "doc-aportado-1", "error": None}),
+    ) as mock_guardar:
+        resp = client.post(
+            "/frentes/frente-tecnico/documentos-aportados",
+            json={"titulo": "Helios_Informe_Tecnico_Digerido.pdf", "contenido": "texto extraído"},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"documento_id": "doc-aportado-1"}
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["frente_id"] == "frente-tecnico"
+    assert kwargs["titulo"] == "Helios_Informe_Tecnico_Digerido.pdf"
+    assert kwargs["contenido"] == "texto extraído"
+
+
+@pytest.mark.unit
+def test_crear_documento_aportado_falla_es_500():
+    with patch(
+        "main._guardar_documento_aportado_fn",
+        new=AsyncMock(return_value={"success": False, "documento_id": None, "error": "no existe el frente"}),
+    ):
+        resp = client.post(
+            "/frentes/frente-inexistente/documentos-aportados",
+            json={"titulo": "t", "contenido": "c"},
+        )
+    assert resp.status_code == 500
 
 
 # ── Elegir modelo por sesión (Etapa 15, 2026-08-17) ─────────────────────────────

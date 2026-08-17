@@ -63,6 +63,8 @@ from utils.casos import (
     listar_casos as _listar_casos_fn,
     obtener_frentes_de_caso as _obtener_frentes_fn,
     obtener_documentos_de_frente as _obtener_documentos_fn,
+    obtener_documentos_aportados_de_frente as _obtener_documentos_aportados_fn,
+    guardar_documento_aportado as _guardar_documento_aportado_fn,
     obtener_pendientes_de_caso as _obtener_pendientes_fn,
     crear_caso as _crear_caso_fn,
 )
@@ -209,6 +211,7 @@ async def obtener_caso(caso_id: str) -> dict:
     frentes_out = []
     for f in frentes:
         documentos = await _obtener_documentos_fn(f["id"], tenant=_TENANT)
+        aportados = await _obtener_documentos_aportados_fn(f["id"], tenant=_TENANT)
         artefactos = await motor_api.conexiones_de(
             f["id"], tipo_conexion="frente_tiene_artefacto_externo", tenant=_TENANT
         )
@@ -219,6 +222,10 @@ async def obtener_caso(caso_id: str) -> dict:
             "documentos": [
                 {"id": d["id"], "titulo": (d.get("props") or {}).get("titulo"), "modo": (d.get("props") or {}).get("modo"), "estado": (d.get("props") or {}).get("estado")}
                 for d in documentos
+            ],
+            "documentos_aportados": [
+                {"id": d["id"], "titulo": (d.get("props") or {}).get("titulo")}
+                for d in aportados
             ],
             "artefactos_externos": [
                 {"id": a["id"], "titulo": (a.get("props") or {}).get("titulo"), "tipo": (a.get("props") or {}).get("tipo"), "url": (a.get("props") or {}).get("url")}
@@ -246,7 +253,10 @@ async def obtener_caso(caso_id: str) -> dict:
 @app.get("/documentos/{documento_id}")
 async def obtener_documento(documento_id: str) -> dict:
     doc = await motor_api.obtener(documento_id, tenant=_TENANT)
-    if not doc or doc.get("tipo") != "documento_caso":
+    # documento_caso (lo produce un especialista) y documento_aportado (Sebas lo sube, Etapa 17b)
+    # comparten esta ruta de lectura — ambos son "un documento con contenido para ver", la
+    # diferencia es solo quién lo generó (mismo criterio que conductor.py::_tool_ver_documento).
+    if not doc or doc.get("tipo") not in ("documento_caso", "documento_aportado"):
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     props = doc.get("props") or {}
     return {
@@ -254,7 +264,7 @@ async def obtener_documento(documento_id: str) -> dict:
         "titulo": props.get("titulo"),
         "modo": props.get("modo"),
         "estado": props.get("estado"),
-        "agente": props.get("agente"),
+        "agente": "Sebas (aportado)" if doc["tipo"] == "documento_aportado" else props.get("agente"),
         "contenido": props.get("contenido"),
     }
 
@@ -274,7 +284,7 @@ async def descargar_documento(documento_id: str) -> Response:
     `Content-Disposition: attachment` es lo que dispara la descarga en vez de navegar a la URL.
     """
     doc = await motor_api.obtener(documento_id, tenant=_TENANT)
-    if not doc or doc.get("tipo") != "documento_caso":
+    if not doc or doc.get("tipo") not in ("documento_caso", "documento_aportado"):
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     props = doc.get("props") or {}
     contenido = props.get("contenido") or ""
@@ -286,15 +296,22 @@ async def descargar_documento(documento_id: str) -> Response:
     )
 
 
-# ── Adjuntar un archivo al chat (Etapa 17, 2026-08-17) ──────────────────────────
+# ── Adjuntar un archivo al chat (Etapa 17, 2026-08-17; persistencia sumada en Etapa 17b) ────────
 #
 # Sebas: "cómo le subo un archivo al conductor? Andrés me pasó información de la composición del
-# efluente" — no había ningún camino, ni web ni Conductor. Diseño deliberadamente simple: esto NO
-# persiste el archivo en ningún lado (ni el KM ni disco) — solo extrae el texto y lo devuelve. El
-# frontend lo suma al próximo mensaje que se manda al chat, como si Sebas lo hubiera tipeado él
-# mismo — mismo mecanismo que ya usa el resto del chat (texto plano), sin inventar un tipo de
-# contenido nuevo ni una tabla de "archivos" en el KM. Si en algún momento hace falta guardar el
-# archivo original (no solo su texto), es una decisión aparte — no la pide el pedido de hoy.
+# efluente" — no había ningún camino, ni web ni Conductor. Primera versión (Etapa 17): extraer el
+# texto y sumarlo al mensaje del chat, sin persistir el archivo en ningún lado. Sebas señaló el
+# gap real: "no entiendo la lógica de que no quede guardada... esperaba que se sintiera como con
+# vos" — si el documento no queda conectado al caso, ninguna conversación futura ni corrida formal
+# de un especialista lo tiene disponible, solo la conversación puntual en la que se subió.
+#
+# Diseño en dos pasos, separados a propósito: `POST /archivos/extraer` (stateless, solo extrae
+# texto de los bytes del archivo — no sabe nada de casos/frentes) + `POST /frentes/{id}/
+# documentos-aportados` (persiste el texto ya extraído, conectado al frente vía
+# `frente_tiene_documento_aportado`). El archivo original en sí NO se persiste (ni KM ni disco) —
+# solo su texto, mismo criterio que ya regía la Etapa 17, ahora con el paso de conexión al caso
+# que faltaba. El frontend siempre pide elegir a qué caso/frente pertenece el archivo antes de
+# subirlo (confirmado con Sebas: los uploads son siempre sobre un caso puntual).
 #
 # Extracción de PDF: reusa `knowledge_module.document_store.store.extract_text` — ya es genérico
 # de plataforma (Capa 0-1), no se reimplica acá. Extracción de .docx/.txt/.md: es igual de
@@ -350,6 +367,29 @@ async def extraer_texto_archivo(archivo: UploadFile = File(...)) -> dict:
         texto = texto[:_MAX_CARACTERES_ARCHIVO]
 
     return {"nombre_archivo": archivo.filename, "texto": texto, "truncado": truncado}
+
+
+class _DocumentoAportadoIn(BaseModel):
+    titulo: str
+    contenido: str
+
+
+@app.post("/frentes/{frente_id}/documentos-aportados")
+async def crear_documento_aportado(frente_id: str, body: _DocumentoAportadoIn) -> dict:
+    """
+    Persiste el texto ya extraído (vía `POST /archivos/extraer`) como `documento_aportado`,
+    conectado al frente (Etapa 17b, 2026-08-17). Corrige el gap que Sebas señaló: "no entiendo la
+    lógica de que no quede guardada... esperaba que se sintiera como con vos" — el documento
+    ahora queda disponible para cualquier conversación futura del Conductor sobre este caso Y
+    para cualquier corrida formal de un especialista sobre este frente, no solo la conversación
+    en la que se subió.
+    """
+    resultado = await _guardar_documento_aportado_fn(
+        frente_id=frente_id, titulo=body.titulo, contenido=body.contenido, tenant=_TENANT,
+    )
+    if not resultado["success"]:
+        raise HTTPException(status_code=500, detail=f"No se pudo guardar el documento: {resultado['error']}")
+    return {"documento_id": resultado["documento_id"]}
 
 
 def _mensajes_a_turnos(mensajes: list[dict], rol_agente: str) -> list[dict]:

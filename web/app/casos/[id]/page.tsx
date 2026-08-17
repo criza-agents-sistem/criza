@@ -64,6 +64,28 @@ export default async function CasoDetallePage({
                   </ul>
                 )}
 
+                {frente.documentos_aportados.length > 0 && (
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {frente.documentos_aportados.map((doc) => (
+                      <li key={doc.id} className="flex items-center gap-2">
+                        <Link
+                          href={`/documentos/${doc.id}`}
+                          className="text-sm text-blue-600 hover:underline"
+                        >
+                          📎 {doc.titulo} <span className="text-neutral-400">(aportado por vos)</span>
+                        </Link>
+                        <a
+                          href={urlDescargaDocumento(doc.id)}
+                          className="text-xs text-neutral-400 hover:text-neutral-600"
+                          title="Descargar (.md)"
+                        >
+                          ⬇
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
                 <div className="mt-3 flex flex-wrap gap-2">
                   {ESPECIALISTAS.map((esp) => (
                     <Link

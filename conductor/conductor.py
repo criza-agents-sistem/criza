@@ -38,6 +38,7 @@ from utils.casos import (
     listar_casos as _listar_casos_fn,
     obtener_frentes_de_caso as _obtener_frentes_fn,
     obtener_documentos_de_frente as _obtener_documentos_fn,
+    obtener_documentos_aportados_de_frente as _obtener_documentos_aportados_fn,
     obtener_pendientes_de_caso as _obtener_pendientes_fn,
     crear_caso as _crear_caso_fn,
 )
@@ -140,7 +141,7 @@ TOOLS = [
     },
     {
         "name": "ver_documento",
-        "description": "Trae el contenido completo de un documento_caso puntual (por su id) — usar cuando Sebas quiere profundizar en algo que ver_caso solo resumió.",
+        "description": "Trae el contenido completo de un documento puntual por su id — un informe que produjo un especialista, o un documento que Sebas aportó (ver 'documentos_aportados_por_sebas' en el briefing de ver_caso). Usar cuando Sebas quiere profundizar en algo que ver_caso solo resumió.",
         "input_schema": {
             "type": "object",
             "properties": {"documento_id": {"type": "string"}},
@@ -210,12 +211,18 @@ async def _tool_ver_caso(identificador: str) -> dict:
     frentes_briefing = []
     for f in frentes:
         docs = await _obtener_documentos_fn(f["id"], tenant=_TENANT)
+        aportados = await _obtener_documentos_aportados_fn(f["id"], tenant=_TENANT)
         frentes_briefing.append({
             "id": f["id"],
             "nombre": (f.get("props") or {}).get("nombre"),
             "estado": (f.get("props") or {}).get("estado"),
             "documentos_producidos": len(docs),
             "ultimo_documento": (docs[-1].get("props") or {}).get("titulo") if docs else None,
+            # Documentos que Sebas aportó (no producidos por un especialista) — Etapa 17b,
+            # 2026-08-17. El Conductor puede traer el contenido completo con ver_documento.
+            "documentos_aportados_por_sebas": [
+                {"id": d["id"], "titulo": (d.get("props") or {}).get("titulo")} for d in aportados
+            ],
         })
 
     pendientes = await _obtener_pendientes_fn(caso["id"], tenant=_TENANT)
@@ -324,9 +331,18 @@ async def _tool_ver_documento(documento_id: str) -> dict:
         doc = await motor_api.obtener(documento_id, tenant=_TENANT)
     except Exception:
         doc = None
-    if not doc or doc.get("tipo") != "documento_caso":
+    # documento_caso (lo produce un especialista) y documento_aportado (Sebas lo sube, Etapa
+    # 17b) comparten esta tool de lectura -- ambos son "un documento del caso con contenido para
+    # leer", la única diferencia real es quién lo generó.
+    if not doc or doc.get("tipo") not in ("documento_caso", "documento_aportado"):
         return {"error": f"No se encontró ningún documento con id '{documento_id}'."}
     props = doc.get("props") or {}
+    if doc["tipo"] == "documento_aportado":
+        return {
+            "titulo": props.get("titulo"),
+            "fuente": "aportado_por_sebas",
+            "contenido": props.get("contenido"),
+        }
     return {
         "titulo": props.get("titulo"),
         "modo": props.get("modo"),

@@ -26,11 +26,19 @@ export type ArtefactoExterno = {
   url: string | null;
 };
 
+// Etapa 17b (2026-08-17) — un archivo que Sebas sube desde el chat, distinto de Documento (lo
+// produce un especialista).
+export type DocumentoAportado = {
+  id: string;
+  titulo: string | null;
+};
+
 export type Frente = {
   id: string;
   nombre: string | null;
   estado: string | null;
   documentos: Documento[];
+  documentos_aportados: DocumentoAportado[];
   artefactos_externos: ArtefactoExterno[];
 };
 
@@ -153,8 +161,13 @@ export function obtenerSesionEspecialista(id: string): Promise<SesionEspecialist
   return apiFetch<SesionEspecialistaDetalle>(`/especialistas/sesiones/${id}`);
 }
 
-// Etapa 17 (2026-08-17) — adjuntar un archivo al chat. No persiste el archivo en ningún lado
-// (ni KM ni disco) — solo extrae el texto y lo devuelve; el caller lo suma al próximo mensaje.
+// Etapa 17 (2026-08-17) — adjuntar un archivo al chat. `extraerTextoArchivo` es un paso
+// stateless (no persiste nada, no sabe de casos/frentes) — solo extrae el texto de los bytes.
+// Etapa 17b (mismo día): Sebas señaló que esperaba que el archivo quedara guardado ("no entiendo
+// la lógica de que no quede guardada... esperaba que se sintiera como con vos") — `
+// crearDocumentoAportado` persiste el texto ya extraído, conectado a un frente, para que
+// cualquier conversación futura y cualquier corrida formal de un especialista lo tengan
+// disponible.
 export type ExtraccionArchivo = { nombre_archivo: string; texto: string; truncado: boolean };
 
 export async function extraerTextoArchivo(file: File): Promise<ExtraccionArchivo> {
@@ -166,6 +179,20 @@ export async function extraerTextoArchivo(file: File): Promise<ExtraccionArchivo
     throw new Error(detalle.detail || `No se pudo leer el archivo (${res.status})`);
   }
   return res.json();
+}
+
+export async function crearDocumentoAportado(frenteId: string, titulo: string, contenido: string): Promise<string> {
+  const res = await fetch(`${API_URL}/frentes/${frenteId}/documentos-aportados`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ titulo, contenido }),
+  });
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => ({}));
+    throw new Error(detalle.detail || `No se pudo guardar el documento (${res.status})`);
+  }
+  const data = await res.json();
+  return data.documento_id as string;
 }
 
 // El texto combinado ES lo que se manda y lo que se muestra en el chat (mismo string) — así lo

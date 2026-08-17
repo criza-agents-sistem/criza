@@ -154,6 +154,53 @@ async def test_guardar_documento_de_frente_falla_al_conectar():
     assert result["error"] == "no existe frente"
 
 
+# ── Unit: guardar_documento_aportado / obtener_documentos_aportados_de_frente (Etapa 17b) ──────
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_guardar_documento_aportado_exito():
+    with (
+        patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "doc-aportado-1"})) as mock_guardar,
+        patch("utils.casos.motor_api.guardar_conexion", new=AsyncMock(return_value={"success": True, "id": "conn-1"})) as mock_conn,
+    ):
+        result = await casos.guardar_documento_aportado(
+            frente_id="frente-1", titulo="informe.pdf", contenido="texto extraído", tenant="criza",
+        )
+
+    assert result == {"success": True, "documento_id": "doc-aportado-1", "error": None}
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["tipo"] == "documento_aportado"
+    assert kwargs["campos"]["fuente"] == "archivo_subido"
+    mock_conn.assert_awaited_once_with(
+        area="casos", tipo="frente_tiene_documento_aportado",
+        desde_ficha_id="frente-1", hacia_ficha_id="doc-aportado-1", tenant="criza",
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_guardar_documento_aportado_falla_al_crear_ficha():
+    with patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": False, "error": "boom"})):
+        result = await casos.guardar_documento_aportado(
+            frente_id="frente-1", titulo="t", contenido="c", tenant="criza",
+        )
+    assert result["success"] is False
+    assert result["documento_id"] is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_obtener_documentos_aportados_de_frente():
+    docs = [{"id": "doc-1", "tipo": "documento_aportado", "props": {"titulo": "t"}}]
+    with patch("utils.casos.motor_api.conexiones_de", new=AsyncMock(return_value=docs)) as mock_conn:
+        result = await casos.obtener_documentos_aportados_de_frente("frente-1", tenant="criza")
+
+    assert result == docs
+    mock_conn.assert_awaited_once_with(
+        "frente-1", tipo_conexion="frente_tiene_documento_aportado", direccion="salientes", tenant="criza",
+    )
+
+
 # ── Unit: crear_caso (Etapa 13, 2026-08-17) ─────────────────────────────────────
 
 @pytest.mark.unit

@@ -158,6 +158,14 @@ def test_build_input_desde_frente_incluye_pendientes():
     assert "Confirmar quién paga el flete" in result
 
 
+@pytest.mark.unit
+def test_build_input_desde_frente_incluye_documentos_aportados():
+    aportados = [{"props": {"titulo": "Helios_Informe_Tecnico_Digerido.pdf", "contenido": "N amonio: 1200 mg/L"}}]
+    result = ag.build_input_desde_frente(FRENTE_TEST, CASO_TEST, [], aportados)
+    assert "Helios_Informe_Tecnico_Digerido.pdf" in result
+    assert "N amonio: 1200 mg/L" in result
+
+
 # ── Unit: run_agent_desde_frente (mock) ─────────────────────────────────────────
 
 @pytest.mark.unit
@@ -175,6 +183,7 @@ async def test_run_agent_desde_frente_captura_submit_y_escribe_token_usage_en_fr
     with patch("agronomo_agent._ai_complete", new=AsyncMock(return_value=mock_response)), \
          patch("agronomo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})), \
          patch("agronomo_agent.obtener_pendientes_de_caso", new=AsyncMock(return_value=PENDIENTES_TEST)), \
+         patch("agronomo_agent.obtener_documentos_aportados_de_frente", new=AsyncMock(return_value=[])), \
          patch("agronomo_agent.motor_api.actualizar_props", new=mock_actualizar), \
          patch("agronomo_agent.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("agronomo_agent.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
@@ -223,6 +232,7 @@ async def test_run_agent_desde_frente_despacha_expand_agrovoc():
     with patch("agronomo_agent._ai_complete", new=AsyncMock(side_effect=[mock_r1, mock_r2])), \
          patch("agronomo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})), \
          patch("agronomo_agent.obtener_pendientes_de_caso", new=AsyncMock(return_value=[])), \
+         patch("agronomo_agent.obtener_documentos_aportados_de_frente", new=AsyncMock(return_value=[])), \
          patch("agronomo_agent.motor_api.actualizar_props", new=AsyncMock()), \
          patch("agronomo_agent.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("agronomo_agent.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
@@ -298,6 +308,7 @@ async def test_iniciar_sesion_arma_primer_mensaje_con_contexto_del_frente():
     with (
         patch("agronomo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})),
         patch("agronomo_agent.obtener_pendientes_de_caso", new=AsyncMock(return_value=PENDIENTES_TEST)),
+        patch("agronomo_agent.obtener_documentos_aportados_de_frente", new=AsyncMock(return_value=[])),
     ):
         messages = await ag.iniciar_sesion("frente-uuid-1")
 

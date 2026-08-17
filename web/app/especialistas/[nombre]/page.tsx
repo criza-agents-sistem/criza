@@ -11,11 +11,16 @@ import {
   listarSesionesEspecialista,
   obtenerSesionEspecialista,
   extraerTextoArchivo,
+  crearDocumentoAportado,
   combinarMensajeConArchivo,
+  listarCasos,
+  obtenerCaso,
   ESPECIALISTAS,
   type ModeloDisponible,
   type SesionEspecialistaResumen,
   type ExtraccionArchivo,
+  type CasoResumen,
+  type Frente,
 } from "@/lib/api";
 
 type Turno = { rol: "vos" | "especialista" | "error"; texto: string };
@@ -53,6 +58,16 @@ export default function EspecialistaChatPage({
   const [archivoAdjunto, setArchivoAdjunto] = useState<ExtraccionArchivo | null>(null);
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
   const [errorArchivo, setErrorArchivo] = useState<string | null>(null);
+  // Etapa 17b (2026-08-17) — con frenteId ya conocido (entrada desde un caso), el archivo se
+  // guarda directo ahí. En consulta libre no hay frente todavía, así que hace falta preguntar
+  // a qué caso pertenece (un archivo siempre queda conectado a un caso — decisión confirmada
+  // con Sebas).
+  const [archivoPendiente, setArchivoPendiente] = useState<ExtraccionArchivo | null>(null);
+  const [casosPicker, setCasosPicker] = useState<CasoResumen[]>([]);
+  const [casoPickerId, setCasoPickerId] = useState("");
+  const [frentesPicker, setFrentesPicker] = useState<Frente[]>([]);
+  const [frentePickerId, setFrentePickerId] = useState("");
+  const [guardandoDocumento, setGuardandoDocumento] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -134,8 +149,8 @@ export default function EspecialistaChatPage({
     }
   }
 
-  // Etapa 17 (2026-08-17) — adjuntar un archivo (PDF/Word/texto): se extrae el texto y se suma
-  // al próximo mensaje, no queda guardado en ningún lado aparte.
+  // Etapa 17 (2026-08-17) — adjuntar un archivo (PDF/Word/texto). Con frenteId ya conocido
+  // (Etapa 17b), se guarda directo ahí; en consulta libre, abre el picker de caso/frente.
   async function manejarArchivoSeleccionado(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -144,12 +159,52 @@ export default function EspecialistaChatPage({
     setSubiendoArchivo(true);
     try {
       const extraido = await extraerTextoArchivo(file);
-      setArchivoAdjunto(extraido);
+      if (frenteId) {
+        await crearDocumentoAportado(frenteId, extraido.nombre_archivo, extraido.texto);
+        setArchivoAdjunto(extraido);
+      } else {
+        setArchivoPendiente(extraido);
+        setCasoPickerId("");
+        setFrentePickerId("");
+        setFrentesPicker([]);
+        const casos = await listarCasos();
+        setCasosPicker(casos ?? []);
+      }
     } catch (err) {
-      setErrorArchivo(err instanceof Error ? err.message : "No se pudo leer el archivo");
+      setErrorArchivo(err instanceof Error ? err.message : "No se pudo leer/guardar el archivo");
     } finally {
       setSubiendoArchivo(false);
     }
+  }
+
+  async function elegirCasoParaArchivo(casoId: string) {
+    setCasoPickerId(casoId);
+    setFrentePickerId("");
+    setFrentesPicker([]);
+    if (!casoId) return;
+    const detalle = await obtenerCaso(casoId).catch(() => null);
+    setFrentesPicker(detalle?.frentes ?? []);
+  }
+
+  async function confirmarArchivoEnFrente() {
+    if (!archivoPendiente || !frentePickerId) return;
+    setGuardandoDocumento(true);
+    try {
+      await crearDocumentoAportado(frentePickerId, archivoPendiente.nombre_archivo, archivoPendiente.texto);
+      setArchivoAdjunto(archivoPendiente);
+      setArchivoPendiente(null);
+    } catch (err) {
+      setErrorArchivo(err instanceof Error ? err.message : "No se pudo guardar el documento");
+    } finally {
+      setGuardandoDocumento(false);
+    }
+  }
+
+  function cancelarArchivoPendiente() {
+    setArchivoPendiente(null);
+    setCasoPickerId("");
+    setFrentePickerId("");
+    setFrentesPicker([]);
   }
 
   async function enviar() {
@@ -285,9 +340,49 @@ export default function EspecialistaChatPage({
       {errorArchivo && (
         <p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">{errorArchivo}</p>
       )}
+      {archivoPendiente && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-300 bg-neutral-50 p-2 text-xs text-neutral-600">
+          <span>📎 {archivoPendiente.nombre_archivo} — ¿a qué caso pertenece?</span>
+          <select
+            className="rounded border border-neutral-300 px-2 py-1"
+            value={casoPickerId}
+            onChange={(e) => elegirCasoParaArchivo(e.target.value)}
+          >
+            <option value="">Elegir caso...</option>
+            {casosPicker.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+          <select
+            className="rounded border border-neutral-300 px-2 py-1 disabled:opacity-40"
+            value={frentePickerId}
+            disabled={!casoPickerId}
+            onChange={(e) => setFrentePickerId(e.target.value)}
+          >
+            <option value="">Elegir frente...</option>
+            {frentesPicker.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.nombre}
+              </option>
+            ))}
+          </select>
+          <button
+            className="rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
+            disabled={!frentePickerId || guardandoDocumento}
+            onClick={confirmarArchivoEnFrente}
+          >
+            {guardandoDocumento ? "Guardando..." : "Confirmar"}
+          </button>
+          <button className="text-neutral-400 hover:text-neutral-700" onClick={cancelarArchivoPendiente}>
+            ✕
+          </button>
+        </div>
+      )}
       {archivoAdjunto && (
         <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600">
-          📎 {archivoAdjunto.nombre_archivo}
+          ✅ 📎 {archivoAdjunto.nombre_archivo} — guardado en el caso
           {archivoAdjunto.truncado && <span className="text-amber-600">(recortado, era muy largo)</span>}
           <button className="text-neutral-400 hover:text-neutral-700" onClick={() => setArchivoAdjunto(null)}>
             ✕

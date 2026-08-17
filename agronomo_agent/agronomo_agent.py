@@ -44,7 +44,7 @@ from utils.openalex import search_literature as _search_literature_fn
 from km_tools.search import get_sector_corpus as _get_sector_corpus_fn
 from utils.agrovoc import expand_term as _expand_agrovoc_fn
 from utils.corpus import buscar_corpus_cientifico as _buscar_corpus_cientifico_fn
-from utils.casos import obtener_frente_con_caso, obtener_pendientes_de_caso
+from utils.casos import obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
@@ -440,7 +440,13 @@ OUTPUT_CONTRACT = {
 
 # ── Input builder ─────────────────────────────────────────────────────────────
 
-def build_input_desde_frente(frente_dict: dict, caso_dict: dict, pendientes: list[dict]) -> str:
+def build_input_desde_frente(
+    frente_dict: dict, caso_dict: dict, pendientes: list[dict],
+    documentos_aportados: list[dict] | None = None,
+) -> str:
+    """`documentos_aportados` (Etapa 17b, 2026-08-17): archivos que Sebas subió desde el chat y
+    quedaron conectados a este frente — se suman al input para que una corrida formal también
+    los tenga disponibles, no solo el Conductor."""
     caso_props = caso_dict.get("props") or {}
     frente_props = frente_dict.get("props") or {}
 
@@ -452,6 +458,13 @@ def build_input_desde_frente(frente_dict: dict, caso_dict: dict, pendientes: lis
     if pendientes:
         lista = "\n".join(f"- {(p.get('props') or {}).get('descripcion', '')}" for p in pendientes)
         secciones.append(f"# Pendientes abiertos del caso (contexto, no necesariamente de este frente)\n\n{lista}")
+
+    if documentos_aportados:
+        bloques = "\n\n".join(
+            f"## {(d.get('props') or {}).get('titulo', '')}\n\n{(d.get('props') or {}).get('contenido', '')}"
+            for d in documentos_aportados
+        )
+        secciones.append(f"# Documentos aportados por Sebas para este frente\n\n{bloques}")
 
     secciones.append(
         "---\n"
@@ -647,6 +660,7 @@ async def run_agent_desde_frente(
     await _preflight()
 
     pendientes = await obtener_pendientes_de_caso(caso_dict["id"], tenant=_TENANT)
+    documentos_aportados = await obtener_documentos_aportados_de_frente(frente_id, tenant=_TENANT)
 
     await aprendizaje.ensure_area(tenant=_TENANT)
     caso_props = caso_dict.get("props") or {}
@@ -660,7 +674,7 @@ async def run_agent_desde_frente(
         "text": SYSTEM_PROMPT + bloque,
         "cache_control": {"type": "ephemeral"},
     }]
-    user_input = build_input_desde_frente(frente_dict, caso_dict, pendientes) + _bloque_instruccion(
+    user_input = build_input_desde_frente(frente_dict, caso_dict, pendientes, documentos_aportados) + _bloque_instruccion(
         tarea, contexto_extra, foco
     )
 
@@ -742,7 +756,8 @@ async def iniciar_sesion(frente_id: str, *, tenant: str = _TENANT) -> list[dict]
     if not caso_dict:
         raise ValueError(f"Frente {frente_id} no tiene un caso asociado (conexión tiene_frente ausente)")
     pendientes = await obtener_pendientes_de_caso(caso_dict["id"], tenant=tenant)
-    user_input = build_input_desde_frente(frente_dict, caso_dict, pendientes)
+    documentos_aportados = await obtener_documentos_aportados_de_frente(frente_id, tenant=tenant)
+    user_input = build_input_desde_frente(frente_dict, caso_dict, pendientes, documentos_aportados)
     return [{"role": "user", "content": user_input}]
 
 

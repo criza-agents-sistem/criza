@@ -100,6 +100,7 @@ async def test_tool_ver_caso_arma_briefing_completo():
             [{"props": {"titulo": "Evaluación — microbiologo"}}],  # frente técnico ya tiene 1
             [],  # frente de asociación no tiene ninguno
         ])),
+        patch("conductor._obtener_documentos_aportados_fn", new=AsyncMock(return_value=[])),
         patch("conductor._obtener_pendientes_fn", new=AsyncMock(return_value=[{"props": {"descripcion": "Confirmar flete"}}])),
         patch("conductor.aprendizaje.ensure_area", new=AsyncMock()),
         patch("conductor.aprendizaje.leer_lecciones_caso", new=AsyncMock(return_value=[])),
@@ -114,6 +115,32 @@ async def test_tool_ver_caso_arma_briefing_completo():
     asociacion = next(f for f in result["frentes"] if f["nombre"] == "Frente de asociación")
     assert asociacion["documentos_producidos"] == 0
     assert "Confirmar flete" in result["pendientes_abiertos"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_ver_caso_incluye_documentos_aportados_por_sebas():
+    """Etapa 17b, 2026-08-17 — un archivo que Sebas sube debe aparecer en el briefing de
+    ver_caso, para que CUALQUIER conversación futura sepa que existe (no solo la sesión en la
+    que se subió)."""
+    with (
+        patch("conductor._resolver_caso", new=AsyncMock(return_value=CASO_HELIOS)),
+        patch("conductor._obtener_frentes_fn", new=AsyncMock(return_value=[FRENTE_TECNICO])),
+        patch("conductor._obtener_documentos_fn", new=AsyncMock(return_value=[])),
+        patch("conductor._obtener_documentos_aportados_fn", new=AsyncMock(return_value=[
+            {"id": "doc-aportado-1", "props": {"titulo": "Helios_Informe_Tecnico_Digerido.pdf"}}
+        ])),
+        patch("conductor._obtener_pendientes_fn", new=AsyncMock(return_value=[])),
+        patch("conductor.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("conductor.aprendizaje.leer_lecciones_caso", new=AsyncMock(return_value=[])),
+        patch("conductor.listar_decisiones_vigentes", new=AsyncMock(return_value=[])),
+    ):
+        result = await cond._tool_ver_caso("helios")
+
+    tecnico = result["frentes"][0]
+    assert tecnico["documentos_aportados_por_sebas"] == [
+        {"id": "doc-aportado-1", "titulo": "Helios_Informe_Tecnico_Digerido.pdf"}
+    ]
 
 
 @pytest.mark.unit
@@ -215,6 +242,18 @@ async def test_tool_ver_documento_no_encontrado():
     with patch("conductor.motor_api.obtener", new=AsyncMock(return_value=None)):
         result = await cond._tool_ver_documento("no-existe")
     assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_ver_documento_aportado_encontrado():
+    """Etapa 17b — ver_documento también trae documento_aportado (lo que sube Sebas), no solo
+    documento_caso (lo que produce un especialista)."""
+    doc = {"id": "doc-aportado-1", "tipo": "documento_aportado", "props": {"titulo": "informe.pdf", "contenido": "texto extraído"}}
+    with patch("conductor.motor_api.obtener", new=AsyncMock(return_value=doc)):
+        result = await cond._tool_ver_documento("doc-aportado-1")
+    assert result["contenido"] == "texto extraído"
+    assert result["fuente"] == "aportado_por_sebas"
 
 
 @pytest.mark.unit
