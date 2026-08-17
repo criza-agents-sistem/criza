@@ -76,6 +76,18 @@ export function urlDescargaDocumento(id: string): string {
   return `${API_URL}/documentos/${id}/descargar`;
 }
 
+// Etapa 15 (2026-08-17) — elegir modelo por sesión de chat. Lista curada, ver
+// utils/ai_client.py::MODELOS_DISPONIBLES (única fuente, esto solo la lee).
+export type ModeloDisponible = {
+  id: string;
+  nombre: string;
+  nota: string;
+};
+
+export function listarModelos(): Promise<ModeloDisponible[] | null> {
+  return apiFetch<ModeloDisponible[]>("/modelos");
+}
+
 // Etapa 13 (2026-08-17) — crear un caso, no solo leerlos. Client component (formulario), por
 // eso devuelve/lanza en vez de usar apiFetch (que trata 404 como "no encontrado", no aplica acá).
 export async function crearCaso(input: {
@@ -103,8 +115,13 @@ export async function crearCaso(input: {
 // cache: "no-store"), estas se llaman desde un client component — el Conductor puede tardar
 // varios minutos si invoca un especialista, y necesita mantener la sesión entre mensajes.
 
-export async function crearSesionConductor(): Promise<string> {
-  const res = await fetch(`${API_URL}/conductor/sesiones`, { method: "POST" });
+// modelo ausente/undefined = default del agente (Etapa 15) — ver listarModelos().
+export async function crearSesionConductor(modelo?: string): Promise<string> {
+  const res = await fetch(`${API_URL}/conductor/sesiones`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(modelo ? { modelo } : {}),
+  });
   if (!res.ok) throw new Error(`No se pudo crear la sesión del Conductor (${res.status})`);
   const data = await res.json();
   return data.session_id as string;
@@ -149,11 +166,15 @@ export const ESPECIALISTAS = [
 ] as const;
 
 // frenteId ausente = "consulta libre" (Etapa 12) — sin caso, sin ese contexto que armar.
-export async function crearSesionEspecialista(nombre: string, frenteId?: string): Promise<string> {
+// modelo ausente/undefined = default del agente (Etapa 15) — ver listarModelos().
+export async function crearSesionEspecialista(nombre: string, frenteId?: string, modelo?: string): Promise<string> {
   const res = await fetch(`${API_URL}/especialistas/${nombre}/sesiones`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(frenteId ? { frente_id: frenteId } : {}),
+    body: JSON.stringify({
+      ...(frenteId ? { frente_id: frenteId } : {}),
+      ...(modelo ? { modelo } : {}),
+    }),
   });
   if (!res.ok) {
     const detalle = await res.json().catch(() => ({}));

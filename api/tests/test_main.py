@@ -168,6 +168,19 @@ def test_descargar_documento_otro_tipo_es_404():
     assert resp.status_code == 404
 
 
+# ── Elegir modelo por sesión (Etapa 15, 2026-08-17) ─────────────────────────────
+
+@pytest.mark.unit
+def test_listar_modelos():
+    resp = client.get("/modelos")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 4
+    ids = {m["id"] for m in data}
+    assert "claude-sonnet-4-6" in ids
+    assert all({"id", "nombre", "nota"} <= m.keys() for m in data)
+
+
 # ── Chat del Conductor — sesiones persistidas en el KM, no en memoria ──────────
 
 @pytest.mark.unit
@@ -183,6 +196,34 @@ def test_crear_sesion_conductor():
     _, kwargs = mock_guardar.call_args
     assert kwargs["area"] == "conductor_sesiones"
     assert kwargs["campos"]["mensajes"] == []
+
+
+@pytest.mark.unit
+def test_crear_sesion_conductor_con_modelo_elegido():
+    with (
+        patch("main.load_plantilla", new=AsyncMock(return_value={})),
+        patch("main.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "sesion-1"})) as mock_guardar,
+    ):
+        resp = client.post("/conductor/sesiones", json={"modelo": "claude-opus-5"})
+
+    assert resp.status_code == 200
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["campos"]["modelo"] == "claude-opus-5"
+
+
+@pytest.mark.unit
+def test_crear_sesion_conductor_sin_body_queda_modelo_none():
+    """El body es opcional (test_crear_sesion_conductor de arriba ya lo cubre sin json=) — acá
+    se confirma explícitamente que el campo persistido es None, no que falte la clave."""
+    with (
+        patch("main.load_plantilla", new=AsyncMock(return_value={})),
+        patch("main.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "sesion-1"})) as mock_guardar,
+    ):
+        resp = client.post("/conductor/sesiones")
+
+    assert resp.status_code == 200
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["campos"]["modelo"] is None
 
 
 @pytest.mark.unit
@@ -272,6 +313,52 @@ def test_enviar_mensaje_conductor_mantiene_historial_entre_turnos():
 
 
 @pytest.mark.unit
+def test_enviar_mensaje_conductor_pasa_modelo_elegido_a_la_sesion():
+    sesion = {"id": "sesion-1", "tipo": "sesion", "props": {"mensajes": [], "modelo": "claude-haiku-4-5-20251001"}}
+    kwargs_vistos = {}
+
+    async def fake_enviar_mensaje(messages, texto, model=None, verbose=False, tracker=None):
+        kwargs_vistos["model"] = model
+        messages.append({"role": "user", "content": texto})
+        messages.append({"role": "assistant", "content": "ok"})
+        return "ok", messages
+
+    with (
+        patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)),
+        patch("main.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})),
+        patch("main._enviar_mensaje_conductor", new=fake_enviar_mensaje),
+    ):
+        resp = client.post("/conductor/sesiones/sesion-1/mensajes", json={"texto": "hola"})
+
+    assert resp.status_code == 200
+    assert kwargs_vistos["model"] == "claude-haiku-4-5-20251001"
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_conductor_sin_modelo_no_fuerza_override():
+    """Sesión sin `modelo` (creada antes de la Etapa 15, o sin elegir uno) — no debe pasarse
+    `model=` al agente, para que siga usando su default (env var del agente)."""
+    sesion = {"id": "sesion-1", "tipo": "sesion", "props": {"mensajes": []}}
+    kwargs_vistos = {}
+
+    async def fake_enviar_mensaje(messages, texto, model=None, verbose=False, tracker=None):
+        kwargs_vistos["model"] = model
+        messages.append({"role": "user", "content": texto})
+        messages.append({"role": "assistant", "content": "ok"})
+        return "ok", messages
+
+    with (
+        patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)),
+        patch("main.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})),
+        patch("main._enviar_mensaje_conductor", new=fake_enviar_mensaje),
+    ):
+        resp = client.post("/conductor/sesiones/sesion-1/mensajes", json={"texto": "hola"})
+
+    assert resp.status_code == 200
+    assert kwargs_vistos["model"] is None
+
+
+@pytest.mark.unit
 def test_cerrar_sesion_conductor_no_encontrada():
     with patch("main.motor_api.obtener", new=AsyncMock(return_value=None)):
         resp = client.post("/conductor/sesiones/no-existe/cerrar")
@@ -325,6 +412,20 @@ def test_crear_sesion_especialista_ok():
     assert kwargs["area"] == "especialista_sesiones"
     assert kwargs["campos"]["especialista"] == "microbiologo"
     assert kwargs["campos"]["frente_id"] == "frente-1"
+
+
+@pytest.mark.unit
+def test_crear_sesion_especialista_con_modelo_elegido():
+    with (
+        patch("main._mod_microbiologo.iniciar_sesion", new=AsyncMock(return_value=[{"role": "user", "content": "contexto inicial"}])),
+        patch("main.load_plantilla", new=AsyncMock(return_value={})),
+        patch("main.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "sesion-esp-1"})) as mock_guardar,
+    ):
+        resp = client.post("/especialistas/microbiologo/sesiones", json={"frente_id": "frente-1", "modelo": "claude-sonnet-5"})
+
+    assert resp.status_code == 200
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["campos"]["modelo"] == "claude-sonnet-5"
 
 
 @pytest.mark.unit
@@ -384,6 +485,50 @@ def test_enviar_mensaje_especialista_devuelve_respuesta():
 
     assert resp.status_code == 200
     assert resp.json()["respuesta"] == "Respuesta del microbiólogo"
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_especialista_pasa_modelo_elegido():
+    sesion = {"id": "sesion-esp-1", "tipo": "sesion_especialista", "props": {"especialista": "microbiologo", "frente_id": "frente-1", "mensajes": [], "modelo": "claude-haiku-4-5-20251001"}}
+    kwargs_vistos = {}
+
+    async def fake_enviar_mensaje(messages, texto, frente_id, model=None):
+        kwargs_vistos["model"] = model
+        messages.append({"role": "user", "content": texto})
+        messages.append({"role": "assistant", "content": "ok"})
+        return "ok", messages
+
+    with (
+        patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)),
+        patch("main.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})),
+        patch("main._mod_microbiologo.enviar_mensaje", new=fake_enviar_mensaje),
+    ):
+        resp = client.post("/especialistas/sesiones/sesion-esp-1/mensajes", json={"texto": "hola"})
+
+    assert resp.status_code == 200
+    assert kwargs_vistos["model"] == "claude-haiku-4-5-20251001"
+
+
+@pytest.mark.unit
+def test_enviar_mensaje_especialista_sin_modelo_no_fuerza_override():
+    sesion = {"id": "sesion-esp-1", "tipo": "sesion_especialista", "props": {"especialista": "microbiologo", "frente_id": "frente-1", "mensajes": []}}
+    kwargs_vistos = {}
+
+    async def fake_enviar_mensaje(messages, texto, frente_id, model=None):
+        kwargs_vistos["model"] = model
+        messages.append({"role": "user", "content": texto})
+        messages.append({"role": "assistant", "content": "ok"})
+        return "ok", messages
+
+    with (
+        patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)),
+        patch("main.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})),
+        patch("main._mod_microbiologo.enviar_mensaje", new=fake_enviar_mensaje),
+    ):
+        resp = client.post("/especialistas/sesiones/sesion-esp-1/mensajes", json={"texto": "hola"})
+
+    assert resp.status_code == 200
+    assert kwargs_vistos["model"] is None
 
 
 # ── Características de un agente (Etapa 11, 2026-08-16) ─────────────────────────

@@ -29,5 +29,7 @@ tipos_ficha:
       - mensajes         # lista serializada de {role, content} — content: str o list[dict]
       - iniciada_en       # ISO timestamp
       - actualizada_en     # ISO timestamp, se actualiza en cada turno
+      - modelo             # Etapa 15, 2026-08-17 — id del modelo elegido para esta sesión
+                            # (ver utils/ai_client.py::MODELOS_DISPONIBLES), o null = default del agente
     vectorizar: null
     dedup_por: null

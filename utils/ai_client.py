@@ -42,6 +42,20 @@ def resolver_modelo(valor: str) -> str:
     return valor if "/" in valor else f"anthropic/{valor}"
 
 
+# Etapa 15 (2026-08-17) — Sebas pidió poder elegir modelo desde la web. Lista curada (no texto
+# libre) para que la UI no ofrezca un ID inválido — hoy solo hay ANTHROPIC_API_KEY configurada
+# (verificado en .env antes de construir esto), así que aunque `resolver_modelo` acepta cualquier
+# "<proveedor>/<modelo>" de LiteLLM, ofrecer proveedores sin credenciales sería una opción que
+# rompe al elegirla. Cuando se sume otra credencial (OpenAI, etc.), esta lista es el único lugar
+# a tocar — la UI la lee de acá, no la duplica (`GET /modelos` en api/main.py).
+MODELOS_DISPONIBLES = [
+    {"id": "claude-sonnet-4-6", "nombre": "Sonnet 4.6", "nota": "el default actual del sistema — balance costo/calidad probado en esta sesión"},
+    {"id": "claude-opus-5", "nombre": "Opus 5", "nota": "el más capaz — más lento y más caro, para análisis que lo ameriten"},
+    {"id": "claude-sonnet-5", "nombre": "Sonnet 5", "nota": "el más nuevo de gama media — no probado todavía en este proyecto"},
+    {"id": "claude-haiku-4-5-20251001", "nombre": "Haiku 4.5", "nota": "el más rápido y barato — para consultas simples"},
+]
+
+
 @dataclass
 class Usage:
     input_tokens: int

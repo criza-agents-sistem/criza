@@ -4,7 +4,13 @@ import { use, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { crearSesionEspecialista, enviarMensajeEspecialista, ESPECIALISTAS } from "@/lib/api";
+import {
+  crearSesionEspecialista,
+  enviarMensajeEspecialista,
+  listarModelos,
+  ESPECIALISTAS,
+  type ModeloDisponible,
+} from "@/lib/api";
 
 type Turno = { rol: "vos" | "especialista" | "error"; texto: string };
 
@@ -24,6 +30,8 @@ export default function EspecialistaChatPage({
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [errorSesion, setErrorSesion] = useState<string | null>(null);
+  const [modelos, setModelos] = useState<ModeloDisponible[]>([]);
+  const [modeloElegido, setModeloElegido] = useState("");
   const finRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -31,7 +39,20 @@ export default function EspecialistaChatPage({
     crearSesionEspecialista(nombre, frenteId ?? undefined)
       .then(setSessionId)
       .catch((e) => setErrorSesion(e.message));
+    listarModelos().then((lista) => setModelos(lista ?? []));
   }, [nombre, frenteId]);
+
+  // Elegir modelo solo tiene sentido antes del primer mensaje (Etapa 15) — queda fijado por
+  // sesión al crearla, no se puede cambiar en el medio de la conversación.
+  async function elegirModelo(modelo: string) {
+    setModeloElegido(modelo);
+    if (turnos.length > 0) return;
+    const nuevoId = await crearSesionEspecialista(nombre, frenteId ?? undefined, modelo || undefined).catch((e) => {
+      setErrorSesion(e.message);
+      return null;
+    });
+    setSessionId(nuevoId);
+  }
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -66,14 +87,30 @@ export default function EspecialistaChatPage({
     <div className="flex h-[calc(100vh-140px)] flex-col">
       <div className="mb-1 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{label}</h1>
-        <a
-          href={`/agentes/${nombre}`}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
-        >
-          ℹ️ Características
-        </a>
+        <div className="flex items-center gap-2">
+          <select
+            className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm text-neutral-600 disabled:opacity-40"
+            value={modeloElegido}
+            disabled={turnos.length > 0}
+            title={turnos.length > 0 ? "Para cambiar de modelo, entrá de nuevo a este chat" : "Modelo para esta conversación"}
+            onChange={(e) => elegirModelo(e.target.value)}
+          >
+            <option value="">Modelo por defecto</option>
+            {modelos.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nombre}
+              </option>
+            ))}
+          </select>
+          <a
+            href={`/agentes/${nombre}`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+          >
+            ℹ️ Características
+          </a>
+        </div>
       </div>
       <p className="mb-4 text-sm text-neutral-500">
         {modoLibre ? (

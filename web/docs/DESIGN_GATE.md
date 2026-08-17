@@ -60,6 +60,7 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `POST /especialistas/{nombre}/sesiones` | Crea una sesión de chat directo con un especialista (`microbiologo`/`ingeniero_ambiental`/`agronomo`). Con `frente_id`: arma el primer mensaje con `<especialista>.iniciar_sesion()` (mismo contexto que una corrida formal), 404 si el frente no existe. Sin `frente_id` (Etapa 12, "consulta libre"): sesión arranca vacía, sin ese contexto que armar. 404 si el nombre no es un especialista válido. | ✅ construido (Etapa 10 + Etapa 12, 2026-08-16) |
 | `POST /especialistas/sesiones/{id}/mensajes` | Un turno de chat — envuelve `<especialista>.enviar_mensaje()`, que usa `TOOLS_CHAT` (todas las tools del especialista MENOS `submit_evaluacion_tecnica`, a propósito: el chat no produce un documento persistido). | ✅ construido (Etapa 10, 2026-08-16) |
 | `GET /agentes/{nombre}` | Características de un agente (`conductor`/`microbiologo`/`ingeniero_ambiental`/`agronomo`) — `SYSTEM_PROMPT` y `TOOLS` leídos EN VIVO del módulo del agente (no una copia), con `disponible_en_chat` marcando qué tools son exclusivas de la corrida formal (`submit_evaluacion_tecnica`). | ✅ construido (Etapa 11, 2026-08-16) |
+| `GET /modelos` | Lista curada de modelos elegibles por sesión de chat (Etapa 15, 2026-08-17) — `utils/ai_client.py::MODELOS_DISPONIBLES`, única fuente (no la duplica). `POST /conductor/sesiones` y `POST /especialistas/{nombre}/sesiones` aceptan un campo opcional `modelo` en el body — se persiste en la ficha de sesión (`campos.modelo`) y se pasa como `model=` a `enviar_mensaje()` en cada turno subsiguiente; `null`/ausente = default del agente (env var propia). | ✅ construido (Etapa 15, 2026-08-17) |
 
 ### Páginas — `web/app/`
 
@@ -69,8 +70,8 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `/casos/nuevo` | Formulario de alta de caso (Etapa 13, 2026-08-17) — client component, nombre/descripción obligatorios, estadío/notas opcionales. Redirige a `/casos/{id}` al crear. | ✅ construido (Etapa 13, 2026-08-17) |
 | `/casos/[id]` | Detalle: frentes (con estado de documentos — "sin documentos producidos todavía" si no hay ninguno), pendientes (abiertos/resueltos visualmente distintos), artefactos externos | ✅ construido |
 | `/documentos/[id]` | Contenido completo de un documento, **renderizado como markdown real** (`react-markdown` + `remark-gfm` + `@tailwindcss/typography`) — no como texto plano con `##`/`**` literales | ✅ construido |
-| `/conductor` | Chat con el Conductor — único **client component** de la app (los otros 3 son Server Components, esta necesita estado de React porque es interactiva). Botón "Nueva conversación" (Etapa 9): cierra la sesión actual (evalúa lección, muestra un aviso en el chat si guardó una) y crea una sesión nueva vacía. | ✅ construido (v1.2 + Etapa 9, mismo día) |
-| `/especialistas/[nombre]` | Chat directo con un especialista puntual (Etapa 10) — toma `frente` como query param (`?frente=<id>`). **Sin `frente` (Etapa 12): "consulta libre"**, sin caso, más barata en tokens — la página lo indica explícitamente y sugiere entrar desde un caso si la pregunta termina siendo sobre uno real. Links "💬 &lt;Especialista&gt;" agregados por frente en `/casos/[id]`. Aviso explícito: esto NO produce un documento persistido (a diferencia de pedirle al Conductor que corra al especialista). | ✅ construido (Etapa 10 + Etapa 12, 2026-08-16) |
+| `/conductor` | Chat con el Conductor — único **client component** de la app (los otros 3 son Server Components, esta necesita estado de React porque es interactiva). Botón "Nueva conversación" (Etapa 9): cierra la sesión actual (evalúa lección, muestra un aviso en el chat si guardó una) y crea una sesión nueva vacía. Selector de modelo (Etapa 15) junto al botón — ver Decisión K abajo. | ✅ construido (v1.2 + Etapa 9 + Etapa 15, mismo día) |
+| `/especialistas/[nombre]` | Chat directo con un especialista puntual (Etapa 10) — toma `frente` como query param (`?frente=<id>`). **Sin `frente` (Etapa 12): "consulta libre"**, sin caso, más barata en tokens — la página lo indica explícitamente y sugiere entrar desde un caso si la pregunta termina siendo sobre uno real. Links "💬 &lt;Especialista&gt;" agregados por frente en `/casos/[id]`. Aviso explícito: esto NO produce un documento persistido (a diferencia de pedirle al Conductor que corra al especialista). Selector de modelo (Etapa 15) junto a "ℹ️ Características". | ✅ construido (Etapa 10 + Etapa 12 + Etapa 15, 2026-08-16/17) |
 | `/especialistas` | Listado de los 3 especialistas — link a "💬 Consulta libre" (Etapa 12) y "ℹ️ Características" por cada uno. Agregado al nav global (antes solo se llegaba a un especialista desde dentro de un caso — Sebas: "no se ven los otros agentes"). | ✅ construido (Etapa 12, 2026-08-16) |
 | `/agentes/[nombre]` | Panel de características de un agente (Etapa 11) — herramientas (con descripción y si están disponibles en chat o solo en la corrida formal) + el `SYSTEM_PROMPT` completo. Server Component de solo lectura, sin interacción. Link "ℹ️ Características" en `/conductor` y en `/especialistas/[nombre]`, abre en pestaña nueva (`target="_blank"` — Sebas pidió "puede ser con un acceso a otra ventana"). | ✅ construido (Etapa 11, 2026-08-16) |
 
@@ -115,6 +116,32 @@ pytest (17 tests de `conductor/tests` fallaban solo en la regresión combinada, 
 suite por separado). Corregido insertando `conductor/` al frente del `sys.path` de `api/main.py`
 e importando bare (`from conductor import enviar_mensaje`) — mismo truco que ya usa
 `conductor/run.py`.
+
+### Decisión K — elegir modelo por sesión de chat (Etapa 15, 2026-08-17)
+
+Pedido de Sebas: poder elegir qué modelo de IA usa una conversación desde la web, sin reiniciar
+el server con otra env var. Decisiones tomadas antes de codear:
+
+- **Granularidad: por sesión de chat, no global ni por agente.** Las sesiones ya son la unidad
+  natural del sistema (cada una es su propia ficha KM) — no hizo falta un mecanismo de
+  persistencia nuevo, solo sumar un campo (`modelo`) a las plantillas que ya existían
+  (`conductor_sesiones.yaml`, `especialista_sesiones.yaml`) y pasarlo como `model=` al
+  `enviar_mensaje()` de cada agente, que ya aceptaba ese kwarg (`utils/ai_client.py`,
+  PROPUESTA_DESTINO.md §8, 2026-08-15).
+- **Lista curada, no texto libre.** Hoy solo hay `ANTHROPIC_API_KEY` configurada (verificado en
+  `.env`) — aunque `resolver_modelo()` acepta cualquier `"<proveedor>/<modelo>"` de LiteLLM,
+  ofrecer proveedores sin credenciales rompería al elegirlos. `utils/ai_client.py::
+  MODELOS_DISPONIBLES` es la única fuente (4 modelos Anthropic); `GET /modelos` la expone tal
+  cual, la UI la lee de ahí.
+- **El modelo queda fijado al crear la sesión, no se puede cambiar a mitad de conversación** — el
+  selector (`<select>` en `/conductor` y `/especialistas/[nombre]`) se deshabilita en cuanto hay
+  al menos un turno; cambiarlo antes del primer mensaje recrea la sesión con el nuevo modelo
+  (mismo patrón que "Nueva conversación").
+
+**Verificación real (no solo tests):** desde el browser, elegido "Haiku 4.5" en `/conductor`,
+mandado un mensaje real, confirmado leyendo la ficha del KM (`conductor_sesiones`) que
+`props.modelo == "claude-haiku-4-5-20251001"` y que el turno se registró. Repetido en
+`/especialistas/microbiologo` con "Opus 5" — misma confirmación contra `especialista_sesiones`.
 
 ### KM write — vía el Conductor, no la API en sí
 
@@ -228,6 +255,17 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 - [x] Verificación real contra el server de producción: descarga completa de un informe real de
       Helios (105 líneas, contenido íntegro) — link verificado en `/documentos/[id]` y en la
       lista de documentos de `/casos/[id]`
+- [x] Test (Etapa 15): `GET /modelos` devuelve la lista curada de 4; crear sesión con `modelo`
+      lo persiste (Conductor y especialista); sin `modelo`, queda `None`; `enviar_mensaje_*` pasa
+      `model=` al agente solo cuando `props.modelo` está seteado, si no lo omite (el agente usa su
+      propio default)
+- [x] `npm run build` sin errores de tipos con el selector nuevo en ambas páginas de chat
+- [x] Verificación real contra el server de producción y KM real (no solo tests): en `/conductor`,
+      elegido "Haiku 4.5", mandado un mensaje real ("Decime en una palabra qué sos" → "Conductor."),
+      confirmado leyendo la ficha (`conductor_sesiones`) que `props.modelo ==
+      "claude-haiku-4-5-20251001"` y que el turno quedó persistido. Repetido en
+      `/especialistas/microbiologo` eligiendo "Opus 5" antes del primer mensaje — confirmado
+      `props.modelo == "claude-opus-5"` en `especialista_sesiones`.
 
 ---
 
@@ -240,6 +278,8 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | Chat con cada especialista por separado (no solo con el Conductor) | ✅ hecho (Etapa 10, mismo día) | Pedido explícito de Sebas el mismo día que se resolvió la persistencia de sesiones. |
 | Consulta libre a un especialista, sin caso | ✅ hecho (Etapa 12, mismo día) | Sebas: "me preocupa el consumo de tokens, tal vez necesito hacer una consulta simple antes de abrir un caso nuevo." |
 | Crear casos nuevos desde la web/Conductor | ✅ hecho (Etapa 13, 2026-08-17) | Gap descubierto por Sebas el 16/08: hoy no existía NINGÚN camino para dar de alta un caso — resuelto con formulario (`/casos/nuevo`) + tool del Conductor, ambos sobre la misma función base (`utils/casos.py::crear_caso`). |
+| Descargar informes como `.md` | ✅ hecho (Etapa 14, 2026-08-17) | Sebas: "algo que le agregaría también es la posibilidad de descargar los informes." `GET /documentos/{id}/descargar`, link `<a>` directo — el `Content-Disposition` del server dispara la descarga, sin JS del lado del cliente. |
+| Elegir modelo de IA por sesión de chat | ✅ hecho (Etapa 15, 2026-08-17) | La abstracción de backend (`utils/ai_client.py`) ya existía; faltaba la superficie. Selector en `/conductor` y `/especialistas/[nombre]`, lista curada vía `GET /modelos` — ver Decisión K. |
 | Entrada por voz, modo documento coautoría, extracción de datos estructurados, vincular artefactos nuevos, dashboard | v2+ | `PROPUESTA_DESTINO.md` §7 los confirma como parte de la visión completa, pero son ideas para sumar al alcance, no lo mínimo de esta etapa. |
 | Autenticación / login real | No planeado todavía | `usuarios.yaml` — decisión ya tomada, sin login real por ahora, un solo usuario (Sebas). |
 
@@ -259,6 +299,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | H | Etapa 12 (2026-08-16) — Sebas, mirando el chat: "¿no puedo hacerles preguntas que no sean en el marco de un caso? me preocupa el consumo de tokens." ¿`frente_id` sigue obligatorio para hablar con un especialista? | Obligatorio / Opcional ("consulta libre") | **Opcional.** `_CrearSesionEspecialistaIn.frente_id: str \| None = None` — sin él, `POST /especialistas/{nombre}/sesiones` no llama `iniciar_sesion` (nada de contexto de caso que armar), la ficha se crea con `frente_id: null`. `/especialistas/[nombre]` sin `?frente=` entra en este modo automáticamente, en vez de mostrar un error. Resultado: la consulta libre es MÁS barata en tokens que el modo con caso, no una alternativa degradada — resuelve la preocupación de Sebas directamente. En la misma conversación surgió un segundo gap real, distinto de este: no existe ningún camino (ni web ni Conductor) para dar de alta un caso nuevo — anotado como Etapa 13, deuda explícita, no resuelto hoy. | 2026-08-16 |
 | I | Etapa 13 (2026-08-17) — ¿cómo se crea un caso: formulario web, Conductor conversacional, o los dos? | Formulario web / Conductor / Los dos | **Los dos**, elegido explícitamente por Sebas. `POST /casos` (`utils/casos.py::crear_caso`) es la base compartida — `/casos/nuevo` (formulario) y la tool `crear_caso` del Conductor (`conductor/docs/DESIGN_GATE.md` decisión G) llaman la misma función, sin duplicar lógica de creación. `nombre`/`descripcion` son los únicos campos obligatorios (son los que arman `texto_busqueda`, el campo vectorizado) — un caso puede crearse sin frentes (`casos.yaml` ya lo permite explícitamente). Verificado real contra staging (creación real, lectura de vuelta correcta, aparece en el listado) — la escritura contra producción vía el server real se verificó indirectamente: la ruta HTTP/validación por tests (mock), y el camino del Conductor con una conversación real que correctamente pidió confirmación sin llegar a escribir nada (decisión explícita de Sebas: no tocar producción con datos de prueba). | 2026-08-17 |
 | J | Etapa 14 (2026-08-17) — Sebas pidió poder descargar los informes. ¿Formato? | Markdown (.md) / PDF / Word (.docx) | **Markdown**, elegido explícitamente por Sebas ("recomendado para arrancar" — el contenido ya está guardado en ese formato, sin conversión). Implementado como `GET /documentos/{id}/descargar` con `Content-Disposition: attachment` — un link `<a href>` directo, sin JS ni fetch del lado del cliente; el navegador dispara la descarga solo. `_slug_archivo()` arma el nombre de archivo desde el título (normaliza acentos/símbolos vía `unicodedata`, no depende de que el header HTTP maneje bien UTF-8 en el filename). Verificado real: descarga completa del informe real del Microbiólogo sobre Helios (105 líneas, contenido íntegro). | 2026-08-17 |
+| K | Etapa 15 (2026-08-17) — ¿granularidad para elegir modelo de IA (por sesión de chat / por agente / global) y qué modelos ofrecer (lista curada / texto libre)? | Ver detalle en la sección "Decisión K" arriba | **Por sesión de chat, lista curada.** Sesiones ya son la unidad natural del sistema — no hizo falta persistencia nueva, solo un campo (`modelo`) en las plantillas ya existentes. Lista curada porque hoy solo hay `ANTHROPIC_API_KEY` configurada — texto libre ofrecería proveedores que romperían al elegirlos. | 2026-08-17 |
 
 ---
 
@@ -266,7 +307,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-J cerradas, ninguna abierta.
+Decisiones A-K cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Gasto de tokens visible en la web → v1.1, anotado explícitamente para no perderse

@@ -54,6 +54,7 @@ from pydantic import BaseModel
 
 from knowledge_module.motor import api as motor_api
 from knowledge_module.motor.loader import load_plantilla
+from utils.ai_client import MODELOS_DISPONIBLES
 from utils.casos import (
     listar_casos as _listar_casos_fn,
     obtener_frentes_de_caso as _obtener_frentes_fn,
@@ -182,6 +183,17 @@ async def crear_caso(body: _CrearCasoIn) -> dict:
     return {"caso_id": resultado["caso_id"]}
 
 
+@app.get("/modelos")
+async def listar_modelos() -> list[dict]:
+    """
+    Lista curada de modelos elegibles por sesión de chat (Etapa 15, 2026-08-17) — no texto libre,
+    para que la UI nunca ofrezca un ID inválido. Fuente única: `utils/ai_client.py::
+    MODELOS_DISPONIBLES` — sumar un modelo nuevo (o un proveedor nuevo cuando haya credenciales)
+    es tocar ese único lugar, esta ruta y la UI lo leen de ahí, no lo duplican.
+    """
+    return MODELOS_DISPONIBLES
+
+
 @app.get("/casos/{caso_id}")
 async def obtener_caso(caso_id: str) -> dict:
     caso = await motor_api.obtener(caso_id, tenant=_TENANT)
@@ -276,8 +288,14 @@ class _MensajeIn(BaseModel):
     texto: str
 
 
+class _CrearSesionConductorIn(BaseModel):
+    # Opcional (Etapa 15, 2026-08-17) — elegir modelo por sesión de chat. None = default del
+    # agente (env var CONDUCTOR_MODEL). Ver utils/ai_client.py::MODELOS_DISPONIBLES.
+    modelo: str | None = None
+
+
 @app.post("/conductor/sesiones")
-async def crear_sesion_conductor() -> dict:
+async def crear_sesion_conductor(body: _CrearSesionConductorIn | None = None) -> dict:
     # load_plantilla es idempotente (upsert) — correrlo acá evita depender de un paso de setup
     # manual aparte; el costo (una query extra) es despreciable comparado con lo que sigue
     # (llamadas al modelo de varios segundos).
@@ -286,7 +304,7 @@ async def crear_sesion_conductor() -> dict:
     ahora = datetime.now(timezone.utc).isoformat()
     resultado = await motor_api.guardar_ficha(
         area="conductor_sesiones", tipo="sesion", tenant=_TENANT,
-        campos={"mensajes": [], "iniciada_en": ahora, "actualizada_en": ahora},
+        campos={"mensajes": [], "iniciada_en": ahora, "actualizada_en": ahora, "modelo": body.modelo if body else None},
     )
     if not resultado.get("success"):
         raise HTTPException(status_code=500, detail=f"No se pudo crear la sesión: {resultado.get('error')}")
@@ -305,8 +323,10 @@ async def enviar_mensaje_conductor(session_id: str, body: _MensajeIn) -> dict:
     if not sesion or sesion.get("tipo") != "sesion":
         raise HTTPException(status_code=404, detail="Sesión no encontrada — crear una nueva con POST /conductor/sesiones")
 
-    messages = (sesion.get("props") or {}).get("mensajes") or []
-    respuesta, messages = await _enviar_mensaje_conductor(messages, body.texto)
+    props = sesion.get("props") or {}
+    messages = props.get("mensajes") or []
+    kwargs_modelo = {"model": props["modelo"]} if props.get("modelo") else {}
+    respuesta, messages = await _enviar_mensaje_conductor(messages, body.texto, **kwargs_modelo)
 
     await motor_api.actualizar_props(
         session_id,
@@ -353,6 +373,8 @@ class _CrearSesionEspecialistaIn(BaseModel):
     # puntual a un especialista sin necesitar un caso/frente ya creado, y sin pagar el costo de
     # armar ese contexto. Sin frente_id, la sesión arranca vacía (ver <especialista>.enviar_mensaje).
     frente_id: str | None = None
+    # Opcional (Etapa 15, 2026-08-17) — elegir modelo por sesión. None = default del agente.
+    modelo: str | None = None
 
 
 @app.post("/especialistas/{nombre}/sesiones")
@@ -379,6 +401,7 @@ async def crear_sesion_especialista(nombre: str, body: _CrearSesionEspecialistaI
             "mensajes": _serializar_mensajes(mensajes_iniciales),
             "iniciada_en": ahora,
             "actualizada_en": ahora,
+            "modelo": body.modelo,
         },
     )
     if not resultado.get("success"):
@@ -403,7 +426,8 @@ async def enviar_mensaje_especialista(session_id: str, body: _MensajeIn) -> dict
     modulo = _ESPECIALISTAS_CHAT[nombre]  # nombre siempre válido — se validó al crear la sesión
 
     messages = props.get("mensajes") or []
-    respuesta, messages = await modulo.enviar_mensaje(messages, body.texto, props.get("frente_id"))
+    kwargs_modelo = {"model": props["modelo"]} if props.get("modelo") else {}
+    respuesta, messages = await modulo.enviar_mensaje(messages, body.texto, props.get("frente_id"), **kwargs_modelo)
 
     await motor_api.actualizar_props(
         session_id,
