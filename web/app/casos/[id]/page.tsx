@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { obtenerCaso, ESPECIALISTAS } from "@/lib/api";
+import { obtenerCaso, ESPECIALISTAS, urlDescargaDocumento } from "@/lib/api";
 
 export default async function CasoDetallePage({
   params,
@@ -45,13 +45,20 @@ export default async function CasoDetallePage({
                 ) : (
                   <ul className="mt-2 flex flex-col gap-1">
                     {frente.documentos.map((doc) => (
-                      <li key={doc.id}>
+                      <li key={doc.id} className="flex items-center gap-2">
                         <Link
                           href={`/documentos/${doc.id}`}
                           className="text-sm text-blue-600 hover:underline"
                         >
                           {doc.titulo} <span className="text-neutral-400">({doc.estado})</span>
                         </Link>
+                        <a
+                          href={urlDescargaDocumento(doc.id)}
+                          className="text-xs text-neutral-400 hover:text-neutral-600"
+                          title="Descargar (.md)"
+                        >
+                          ⬇
+                        </a>
                       </li>
                     ))}
                   </ul>

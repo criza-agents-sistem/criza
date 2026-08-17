@@ -130,6 +130,44 @@ def test_obtener_documento_id_de_otro_tipo_es_404():
     assert resp.status_code == 404
 
 
+# ── Descargar documento (Etapa 14, 2026-08-17) ───────────────────────────────
+
+@pytest.mark.unit
+def test_slug_archivo_normaliza_acentos_y_simbolos():
+    assert api_main._slug_archivo("Evaluación — microbiologo") == "evaluacion-microbiologo"
+
+
+@pytest.mark.unit
+def test_slug_archivo_vacio_usa_fallback():
+    assert api_main._slug_archivo("") == "documento"
+
+
+@pytest.mark.unit
+def test_descargar_documento_ok():
+    doc = {"id": "doc-1", "tipo": "documento_caso", "props": {"titulo": "Evaluación — microbiologo", "contenido": "# Informe\n\ncontenido real"}}
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=doc)):
+        resp = client.get("/documentos/doc-1/descargar")
+    assert resp.status_code == 200
+    assert resp.text == "# Informe\n\ncontenido real"
+    assert resp.headers["content-type"].startswith("text/markdown")
+    assert 'filename="evaluacion-microbiologo.md"' in resp.headers["content-disposition"]
+    assert "attachment" in resp.headers["content-disposition"]
+
+
+@pytest.mark.unit
+def test_descargar_documento_no_encontrado():
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=None)):
+        resp = client.get("/documentos/no-existe/descargar")
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_descargar_documento_otro_tipo_es_404():
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=CASO_HELIOS)):
+        resp = client.get("/documentos/caso-helios/descargar")
+    assert resp.status_code == 404
+
+
 # ── Chat del Conductor — sesiones persistidas en el KM, no en memoria ──────────
 
 @pytest.mark.unit

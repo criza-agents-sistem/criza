@@ -70,6 +70,12 @@ export function obtenerDocumento(id: string): Promise<Documento | null> {
   return apiFetch<Documento>(`/documentos/${id}`);
 }
 
+// Etapa 14 (2026-08-17) — descargar el informe como .md. Link directo (<a href>), no fetch: el
+// Content-Disposition del server dispara la descarga, no hace falta JS del lado del cliente.
+export function urlDescargaDocumento(id: string): string {
+  return `${API_URL}/documentos/${id}/descargar`;
+}
+
 // Etapa 13 (2026-08-17) — crear un caso, no solo leerlos. Client component (formulario), por
 // eso devuelve/lanza en vez de usar apiFetch (que trata 404 como "no encontrado", no aplica acá).
 export async function crearCaso(input: {

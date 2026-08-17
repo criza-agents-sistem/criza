@@ -26,7 +26,9 @@ separado que mantener sincronizado.
 Ver docs/DESIGN_GATE.md — decisiones A-E (2026-08-16).
 """
 
+import re
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,6 +49,7 @@ sys.path.insert(0, str(_CRIZA_DIR / "conductor"))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from knowledge_module.motor import api as motor_api
@@ -238,6 +241,33 @@ async def obtener_documento(documento_id: str) -> dict:
         "agente": props.get("agente"),
         "contenido": props.get("contenido"),
     }
+
+
+def _slug_archivo(titulo: str) -> str:
+    """'Evaluación — microbiologo' -> 'evaluacion-microbiologo' — nombre de archivo seguro para
+    Content-Disposition, sin depender de que el navegador maneje bien acentos/símbolos en headers."""
+    normalizado = unicodedata.normalize("NFKD", titulo).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"-+", "-", re.sub(r"[^a-zA-Z0-9]+", "-", normalizado)).strip("-").lower() or "documento"
+
+
+@app.get("/documentos/{documento_id}/descargar")
+async def descargar_documento(documento_id: str) -> Response:
+    """
+    Descarga el contenido de un documento como archivo `.md` (Etapa 14, 2026-08-17) — Sebas
+    pidió poder descargar los informes. Link directo del navegador (`<a href>`, sin fetch/JS), el
+    `Content-Disposition: attachment` es lo que dispara la descarga en vez de navegar a la URL.
+    """
+    doc = await motor_api.obtener(documento_id, tenant=_TENANT)
+    if not doc or doc.get("tipo") != "documento_caso":
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    props = doc.get("props") or {}
+    contenido = props.get("contenido") or ""
+    nombre_archivo = f"{_slug_archivo(props.get('titulo') or 'documento')}.md"
+    return Response(
+        content=contenido,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nombre_archivo}"'},
+    )
 
 
 # ── Chat del Conductor ────────────────────────────────────────────────────────
