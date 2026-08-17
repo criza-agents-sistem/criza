@@ -110,6 +110,49 @@ export async function crearCaso(input: {
   return data.caso_id as string;
 }
 
+// Etapa 16 (2026-08-17) — historial de conversaciones. Bug real: la página creaba una sesión
+// nueva en cada carga sin guardar el session_id en ningún lado del browser, así que volver más
+// tarde a /conductor mostraba un chat vacío aunque la conversación anterior seguía intacta en
+// el KM. Estas funciones son la mitad "encontrarla" del fix (la otra mitad, recordar la sesión
+// activa entre cargas, vive en las páginas de chat vía localStorage).
+export type TurnoPersistido = { rol: "vos" | "conductor" | "especialista"; texto: string };
+
+export type SesionResumen = {
+  id: string;
+  iniciada_en: string | null;
+  actualizada_en: string | null;
+  primer_mensaje: string;
+  modelo: string | null;
+};
+
+export function listarSesionesConductor(): Promise<SesionResumen[] | null> {
+  return apiFetch<SesionResumen[]>("/conductor/sesiones");
+}
+
+export type SesionConductorDetalle = { id: string; modelo: string | null; turnos: TurnoPersistido[] };
+
+export function obtenerSesionConductor(id: string): Promise<SesionConductorDetalle | null> {
+  return apiFetch<SesionConductorDetalle>(`/conductor/sesiones/${id}`);
+}
+
+export type SesionEspecialistaResumen = SesionResumen & { frente_id: string | null };
+
+export function listarSesionesEspecialista(nombre: string): Promise<SesionEspecialistaResumen[] | null> {
+  return apiFetch<SesionEspecialistaResumen[]>(`/especialistas/sesiones?especialista=${encodeURIComponent(nombre)}`);
+}
+
+export type SesionEspecialistaDetalle = {
+  id: string;
+  especialista: string;
+  frente_id: string | null;
+  modelo: string | null;
+  turnos: TurnoPersistido[];
+};
+
+export function obtenerSesionEspecialista(id: string): Promise<SesionEspecialistaDetalle | null> {
+  return apiFetch<SesionEspecialistaDetalle>(`/especialistas/sesiones/${id}`);
+}
+
 // ── Conductor (chat) ─────────────────────────────────────────────────────────
 // A diferencia de listarCasos/obtenerCaso/obtenerDocumento (server components, GET,
 // cache: "no-store"), estas se llaman desde un client component — el Conductor puede tardar

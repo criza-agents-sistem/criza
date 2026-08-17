@@ -282,6 +282,51 @@ async def descargar_documento(documento_id: str) -> Response:
     )
 
 
+def _mensajes_a_turnos(mensajes: list[dict], rol_agente: str) -> list[dict]:
+    """
+    Reconstruye los turnos VISIBLES (lo que se ve en el chat) a partir de los `mensajes` crudos
+    guardados en el KM (Etapa 16, 2026-08-17) — esos incluyen los pasos intermedios de tool-use/
+    tool-result que nunca se le mostraron a Sebas en pantalla, así que hace falta filtrarlos, no
+    solo reproducir la lista tal cual.
+
+    Un mensaje "user" con `content` string es un turno real de Sebas (lo que arma
+    `enviar_mensaje()` en cada agente); con `content` lista es un envoltorio de `tool_result`, se
+    descarta. Un mensaje "assistant" es la respuesta final del turno solo si NINGÚN bloque es
+    `tool_use` — si los tiene, es un paso intermedio del loop de tools, se descarta.
+    """
+    turnos = []
+    for m in mensajes:
+        content = m.get("content")
+        if m.get("role") == "user":
+            if isinstance(content, str):
+                turnos.append({"rol": "vos", "texto": content})
+        elif m.get("role") == "assistant":
+            bloques = content if isinstance(content, list) else []
+            if any(b.get("type") == "tool_use" for b in bloques):
+                continue
+            texto = "".join(b.get("text", "") for b in bloques if b.get("type") == "text")
+            if texto:
+                turnos.append({"rol": rol_agente, "texto": texto})
+    return turnos
+
+
+def _resumen_sesion(sesion: dict, rol_agente: str) -> dict | None:
+    """None si la sesión no tiene ningún turno visible todavía (sesión recién creada, abandonada
+    sin mandar mensaje) — no tiene sentido listarla en el historial."""
+    props = sesion.get("props") or {}
+    turnos = _mensajes_a_turnos(props.get("mensajes") or [], rol_agente)
+    if not turnos:
+        return None
+    primer_texto = turnos[0]["texto"]
+    return {
+        "id": sesion["id"],
+        "iniciada_en": props.get("iniciada_en"),
+        "actualizada_en": props.get("actualizada_en"),
+        "primer_mensaje": primer_texto[:140] + "…" if len(primer_texto) > 140 else primer_texto,
+        "modelo": props.get("modelo"),
+    }
+
+
 # ── Chat del Conductor ────────────────────────────────────────────────────────
 
 class _MensajeIn(BaseModel):
@@ -309,6 +354,39 @@ async def crear_sesion_conductor(body: _CrearSesionConductorIn | None = None) ->
     if not resultado.get("success"):
         raise HTTPException(status_code=500, detail=f"No se pudo crear la sesión: {resultado.get('error')}")
     return {"session_id": resultado["id"]}
+
+
+@app.get("/conductor/sesiones")
+async def listar_sesiones_conductor() -> list[dict]:
+    """
+    Historial de conversaciones con el Conductor (Etapa 16, 2026-08-17) — bug real: Sebas volvió
+    a `/conductor` más tarde y la respuesta que había recibido "desapareció". Causa: la página
+    creaba una sesión nueva en cada carga y nunca guardaba el `session_id` en ningún lado del
+    browser — la conversación anterior seguía intacta en el KM, pero no había forma de volver a
+    encontrarla desde la web. Esta lista es la mitad "encontrarla" del fix (la otra mitad es
+    recordar la sesión activa, ver `web/app/conductor/page.tsx`).
+    """
+    sesiones = await motor_api.listar(area="conductor_sesiones", tipo="sesion", limit=200, tenant=_TENANT)
+    resumenes = [r for s in sesiones if (r := _resumen_sesion(s, "conductor")) is not None]
+    resumenes.sort(key=lambda r: r["actualizada_en"] or "", reverse=True)
+    return resumenes
+
+
+@app.get("/conductor/sesiones/{session_id}")
+async def obtener_sesion_conductor(session_id: str) -> dict:
+    try:
+        sesion = await motor_api.obtener(session_id, tenant=_TENANT)
+    except Exception:
+        sesion = None
+    if not sesion or sesion.get("tipo") != "sesion":
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+
+    props = sesion.get("props") or {}
+    return {
+        "id": session_id,
+        "modelo": props.get("modelo"),
+        "turnos": _mensajes_a_turnos(props.get("mensajes") or [], "conductor"),
+    }
 
 
 @app.post("/conductor/sesiones/{session_id}/mensajes")
@@ -407,6 +485,47 @@ async def crear_sesion_especialista(nombre: str, body: _CrearSesionEspecialistaI
     if not resultado.get("success"):
         raise HTTPException(status_code=500, detail=f"No se pudo crear la sesión: {resultado.get('error')}")
     return {"session_id": resultado["id"]}
+
+
+@app.get("/especialistas/sesiones")
+async def listar_sesiones_especialista(especialista: str) -> list[dict]:
+    """Historial de conversaciones con un especialista puntual (Etapa 16) — mismo fix que
+    `GET /conductor/sesiones`, mismo bug. Incluye todas las sesiones de ese especialista, con o
+    sin `frente_id` (consulta libre o sobre un caso)."""
+    if especialista not in _ESPECIALISTAS_CHAT:
+        raise HTTPException(status_code=404, detail=f"'{especialista}' no es un especialista disponible. Opciones: {list(_ESPECIALISTAS_CHAT.keys())}.")
+    sesiones = await motor_api.listar(
+        area="especialista_sesiones", tipo="sesion_especialista",
+        contiene={"especialista": especialista}, limit=200, tenant=_TENANT,
+    )
+    resumenes = []
+    for s in sesiones:
+        resumen = _resumen_sesion(s, "especialista")
+        if resumen is None:
+            continue
+        resumen["frente_id"] = (s.get("props") or {}).get("frente_id")
+        resumenes.append(resumen)
+    resumenes.sort(key=lambda r: r["actualizada_en"] or "", reverse=True)
+    return resumenes
+
+
+@app.get("/especialistas/sesiones/{session_id}")
+async def obtener_sesion_especialista(session_id: str) -> dict:
+    try:
+        sesion = await motor_api.obtener(session_id, tenant=_TENANT)
+    except Exception:
+        sesion = None
+    if not sesion or sesion.get("tipo") != "sesion_especialista":
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+
+    props = sesion.get("props") or {}
+    return {
+        "id": session_id,
+        "especialista": props.get("especialista"),
+        "frente_id": props.get("frente_id"),
+        "modelo": props.get("modelo"),
+        "turnos": _mensajes_a_turnos(props.get("mensajes") or [], "especialista"),
+    }
 
 
 @app.post("/especialistas/sesiones/{session_id}/mensajes")

@@ -9,10 +9,26 @@ import {
   cerrarSesionConductor,
   cerrarSesionConductorBeacon,
   listarModelos,
+  listarSesionesConductor,
+  obtenerSesionConductor,
   type ModeloDisponible,
+  type SesionResumen,
 } from "@/lib/api";
 
 type Turno = { rol: "vos" | "conductor" | "error" | "sistema"; texto: string };
+
+// Etapa 16 (2026-08-17) — bug real: Sebas volvió a /conductor más tarde y la respuesta que había
+// recibido "desapareció". La página creaba una sesión nueva en cada carga sin guardar el
+// session_id en ningún lado del browser — la conversación seguía intacta en el KM, pero no había
+// forma de volver a encontrarla. Guardamos acá el id de la sesión activa para sobrevivir a un
+// refresh, y el botón "Historial" (abajo) cubre el resto de los casos (otro navegador, localStorage
+// borrado, etc.) leyendo directo del KM.
+const SESSION_STORAGE_KEY = "criza_conductor_session_id";
+
+function formatearFecha(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 
 export default function ConductorPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -23,17 +39,46 @@ export default function ConductorPage() {
   const [errorSesion, setErrorSesion] = useState<string | null>(null);
   const [modelos, setModelos] = useState<ModeloDisponible[]>([]);
   const [modeloElegido, setModeloElegido] = useState("");
+  const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const [historial, setHistorial] = useState<SesionResumen[]>([]);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
   const sessionIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  function guardarSesionActiva(id: string | null) {
+    setSessionId(id);
+    sessionIdRef.current = id;
+    if (id) localStorage.setItem(SESSION_STORAGE_KEY, id);
+    else localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+
+  async function crearYGuardarSesion(modelo?: string) {
+    const id = await crearSesionConductor(modelo).catch((e) => {
+      setErrorSesion(e.message);
+      return null;
+    });
+    guardarSesionActiva(id);
+    return id;
+  }
+
   useEffect(() => {
-    crearSesionConductor()
-      .then((id) => {
-        setSessionId(id);
-        sessionIdRef.current = id;
-      })
-      .catch((e) => setErrorSesion(e.message));
+    const guardada = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (guardada) {
+      obtenerSesionConductor(guardada)
+        .then((detalle) => {
+          if (!detalle) {
+            crearYGuardarSesion();
+            return;
+          }
+          guardarSesionActiva(guardada);
+          setModeloElegido(detalle.modelo ?? "");
+          setTurnos(detalle.turnos.map((t) => ({ rol: t.rol as Turno["rol"], texto: t.texto })));
+        })
+        .catch(() => crearYGuardarSesion());
+    } else {
+      crearYGuardarSesion();
+    }
     listarModelos().then((lista) => setModelos(lista ?? []));
   }, []);
 
@@ -42,12 +87,7 @@ export default function ConductorPage() {
   async function elegirModelo(modelo: string) {
     setModeloElegido(modelo);
     if (turnos.length > 0) return;
-    const nuevoId = await crearSesionConductor(modelo || undefined).catch((e) => {
-      setErrorSesion(e.message);
-      return null;
-    });
-    setSessionId(nuevoId);
-    sessionIdRef.current = nuevoId;
+    await crearYGuardarSesion(modelo || undefined);
   }
 
   // Best-effort: si Sebas cierra la pestaña sin apretar "Nueva conversación", igual intentamos
@@ -76,14 +116,31 @@ export default function ConductorPage() {
     } catch {
       // best-effort — si falla, igual arrancamos la conversación nueva
     }
-    const nuevoId = await crearSesionConductor(modeloElegido || undefined).catch((e) => {
+    await crearYGuardarSesion(modeloElegido || undefined);
+    setTurnos([]);
+    setCerrandoSesion(false);
+  }
+
+  async function toggleHistorial() {
+    const abrir = !mostrarHistorial;
+    setMostrarHistorial(abrir);
+    if (!abrir) return;
+    setCargandoHistorial(true);
+    const lista = await listarSesionesConductor().catch(() => null);
+    setHistorial(lista ?? []);
+    setCargandoHistorial(false);
+  }
+
+  async function abrirSesionHistorial(id: string) {
+    const detalle = await obtenerSesionConductor(id).catch((e) => {
       setErrorSesion(e.message);
       return null;
     });
-    setSessionId(nuevoId);
-    sessionIdRef.current = nuevoId;
-    setTurnos([]);
-    setCerrandoSesion(false);
+    if (!detalle) return;
+    guardarSesionActiva(id);
+    setModeloElegido(detalle.modelo ?? "");
+    setTurnos(detalle.turnos.map((t) => ({ rol: t.rol as Turno["rol"], texto: t.texto })));
+    setMostrarHistorial(false);
   }
 
   function manejarTecla(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -139,6 +196,34 @@ export default function ConductorPage() {
           >
             ℹ️ Características
           </a>
+          <div className="relative">
+            <button
+              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+              onClick={toggleHistorial}
+            >
+              🕘 Historial
+            </button>
+            {mostrarHistorial && (
+              <div className="absolute right-0 z-10 mt-2 max-h-96 w-96 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-2 shadow-lg">
+                {cargandoHistorial ? (
+                  <p className="p-2 text-sm text-neutral-400">Cargando...</p>
+                ) : historial.length === 0 ? (
+                  <p className="p-2 text-sm text-neutral-400">Todavía no hay conversaciones guardadas.</p>
+                ) : (
+                  historial.map((s) => (
+                    <button
+                      key={s.id}
+                      className={`block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-neutral-50 ${s.id === sessionId ? "bg-neutral-50" : ""}`}
+                      onClick={() => abrirSesionHistorial(s.id)}
+                    >
+                      <div className="truncate text-neutral-800">{s.primer_mensaje}</div>
+                      <div className="text-xs text-neutral-400">{formatearFecha(s.actualizada_en)}</div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           <button
             className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
             disabled={!sessionId || cerrandoSesion || turnos.length === 0}

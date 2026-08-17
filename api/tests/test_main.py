@@ -226,6 +226,111 @@ def test_crear_sesion_conductor_sin_body_queda_modelo_none():
     assert kwargs["campos"]["modelo"] is None
 
 
+# ── Historial de sesiones (Etapa 16, 2026-08-17 — fix del bug "se perdió la respuesta") ────────
+
+_MENSAJES_CRUDOS_CON_TOOL_USE = [
+    {"role": "user", "content": "¿Qué casos tenemos activos?"},
+    {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "listar_casos", "input": {}}]},
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "[]"}]},
+    {"role": "assistant", "content": [{"type": "text", "text": "Tenemos 2 casos activos: Helios y MicroBigs."}]},
+]
+
+
+@pytest.mark.unit
+def test_mensajes_a_turnos_filtra_pasos_intermedios_de_tools():
+    turnos = api_main._mensajes_a_turnos(_MENSAJES_CRUDOS_CON_TOOL_USE, "conductor")
+    assert turnos == [
+        {"rol": "vos", "texto": "¿Qué casos tenemos activos?"},
+        {"rol": "conductor", "texto": "Tenemos 2 casos activos: Helios y MicroBigs."},
+    ]
+
+
+@pytest.mark.unit
+def test_mensajes_a_turnos_vacio_si_no_hay_mensajes():
+    assert api_main._mensajes_a_turnos([], "conductor") == []
+
+
+@pytest.mark.unit
+def test_listar_sesiones_conductor_excluye_sesiones_sin_turnos():
+    """Sesiones creadas pero abandonadas antes de mandar el primer mensaje (recarga de página,
+    el bug que motivó esta etapa) no deben aparecer en el historial."""
+    vacia = {"id": "s-vacia", "tipo": "sesion", "props": {"mensajes": [], "iniciada_en": "2026-08-17T10:00:00Z", "actualizada_en": "2026-08-17T10:00:00Z"}}
+    con_contenido = {"id": "s-real", "tipo": "sesion", "props": {"mensajes": _MENSAJES_CRUDOS_CON_TOOL_USE, "iniciada_en": "2026-08-17T09:00:00Z", "actualizada_en": "2026-08-17T09:05:00Z", "modelo": "claude-opus-5"}}
+    with patch("main.motor_api.listar", new=AsyncMock(return_value=[vacia, con_contenido])):
+        resp = client.get("/conductor/sesiones")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["id"] == "s-real"
+    assert data[0]["primer_mensaje"] == "¿Qué casos tenemos activos?"
+    assert data[0]["modelo"] == "claude-opus-5"
+
+
+@pytest.mark.unit
+def test_listar_sesiones_conductor_trunca_primer_mensaje_largo():
+    largo = "x" * 200
+    sesion = {"id": "s-larga", "tipo": "sesion", "props": {"mensajes": [{"role": "user", "content": largo}], "actualizada_en": "2026-08-17T09:00:00Z"}}
+    with patch("main.motor_api.listar", new=AsyncMock(return_value=[sesion])):
+        resp = client.get("/conductor/sesiones")
+    data = resp.json()
+    assert len(data[0]["primer_mensaje"]) == 141  # 140 + "…"
+    assert data[0]["primer_mensaje"].endswith("…")
+
+
+@pytest.mark.unit
+def test_obtener_sesion_conductor_ok():
+    sesion = {"id": "s-real", "tipo": "sesion", "props": {"mensajes": _MENSAJES_CRUDOS_CON_TOOL_USE, "modelo": "claude-haiku-4-5-20251001"}}
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)):
+        resp = client.get("/conductor/sesiones/s-real")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["modelo"] == "claude-haiku-4-5-20251001"
+    assert len(data["turnos"]) == 2
+    assert data["turnos"][1]["texto"] == "Tenemos 2 casos activos: Helios y MicroBigs."
+
+
+@pytest.mark.unit
+def test_obtener_sesion_conductor_no_encontrada():
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=None)):
+        resp = client.get("/conductor/sesiones/no-existe")
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_listar_sesiones_especialista_nombre_invalido():
+    resp = client.get("/especialistas/sesiones", params={"especialista": "no-existe"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.unit
+def test_listar_sesiones_especialista_incluye_frente_id():
+    con_frente = {"id": "s-1", "tipo": "sesion_especialista", "props": {"mensajes": _MENSAJES_CRUDOS_CON_TOOL_USE, "especialista": "microbiologo", "frente_id": "frente-1", "actualizada_en": "2026-08-17T09:00:00Z"}}
+    with patch("main.motor_api.listar", new=AsyncMock(return_value=[con_frente])):
+        resp = client.get("/especialistas/sesiones", params={"especialista": "microbiologo"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data[0]["frente_id"] == "frente-1"
+
+
+@pytest.mark.unit
+def test_obtener_sesion_especialista_ok():
+    sesion = {"id": "s-1", "tipo": "sesion_especialista", "props": {"mensajes": _MENSAJES_CRUDOS_CON_TOOL_USE, "especialista": "microbiologo", "frente_id": None, "modelo": None}}
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=sesion)):
+        resp = client.get("/especialistas/sesiones/s-1")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["especialista"] == "microbiologo"
+    assert len(data["turnos"]) == 2
+    assert data["turnos"][1]["rol"] == "especialista"
+
+
+@pytest.mark.unit
+def test_obtener_sesion_especialista_no_encontrada():
+    with patch("main.motor_api.obtener", new=AsyncMock(return_value=None)):
+        resp = client.get("/especialistas/sesiones/no-existe")
+    assert resp.status_code == 404
+
+
 @pytest.mark.unit
 def test_crear_sesion_conductor_falla_al_guardar_es_500():
     with (

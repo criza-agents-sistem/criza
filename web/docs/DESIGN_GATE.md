@@ -61,6 +61,10 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `POST /especialistas/sesiones/{id}/mensajes` | Un turno de chat — envuelve `<especialista>.enviar_mensaje()`, que usa `TOOLS_CHAT` (todas las tools del especialista MENOS `submit_evaluacion_tecnica`, a propósito: el chat no produce un documento persistido). | ✅ construido (Etapa 10, 2026-08-16) |
 | `GET /agentes/{nombre}` | Características de un agente (`conductor`/`microbiologo`/`ingeniero_ambiental`/`agronomo`) — `SYSTEM_PROMPT` y `TOOLS` leídos EN VIVO del módulo del agente (no una copia), con `disponible_en_chat` marcando qué tools son exclusivas de la corrida formal (`submit_evaluacion_tecnica`). | ✅ construido (Etapa 11, 2026-08-16) |
 | `GET /modelos` | Lista curada de modelos elegibles por sesión de chat (Etapa 15, 2026-08-17) — `utils/ai_client.py::MODELOS_DISPONIBLES`, única fuente (no la duplica). `POST /conductor/sesiones` y `POST /especialistas/{nombre}/sesiones` aceptan un campo opcional `modelo` en el body — se persiste en la ficha de sesión (`campos.modelo`) y se pasa como `model=` a `enviar_mensaje()` en cada turno subsiguiente; `null`/ausente = default del agente (env var propia). | ✅ construido (Etapa 15, 2026-08-17) |
+| `GET /conductor/sesiones` | Historial de conversaciones con el Conductor (Etapa 16, 2026-08-17) — lista todas las sesiones con al menos un turno visible (excluye las abandonadas antes del primer mensaje), con preview del primer mensaje, fecha y modelo. Reconstruye los turnos visibles desde los `mensajes` crudos guardados vía `_mensajes_a_turnos()` (filtra pasos intermedios de tool-use/tool-result). | ✅ construido (Etapa 16, 2026-08-17) |
+| `GET /conductor/sesiones/{id}` | Detalle completo de una sesión — `modelo` + `turnos` reconstruidos, para hidratar el chat al volver a una conversación anterior. | ✅ construido (Etapa 16, 2026-08-17) |
+| `GET /especialistas/sesiones?especialista={nombre}` | Historial de conversaciones con un especialista puntual (Etapa 16) — mismo criterio que la versión del Conductor, incluye `frente_id` de cada sesión (`null` = consulta libre). | ✅ construido (Etapa 16, 2026-08-17) |
+| `GET /especialistas/sesiones/{id}` | Detalle completo de una sesión de especialista — `especialista`/`frente_id`/`modelo`/`turnos`. | ✅ construido (Etapa 16, 2026-08-17) |
 
 ### Páginas — `web/app/`
 
@@ -70,8 +74,8 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | `/casos/nuevo` | Formulario de alta de caso (Etapa 13, 2026-08-17) — client component, nombre/descripción obligatorios, estadío/notas opcionales. Redirige a `/casos/{id}` al crear. | ✅ construido (Etapa 13, 2026-08-17) |
 | `/casos/[id]` | Detalle: frentes (con estado de documentos — "sin documentos producidos todavía" si no hay ninguno), pendientes (abiertos/resueltos visualmente distintos), artefactos externos | ✅ construido |
 | `/documentos/[id]` | Contenido completo de un documento, **renderizado como markdown real** (`react-markdown` + `remark-gfm` + `@tailwindcss/typography`) — no como texto plano con `##`/`**` literales | ✅ construido |
-| `/conductor` | Chat con el Conductor — único **client component** de la app (los otros 3 son Server Components, esta necesita estado de React porque es interactiva). Botón "Nueva conversación" (Etapa 9): cierra la sesión actual (evalúa lección, muestra un aviso en el chat si guardó una) y crea una sesión nueva vacía. Selector de modelo (Etapa 15) junto al botón — ver Decisión K abajo. | ✅ construido (v1.2 + Etapa 9 + Etapa 15, mismo día) |
-| `/especialistas/[nombre]` | Chat directo con un especialista puntual (Etapa 10) — toma `frente` como query param (`?frente=<id>`). **Sin `frente` (Etapa 12): "consulta libre"**, sin caso, más barata en tokens — la página lo indica explícitamente y sugiere entrar desde un caso si la pregunta termina siendo sobre uno real. Links "💬 &lt;Especialista&gt;" agregados por frente en `/casos/[id]`. Aviso explícito: esto NO produce un documento persistido (a diferencia de pedirle al Conductor que corra al especialista). Selector de modelo (Etapa 15) junto a "ℹ️ Características". | ✅ construido (Etapa 10 + Etapa 12 + Etapa 15, 2026-08-16/17) |
+| `/conductor` | Chat con el Conductor — único **client component** de la app (los otros 3 son Server Components, esta necesita estado de React porque es interactiva). Botón "Nueva conversación" (Etapa 9): cierra la sesión actual (evalúa lección, muestra un aviso en el chat si guardó una) y crea una sesión nueva vacía. Selector de modelo (Etapa 15) junto al botón. Botón "🕘 Historial" (Etapa 16) — ver Decisión L abajo: lista las conversaciones pasadas y permite reabrir cualquiera; la sesión activa se recuerda entre cargas de página vía `localStorage`. | ✅ construido (v1.2 + Etapa 9 + Etapa 15 + Etapa 16, 2026-08-16/17) |
+| `/especialistas/[nombre]` | Chat directo con un especialista puntual (Etapa 10) — toma `frente` como query param (`?frente=<id>`). **Sin `frente` (Etapa 12): "consulta libre"**, sin caso, más barata en tokens — la página lo indica explícitamente y sugiere entrar desde un caso si la pregunta termina siendo sobre uno real. Links "💬 &lt;Especialista&gt;" agregados por frente en `/casos/[id]`. Aviso explícito: esto NO produce un documento persistido (a diferencia de pedirle al Conductor que corra al especialista). Selector de modelo (Etapa 15) y "🕘 Historial" (Etapa 16) junto a "ℹ️ Características" — misma sesión activa recordada por `localStorage`, con clave por `(especialista, frente)`. | ✅ construido (Etapa 10 + Etapa 12 + Etapa 15 + Etapa 16, 2026-08-16/17) |
 | `/especialistas` | Listado de los 3 especialistas — link a "💬 Consulta libre" (Etapa 12) y "ℹ️ Características" por cada uno. Agregado al nav global (antes solo se llegaba a un especialista desde dentro de un caso — Sebas: "no se ven los otros agentes"). | ✅ construido (Etapa 12, 2026-08-16) |
 | `/agentes/[nombre]` | Panel de características de un agente (Etapa 11) — herramientas (con descripción y si están disponibles en chat o solo en la corrida formal) + el `SYSTEM_PROMPT` completo. Server Component de solo lectura, sin interacción. Link "ℹ️ Características" en `/conductor` y en `/especialistas/[nombre]`, abre en pestaña nueva (`target="_blank"` — Sebas pidió "puede ser con un acceso a otra ventana"). | ✅ construido (Etapa 11, 2026-08-16) |
 
@@ -142,6 +146,53 @@ el server con otra env var. Decisiones tomadas antes de codear:
 mandado un mensaje real, confirmado leyendo la ficha del KM (`conductor_sesiones`) que
 `props.modelo == "claude-haiku-4-5-20251001"` y que el turno se registró. Repetido en
 `/especialistas/microbiologo` con "Opus 5" — misma confirmación contra `especialista_sesiones`.
+
+### Decisión L — historial de conversaciones + recordar la sesión activa (Etapa 16, 2026-08-17)
+
+**Bug real reportado por Sebas:** le hizo una pregunta al Conductor sobre composición química
+del efluente de Helios, recibió una respuesta sustancial (varios vectores blue ocean), volvió más
+tarde a `/conductor` y la respuesta "se había borrado" — tokens gastados, información
+aparentemente perdida.
+
+**Causa raíz, confirmada antes de tocar código:** `/conductor` (y `/especialistas/[nombre]`)
+creaban una sesión nueva en **cada carga de página** (`useEffect` al montar) y nunca guardaban el
+`session_id` en ningún lado del browser — ni `localStorage` ni la URL. La conversación anterior
+seguía **intacta en el KM** (verificado leyendo la ficha directo: la respuesta completa del
+Conductor, con los 5 vectores blue ocean, estaba ahí), pero la web no tenía forma de volver a
+encontrarla. No era una pérdida de datos — era una pérdida de acceso.
+
+**Fix, dos piezas (ambas pedidas explícitamente por Sebas al elegir entre 3 opciones):**
+1. **Recordar la sesión activa** — `localStorage` guarda el `session_id` de la conversación en
+   curso (clave `criza_conductor_session_id` para el Conductor; `criza_especialista_session_
+   {nombre}_{frente_id ?? "libre"}` por especialista, para no mezclar una consulta libre con una
+   conversación sobre un frente puntual). Al montar la página, si hay un id guardado, se hidrata
+   el chat desde el KM (`GET /conductor|especialistas/sesiones/{id}`) en vez de crear una sesión
+   nueva. Cubre el caso más común (recargar la misma página, cerrar y volver a abrir la pestaña).
+2. **Historial completo** — botón "🕘 Historial" en ambas páginas, lista las conversaciones
+   pasadas (`GET /conductor/sesiones` y `GET /especialistas/sesiones?especialista={nombre}`) con
+   preview del primer mensaje y fecha, click para reabrir cualquiera. Cubre lo que `localStorage`
+   no puede (otro navegador, otro dispositivo, `localStorage` borrado) — la fuente de verdad
+   siempre es el KM, `localStorage` es solo una conveniencia de "última sesión activa".
+
+**Cómo se reconstruyen los turnos visibles:** los `mensajes` guardados incluyen los pasos
+intermedios de tool-use/tool-result que nunca se le mostraron a Sebas en pantalla —
+`_mensajes_a_turnos()` (`api/main.py`) los filtra: un mensaje `user` con `content` string es un
+turno real (lo que arma cada `enviar_mensaje()`); un mensaje `assistant` es la respuesta final del
+turno solo si ningún bloque es `tool_use`. No hizo falta un campo nuevo en el KM para esto — la
+misma fuente que ya se guardaba alcanza.
+
+**Se excluyen del historial las sesiones sin ningún turno visible** (creadas por una carga de
+página que nunca llegó a mandar un mensaje — había 48 así en el KM al momento de este fix, la
+mayoría de pruebas y recargas) — listarlas sería ruido, no ayuda a encontrar nada.
+
+**Verificación real (no solo tests):** se recuperó la conversación exacta que Sebas reportó como
+perdida (`d195cb96-9fde-4ca0-95b9-da96352e8fac`, 17/08 ~13:41) leyendo el KM directo — seguía
+intacta. Con la sesión guardada en `localStorage`, recargar `/conductor` la hidrató completa (el
+mismo texto, los 5 vectores blue ocean, la recomendación final). El panel de Historial listó las
+8 conversaciones reales con contenido, en orden correcto por fecha; reabrir una distinta cambió el
+chat visible y actualizó `localStorage` a la nueva sesión. Repetido en `/especialistas/microbiologo`:
+el historial mostró 7 sesiones reales con la etiqueta correcta ("Consulta libre" / "Sobre un
+frente").
 
 ### KM write — vía el Conductor, no la API en sí
 
@@ -266,6 +317,21 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
       "claude-haiku-4-5-20251001"` y que el turno quedó persistido. Repetido en
       `/especialistas/microbiologo` eligiendo "Opus 5" antes del primer mensaje — confirmado
       `props.modelo == "claude-opus-5"` en `especialista_sesiones`.
+- [x] Test (Etapa 16): `_mensajes_a_turnos` filtra pasos intermedios de tool-use/tool-result y
+      devuelve lista vacía sin mensajes; `GET /conductor/sesiones` excluye sesiones sin turnos y
+      trunca el preview a 140 caracteres; `GET /conductor/sesiones/{id}` devuelve 404 si no
+      existe; `GET /especialistas/sesiones` 404 si el nombre no es válido, incluye `frente_id`
+      por sesión; `GET /especialistas/sesiones/{id}` devuelve `especialista`/`turnos` correctos
+- [x] `npm run build` sin errores de tipos con el botón de historial y la hidratación por
+      `localStorage` en ambas páginas de chat
+- [x] Verificación real contra el server de producción y el KM real (no solo tests): se recuperó
+      la conversación exacta que Sebas reportó como "perdida" leyendo el KM directo — seguía
+      intacta. Con el `session_id` en `localStorage`, recargar `/conductor` la hidrató completa
+      (mismo texto, mismos 5 vectores blue ocean). El panel de Historial listó las 8
+      conversaciones reales del Conductor con contenido en orden correcto por fecha; reabrir una
+      distinta actualizó el chat visible y `localStorage`. Repetido en
+      `/especialistas/microbiologo`: 7 sesiones reales listadas con la etiqueta correcta
+      ("Consulta libre" / "Sobre un frente")
 
 ---
 
@@ -280,6 +346,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | Crear casos nuevos desde la web/Conductor | ✅ hecho (Etapa 13, 2026-08-17) | Gap descubierto por Sebas el 16/08: hoy no existía NINGÚN camino para dar de alta un caso — resuelto con formulario (`/casos/nuevo`) + tool del Conductor, ambos sobre la misma función base (`utils/casos.py::crear_caso`). |
 | Descargar informes como `.md` | ✅ hecho (Etapa 14, 2026-08-17) | Sebas: "algo que le agregaría también es la posibilidad de descargar los informes." `GET /documentos/{id}/descargar`, link `<a>` directo — el `Content-Disposition` del server dispara la descarga, sin JS del lado del cliente. |
 | Elegir modelo de IA por sesión de chat | ✅ hecho (Etapa 15, 2026-08-17) | La abstracción de backend (`utils/ai_client.py`) ya existía; faltaba la superficie. Selector en `/conductor` y `/especialistas/[nombre]`, lista curada vía `GET /modelos` — ver Decisión K. |
+| Historial de conversaciones + recordar sesión activa | ✅ hecho (Etapa 16, 2026-08-17) | Bug real: una respuesta del Conductor "se perdió" desde la perspectiva de Sebas — en realidad seguía intacta en el KM, solo inalcanzable desde la web. Ver Decisión L. |
 | Entrada por voz, modo documento coautoría, extracción de datos estructurados, vincular artefactos nuevos, dashboard | v2+ | `PROPUESTA_DESTINO.md` §7 los confirma como parte de la visión completa, pero son ideas para sumar al alcance, no lo mínimo de esta etapa. |
 | Autenticación / login real | No planeado todavía | `usuarios.yaml` — decisión ya tomada, sin login real por ahora, un solo usuario (Sebas). |
 
@@ -300,6 +367,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | I | Etapa 13 (2026-08-17) — ¿cómo se crea un caso: formulario web, Conductor conversacional, o los dos? | Formulario web / Conductor / Los dos | **Los dos**, elegido explícitamente por Sebas. `POST /casos` (`utils/casos.py::crear_caso`) es la base compartida — `/casos/nuevo` (formulario) y la tool `crear_caso` del Conductor (`conductor/docs/DESIGN_GATE.md` decisión G) llaman la misma función, sin duplicar lógica de creación. `nombre`/`descripcion` son los únicos campos obligatorios (son los que arman `texto_busqueda`, el campo vectorizado) — un caso puede crearse sin frentes (`casos.yaml` ya lo permite explícitamente). Verificado real contra staging (creación real, lectura de vuelta correcta, aparece en el listado) — la escritura contra producción vía el server real se verificó indirectamente: la ruta HTTP/validación por tests (mock), y el camino del Conductor con una conversación real que correctamente pidió confirmación sin llegar a escribir nada (decisión explícita de Sebas: no tocar producción con datos de prueba). | 2026-08-17 |
 | J | Etapa 14 (2026-08-17) — Sebas pidió poder descargar los informes. ¿Formato? | Markdown (.md) / PDF / Word (.docx) | **Markdown**, elegido explícitamente por Sebas ("recomendado para arrancar" — el contenido ya está guardado en ese formato, sin conversión). Implementado como `GET /documentos/{id}/descargar` con `Content-Disposition: attachment` — un link `<a href>` directo, sin JS ni fetch del lado del cliente; el navegador dispara la descarga solo. `_slug_archivo()` arma el nombre de archivo desde el título (normaliza acentos/símbolos vía `unicodedata`, no depende de que el header HTTP maneje bien UTF-8 en el filename). Verificado real: descarga completa del informe real del Microbiólogo sobre Helios (105 líneas, contenido íntegro). | 2026-08-17 |
 | K | Etapa 15 (2026-08-17) — ¿granularidad para elegir modelo de IA (por sesión de chat / por agente / global) y qué modelos ofrecer (lista curada / texto libre)? | Ver detalle en la sección "Decisión K" arriba | **Por sesión de chat, lista curada.** Sesiones ya son la unidad natural del sistema — no hizo falta persistencia nueva, solo un campo (`modelo`) en las plantillas ya existentes. Lista curada porque hoy solo hay `ANTHROPIC_API_KEY` configurada — texto libre ofrecería proveedores que romperían al elegirlos. | 2026-08-17 |
+| L | Etapa 16 (2026-08-17) — bug real: una respuesta del Conductor "se perdió" al volver más tarde. ¿Cómo evitar que vuelva a pasar? | `localStorage` solo / historial completo solo / los dos | **Los dos**, elegido explícitamente por Sebas entre 3 opciones. `localStorage` (clave por página/especialista+frente) cubre el caso común (recargar, cerrar/abrir pestaña) sin ningún request extra al montar si ya hay sesión guardada. El historial (`GET /conductor/sesiones`, `GET /especialistas/sesiones?especialista=`) cubre lo que `localStorage` no puede (otro dispositivo/navegador, storage borrado) leyendo directo del KM, que siempre fue la fuente de verdad real — el bug nunca fue de datos, fue de que la web no sabía cómo volver a encontrarlos. | 2026-08-17 |
 
 ---
 
@@ -307,7 +375,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-K cerradas, ninguna abierta.
+Decisiones A-L cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Gasto de tokens visible en la web → v1.1, anotado explícitamente para no perderse

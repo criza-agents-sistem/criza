@@ -8,11 +8,19 @@ import {
   crearSesionEspecialista,
   enviarMensajeEspecialista,
   listarModelos,
+  listarSesionesEspecialista,
+  obtenerSesionEspecialista,
   ESPECIALISTAS,
   type ModeloDisponible,
+  type SesionEspecialistaResumen,
 } from "@/lib/api";
 
 type Turno = { rol: "vos" | "especialista" | "error"; texto: string };
+
+function formatearFecha(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 
 export default function EspecialistaChatPage({
   params,
@@ -24,6 +32,10 @@ export default function EspecialistaChatPage({
   const frenteId = searchParams.get("frente");
   const modoLibre = !frenteId;
   const label = ESPECIALISTAS.find((e) => e.nombre === nombre)?.label ?? nombre;
+  // Etapa 16 (2026-08-17) — mismo fix que /conductor: recordar la sesión activa entre cargas de
+  // página, con clave propia por (especialista, frente) para no mezclar una consulta libre con
+  // una conversación sobre un caso puntual.
+  const storageKey = `criza_especialista_session_${nombre}_${frenteId ?? "libre"}`;
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [turnos, setTurnos] = useState<Turno[]>([]);
@@ -32,14 +44,46 @@ export default function EspecialistaChatPage({
   const [errorSesion, setErrorSesion] = useState<string | null>(null);
   const [modelos, setModelos] = useState<ModeloDisponible[]>([]);
   const [modeloElegido, setModeloElegido] = useState("");
+  const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const [historial, setHistorial] = useState<SesionEspecialistaResumen[]>([]);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  function guardarSesionActiva(id: string | null) {
+    setSessionId(id);
+    if (id) localStorage.setItem(storageKey, id);
+    else localStorage.removeItem(storageKey);
+  }
+
+  async function crearYGuardarSesion(modelo?: string) {
+    const id = await crearSesionEspecialista(nombre, frenteId ?? undefined, modelo).catch((e) => {
+      setErrorSesion(e.message);
+      return null;
+    });
+    guardarSesionActiva(id);
+    return id;
+  }
+
   useEffect(() => {
-    crearSesionEspecialista(nombre, frenteId ?? undefined)
-      .then(setSessionId)
-      .catch((e) => setErrorSesion(e.message));
+    const guardada = localStorage.getItem(storageKey);
+    if (guardada) {
+      obtenerSesionEspecialista(guardada)
+        .then((detalle) => {
+          if (!detalle) {
+            crearYGuardarSesion();
+            return;
+          }
+          guardarSesionActiva(guardada);
+          setModeloElegido(detalle.modelo ?? "");
+          setTurnos(detalle.turnos.map((t) => ({ rol: t.rol as Turno["rol"], texto: t.texto })));
+        })
+        .catch(() => crearYGuardarSesion());
+    } else {
+      crearYGuardarSesion();
+    }
     listarModelos().then((lista) => setModelos(lista ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nombre, frenteId]);
 
   // Elegir modelo solo tiene sentido antes del primer mensaje (Etapa 15) — queda fijado por
@@ -47,16 +91,34 @@ export default function EspecialistaChatPage({
   async function elegirModelo(modelo: string) {
     setModeloElegido(modelo);
     if (turnos.length > 0) return;
-    const nuevoId = await crearSesionEspecialista(nombre, frenteId ?? undefined, modelo || undefined).catch((e) => {
-      setErrorSesion(e.message);
-      return null;
-    });
-    setSessionId(nuevoId);
+    await crearYGuardarSesion(modelo || undefined);
   }
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turnos, enviando]);
+
+  async function toggleHistorial() {
+    const abrir = !mostrarHistorial;
+    setMostrarHistorial(abrir);
+    if (!abrir) return;
+    setCargandoHistorial(true);
+    const lista = await listarSesionesEspecialista(nombre).catch(() => null);
+    setHistorial(lista ?? []);
+    setCargandoHistorial(false);
+  }
+
+  async function abrirSesionHistorial(id: string) {
+    const detalle = await obtenerSesionEspecialista(id).catch((e) => {
+      setErrorSesion(e.message);
+      return null;
+    });
+    if (!detalle) return;
+    guardarSesionActiva(id);
+    setModeloElegido(detalle.modelo ?? "");
+    setTurnos(detalle.turnos.map((t) => ({ rol: t.rol as Turno["rol"], texto: t.texto })));
+    setMostrarHistorial(false);
+  }
 
   function manejarTecla(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -110,6 +172,36 @@ export default function EspecialistaChatPage({
           >
             ℹ️ Características
           </a>
+          <div className="relative">
+            <button
+              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+              onClick={toggleHistorial}
+            >
+              🕘 Historial
+            </button>
+            {mostrarHistorial && (
+              <div className="absolute right-0 z-10 mt-2 max-h-96 w-96 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-2 shadow-lg">
+                {cargandoHistorial ? (
+                  <p className="p-2 text-sm text-neutral-400">Cargando...</p>
+                ) : historial.length === 0 ? (
+                  <p className="p-2 text-sm text-neutral-400">Todavía no hay conversaciones guardadas.</p>
+                ) : (
+                  historial.map((s) => (
+                    <button
+                      key={s.id}
+                      className={`block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-neutral-50 ${s.id === sessionId ? "bg-neutral-50" : ""}`}
+                      onClick={() => abrirSesionHistorial(s.id)}
+                    >
+                      <div className="truncate text-neutral-800">{s.primer_mensaje}</div>
+                      <div className="text-xs text-neutral-400">
+                        {s.frente_id ? "Sobre un frente" : "Consulta libre"} · {formatearFecha(s.actualizada_en)}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       <p className="mb-4 text-sm text-neutral-500">
