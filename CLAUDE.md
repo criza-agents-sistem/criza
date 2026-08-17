@@ -32,9 +32,13 @@ Mercado) → Armador → **expediente de decisión** → el humano decide.
 > Lo que CRIZA sabe, aprende y almacena NO se filtra a otras instancias (tenant_id="criza" en el
 > Knowledge Module, base de datos propia).
 
-**Repo:** `github.com/sebasbizzi/criza` (privado). Independizada de `EMPRESAS-IA/` el 2026-08-13
-— antes vivía nested en ese árbol; el código y el historial no cambiaron, solo la ubicación y que
-ahora instala `knowledge_module` por pip en vez de asumirlo como carpeta hermana.
+**Repo:** `github.com/criza-agents-sistem/criza` (privado). Independizada de `EMPRESAS-IA/` el
+2026-08-13 — antes vivía nested en ese árbol; el código y el historial no cambiaron, solo la
+ubicación y que ahora instala `knowledge_module` por pip en vez de asumirlo como carpeta hermana.
+Transferida de la cuenta personal `sebasbizzi` a la organización `criza-agents-sistem` el
+2026-08-17 (Etapa 19) — aísla CRIZA de los proyectos personales de Sebas y de los límites
+gratuitos de Vercel/Railway ya usados por esos otros proyectos, mismo criterio de aislamiento
+entre instancias que ya rige el resto de este documento.
 
 ---
 
