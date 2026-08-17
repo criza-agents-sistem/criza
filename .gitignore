@@ -12,8 +12,10 @@ outputs/
 document_store_data/
 
 # Casos reales de terceros (nombres, empresas, términos de negociación) — decisión 2026-08-14,
-# fuera de git por ahora
-casos/
+# fuera de git por ahora. Anclado a la raíz (/casos/, no casos/) — sin ancla también tapaba
+# web/app/casos/ (cualquier "nuevo/page.tsx" ahí adentro quedaba invisible para git sin avisar,
+# encontrado al confirmar el commit de la Etapa 13, 2026-08-17).
+/casos/
 
 # Python
 __pycache__/
