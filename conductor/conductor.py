@@ -39,6 +39,7 @@ from utils.casos import (
     obtener_frentes_de_caso as _obtener_frentes_fn,
     obtener_documentos_de_frente as _obtener_documentos_fn,
     obtener_pendientes_de_caso as _obtener_pendientes_fn,
+    crear_caso as _crear_caso_fn,
 )
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
@@ -164,6 +165,26 @@ TOOLS = [
             "required": ["contenido", "contexto"],
         },
     },
+    {
+        "name": "crear_caso",
+        "description": (
+            "Da de alta un caso nuevo en el KM (Etapa 13, 2026-08-17) — para cuando Sebas te "
+            "cuenta un caso nuevo y confirma explícitamente que quiere crearlo. Resumíselo de "
+            "vuelta primero (el nombre y la descripción que vas a guardar) y esperá su "
+            "confirmación antes de llamar esta tool — no la llames apenas menciona un caso "
+            "nuevo, podría estar pensando en voz alta o todavía definiendo los detalles."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nombre": {"type": "string", "description": "Nombre corto, ej. 'Efluentes biogás (Helios)'."},
+                "descripcion": {"type": "string", "description": "Descripción completa: quién, qué problema, contexto relevante."},
+                "estadio": {"type": "string", "description": "Opcional — estadío libre, ej. 'desde_cero', 'validado_escalando'."},
+                "notas": {"type": "string", "description": "Opcional — notas adicionales que no encajan en la descripción."},
+            },
+            "required": ["nombre", "descripcion"],
+        },
+    },
 ]
 
 
@@ -281,6 +302,17 @@ async def _tool_anotar_leccion(contenido: str, contexto: str) -> dict:
     return {"guardado": True, "id": resultado["id"]}
 
 
+async def _tool_crear_caso(nombre: str, descripcion: str, estadio: str | None, notas: str | None) -> dict:
+    nombre = (nombre or "").strip()
+    descripcion = (descripcion or "").strip()
+    if not nombre or not descripcion:
+        return {"error": "nombre y descripción no pueden estar vacíos."}
+    resultado = await _crear_caso_fn(nombre=nombre, descripcion=descripcion, tenant=_TENANT, estadio=estadio, notas=notas)
+    if not resultado["success"]:
+        return {"error": f"No se pudo crear el caso: {resultado['error']}"}
+    return {"creado": True, "caso_id": resultado["caso_id"]}
+
+
 async def _tool_ver_documento(documento_id: str) -> dict:
     doc = await motor_api.obtener(documento_id, tenant=_TENANT)
     if not doc or doc.get("tipo") != "documento_caso":
@@ -331,6 +363,9 @@ TOOLS DISPONIBLES:
   redactala de forma reusable (un patrón, no una transcripción literal de lo que dijo). No la
   llames por tu cuenta sin que te lo pida: el cierre de sesión ya evalúa solo si hay algo nuevo
   que valga la pena guardar, no hace falta que también lo intentes vos en cada turno.
+- crear_caso: cuando Sebas te cuenta un caso nuevo Y confirma explícitamente que quiere darlo de
+  alta. Resumíselo de vuelta (nombre + descripción que vas a guardar) y esperá su confirmación
+  antes de llamarla — no la llames apenas menciona algo nuevo, podría estar pensando en voz alta.
 
 CÓMO RESPONDER (PROPUESTA_CONDUCTOR.md §3.2 — la atención de Sebas es el recurso escaso):
 Llegá con la decisión masticada — qué falta, qué ya está, qué recomendás y por qué — no le
@@ -366,6 +401,11 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
         return await _tool_ver_documento(tool_input.get("documento_id", ""))
     if nombre == "anotar_leccion":
         return await _tool_anotar_leccion(tool_input.get("contenido", ""), tool_input.get("contexto", ""))
+    if nombre == "crear_caso":
+        return await _tool_crear_caso(
+            tool_input.get("nombre", ""), tool_input.get("descripcion", ""),
+            tool_input.get("estadio"), tool_input.get("notas"),
+        )
     return {"error": f"Tool '{nombre}' no implementado."}
 
 

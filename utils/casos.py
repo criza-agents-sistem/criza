@@ -71,6 +71,43 @@ async def obtener_pendientes_de_caso(caso_id: str, tenant: str, solo_abiertos: b
     return pendientes
 
 
+async def crear_caso(
+    nombre: str,
+    descripcion: str,
+    tenant: str,
+    estadio: str | None = None,
+    fecha_inicio: str | None = None,
+    participantes: list[dict] | None = None,
+    notas: str | None = None,
+) -> dict:
+    """
+    Crea un caso nuevo (Etapa 13, 2026-08-17) — hasta acá, los 2 casos reales del sistema
+    (MicroBigs, Helios) se habían cargado por script directo al KM, sin ningún camino desde la
+    app. `texto_busqueda` (el campo vectorizado, ver config/plantillas/casos.yaml) se computa
+    acá — es derivado de nombre+descripción, no algo que aporte quien llama.
+
+    Un caso puede crearse sin frentes todavía (`casos.yaml`: "un caso puede no tener frentes
+    todavía definidos") — sumarlos es un paso aparte, no parte de esta función.
+
+    Returns: {"success": bool, "caso_id": str | None, "error": str | None}
+    """
+    resultado = await motor_api.guardar_ficha(
+        area=_AREA, tipo="caso", tenant=tenant,
+        campos={
+            "nombre": nombre,
+            "descripcion": descripcion,
+            "estadio": estadio,
+            "fecha_inicio": fecha_inicio,
+            "participantes": participantes or [],
+            "notas": notas,
+            "texto_busqueda": f"{nombre}. {descripcion}",
+        },
+    )
+    if not resultado.get("success"):
+        return {"success": False, "caso_id": None, "error": resultado.get("error")}
+    return {"success": True, "caso_id": resultado["id"], "error": None}
+
+
 async def guardar_documento_de_frente(
     frente_id: str,
     titulo: str,

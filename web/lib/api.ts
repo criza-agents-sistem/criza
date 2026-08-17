@@ -70,6 +70,28 @@ export function obtenerDocumento(id: string): Promise<Documento | null> {
   return apiFetch<Documento>(`/documentos/${id}`);
 }
 
+// Etapa 13 (2026-08-17) — crear un caso, no solo leerlos. Client component (formulario), por
+// eso devuelve/lanza en vez de usar apiFetch (que trata 404 como "no encontrado", no aplica acá).
+export async function crearCaso(input: {
+  nombre: string;
+  descripcion: string;
+  estadio?: string;
+  fecha_inicio?: string;
+  notas?: string;
+}): Promise<string> {
+  const res = await fetch(`${API_URL}/casos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => ({}));
+    throw new Error(detalle.detail || `No se pudo crear el caso (${res.status})`);
+  }
+  const data = await res.json();
+  return data.caso_id as string;
+}
+
 // ── Conductor (chat) ─────────────────────────────────────────────────────────
 // A diferencia de listarCasos/obtenerCaso/obtenerDocumento (server components, GET,
 // cache: "no-store"), estas se llaman desde un client component — el Conductor puede tardar

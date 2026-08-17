@@ -6,12 +6,14 @@ Backend delgado para la app Next.js (`web/`) — reusa `knowledge_module`/`utils
 `conductor/conductor.py` directo, sin lógica duplicada.
 
 Dos superficies distintas, cada una con su propia relación con producción/staging:
-- `/casos`, `/casos/{id}`, `/documentos/{id}` — solo lectura, GET, leen `DATABASE_URL`
-  (producción) sin riesgo de escritura.
+- `GET /casos`, `/casos/{id}`, `/documentos/{id}` — solo lectura, leen `DATABASE_URL`
+  (producción) sin riesgo de escritura. `POST /casos` (Etapa 13, 2026-08-17) es la excepción
+  deliberada — crea un caso nuevo, escribe directo a producción (mismo criterio que el resto de
+  la costura: Sebas es dueño de decidir qué se crea, no hay staging intermedio para esto).
 - `/conductor/*` — el Conductor SÍ puede escribir al KM cuando invoca un especialista
-  (`correr_especialista`, vía la costura) — usa la misma `DATABASE_URL` que el resto del proceso
-  (producción por default). Sebas es dueño de decidir qué corridas promueve, igual que con
-  cualquier otro cliente de la costura.
+  (`correr_especialista`, vía la costura) o crea un caso (`crear_caso`, Etapa 13) — usa la misma
+  `DATABASE_URL` que el resto del proceso (producción por default). Sebas es dueño de decidir qué
+  corridas promueve, igual que con cualquier otro cliente de la costura.
 
 Sesiones de chat del Conductor persistidas en el KM (área `conductor_sesiones`, plantilla
 `config/plantillas/conductor_sesiones.yaml`) — no en memoria del proceso. Sebas preguntó
@@ -54,6 +56,7 @@ from utils.casos import (
     obtener_frentes_de_caso as _obtener_frentes_fn,
     obtener_documentos_de_frente as _obtener_documentos_fn,
     obtener_pendientes_de_caso as _obtener_pendientes_fn,
+    crear_caso as _crear_caso_fn,
 )
 from conductor import (
     enviar_mensaje as _enviar_mensaje_conductor,
@@ -143,6 +146,37 @@ async def listar_casos() -> list[dict]:
         }
         for c in casos
     ]
+
+
+class _CrearCasoIn(BaseModel):
+    nombre: str
+    descripcion: str
+    estadio: str | None = None
+    fecha_inicio: str | None = None
+    notas: str | None = None
+
+
+@app.post("/casos")
+async def crear_caso(body: _CrearCasoIn) -> dict:
+    """
+    Etapa 13 (2026-08-17) — hasta acá, los 2 casos reales del sistema se habían cargado por
+    script directo al KM; Sebas preguntó cómo abrir uno nuevo y la respuesta era "no se puede,
+    ni con el Conductor". `nombre`/`descripcion` son los únicos campos realmente obligatorios
+    (son los que arman `texto_busqueda`, el campo vectorizado) — el resto es opcional a
+    propósito, un caso puede arrancar con lo mínimo y completarse después.
+    """
+    nombre = body.nombre.strip()
+    descripcion = body.descripcion.strip()
+    if not nombre or not descripcion:
+        raise HTTPException(status_code=400, detail="nombre y descripción son obligatorios")
+
+    resultado = await _crear_caso_fn(
+        nombre=nombre, descripcion=descripcion, tenant=_TENANT,
+        estadio=body.estadio, fecha_inicio=body.fecha_inicio, notas=body.notas,
+    )
+    if not resultado["success"]:
+        raise HTTPException(status_code=500, detail=f"No se pudo crear el caso: {resultado['error']}")
+    return {"caso_id": resultado["caso_id"]}
 
 
 @app.get("/casos/{caso_id}")

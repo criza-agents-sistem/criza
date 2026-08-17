@@ -35,13 +35,13 @@ FRENTE_ASOCIACION = {"id": "frente-asociacion", "tipo": "frente", "props": {"nom
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(cond.TOOLS) == 5
+    assert len(cond.TOOLS) == 6
 
 
 @pytest.mark.unit
 def test_tools_names():
     nombres = {t["name"] for t in cond.TOOLS}
-    assert nombres == {"listar_casos", "ver_caso", "correr_especialista", "ver_documento", "anotar_leccion"}
+    assert nombres == {"listar_casos", "ver_caso", "correr_especialista", "ver_documento", "anotar_leccion", "crear_caso"}
 
 
 @pytest.mark.unit
@@ -249,6 +249,44 @@ async def test_despachar_tool_anotar_leccion():
         result = await cond._despachar_tool("anotar_leccion", {"contenido": "c", "contexto": "ctx"}, verbose=False)
     mock_tool.assert_awaited_once_with("c", "ctx")
     assert result == {"guardado": True, "id": "x"}
+
+
+# ── _tool_crear_caso (Etapa 13, 2026-08-17) ─────────────────────────────────
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_crear_caso_exito():
+    with patch("conductor._crear_caso_fn", new=AsyncMock(return_value={"success": True, "caso_id": "caso-1", "error": None})) as mock_crear:
+        result = await cond._tool_crear_caso("Compostaje Norte", "Planta busca valorizar residuo.", "desde_cero", None)
+
+    assert result == {"creado": True, "caso_id": "caso-1"}
+    _, kwargs = mock_crear.call_args
+    assert kwargs["nombre"] == "Compostaje Norte"
+    assert kwargs["tenant"] == cond._TENANT
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_crear_caso_nombre_vacio_es_error():
+    result = await cond._tool_crear_caso("   ", "descripción", None, None)
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_crear_caso_falla_en_km():
+    with patch("conductor._crear_caso_fn", new=AsyncMock(return_value={"success": False, "caso_id": None, "error": "boom"})):
+        result = await cond._tool_crear_caso("X", "Y", None, None)
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_crear_caso():
+    with patch("conductor._tool_crear_caso", new=AsyncMock(return_value={"creado": True, "caso_id": "x"})) as mock_tool:
+        result = await cond._despachar_tool("crear_caso", {"nombre": "N", "descripcion": "D", "estadio": "e", "notas": "n"}, verbose=False)
+    mock_tool.assert_awaited_once_with("N", "D", "e", "n")
+    assert result == {"creado": True, "caso_id": "x"}
 
 
 # ── cerrar_sesion (trigger automático, Etapa 9) ─────────────────────────────

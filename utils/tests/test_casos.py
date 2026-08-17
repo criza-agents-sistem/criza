@@ -154,6 +154,35 @@ async def test_guardar_documento_de_frente_falla_al_conectar():
     assert result["error"] == "no existe frente"
 
 
+# ── Unit: crear_caso (Etapa 13, 2026-08-17) ─────────────────────────────────────
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_crear_caso_exito_computa_texto_busqueda():
+    with patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "caso-1"})) as mock_guardar:
+        result = await casos.crear_caso(
+            nombre="Compostaje Norte", descripcion="Planta de compostaje busca valorizar residuo.",
+            tenant="criza", estadio="desde_cero",
+        )
+
+    assert result == {"success": True, "caso_id": "caso-1", "error": None}
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["area"] == "casos"
+    assert kwargs["tipo"] == "caso"
+    assert kwargs["campos"]["texto_busqueda"] == "Compostaje Norte. Planta de compostaje busca valorizar residuo."
+    assert kwargs["campos"]["estadio"] == "desde_cero"
+    assert kwargs["campos"]["participantes"] == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_crear_caso_falla():
+    with patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": False, "error": "boom"})):
+        result = await casos.crear_caso(nombre="X", descripcion="Y", tenant="criza")
+
+    assert result == {"success": False, "caso_id": None, "error": "boom"}
+
+
 # ── Integration: contra el KM real (branch de staging) ──────────────────────────
 
 @pytest.mark.integration

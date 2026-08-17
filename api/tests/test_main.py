@@ -43,6 +43,39 @@ def test_listar_casos():
     assert data[0]["nombre"] == "Efluentes biogás (Helios)"
 
 
+# ── Crear caso (Etapa 13, 2026-08-17) ────────────────────────────────────────
+
+@pytest.mark.unit
+def test_crear_caso_exito():
+    with patch("main._crear_caso_fn", new=AsyncMock(return_value={"success": True, "caso_id": "caso-nuevo-1", "error": None})) as mock_crear:
+        resp = client.post("/casos", json={"nombre": "Compostaje Norte", "descripcion": "Planta de compostaje busca valorizar residuo.", "estadio": "desde_cero"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"caso_id": "caso-nuevo-1"}
+    _, kwargs = mock_crear.call_args
+    assert kwargs["nombre"] == "Compostaje Norte"
+    assert kwargs["estadio"] == "desde_cero"
+
+
+@pytest.mark.unit
+def test_crear_caso_nombre_vacio_es_400():
+    resp = client.post("/casos", json={"nombre": "   ", "descripcion": "algo"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.unit
+def test_crear_caso_descripcion_vacia_es_400():
+    resp = client.post("/casos", json={"nombre": "algo", "descripcion": ""})
+    assert resp.status_code == 400
+
+
+@pytest.mark.unit
+def test_crear_caso_falla_en_km_es_500():
+    with patch("main._crear_caso_fn", new=AsyncMock(return_value={"success": False, "caso_id": None, "error": "boom"})):
+        resp = client.post("/casos", json={"nombre": "X", "descripcion": "Y"})
+    assert resp.status_code == 500
+
+
 @pytest.mark.unit
 def test_obtener_caso_no_encontrado():
     with patch("main.motor_api.obtener", new=AsyncMock(return_value=None)):

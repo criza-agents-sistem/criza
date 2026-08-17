@@ -6,7 +6,15 @@ export default async function CasosPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-6">Casos</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Casos</h1>
+        <Link
+          href="/casos/nuevo"
+          className="rounded-lg bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-800"
+        >
+          + Nuevo caso
+        </Link>
+      </div>
 
       {!casos || casos.length === 0 ? (
         <p className="text-neutral-500">No hay casos cargados todavía.</p>

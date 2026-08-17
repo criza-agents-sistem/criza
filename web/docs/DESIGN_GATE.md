@@ -50,6 +50,7 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 | Endpoint | Descripción | Estado |
 |---|---|---|
 | `GET /casos` | Lista de casos (id, nombre, descripción, estadío) — `utils/casos.py::listar_casos` | ✅ construido |
+| `POST /casos` | Crea un caso nuevo (Etapa 13, 2026-08-17) — `nombre`/`descripcion` obligatorios (400 si faltan), el resto opcional. Escribe directo a producción, sin staging intermedio (mismo criterio que `/conductor/*` y `/especialistas/*` — Sebas es dueño de qué se crea). | ✅ construido (Etapa 13, 2026-08-17) |
 | `GET /casos/{id}` | Detalle completo: identidad + frentes (con documentos y artefactos externos de cada uno) + pendientes | ✅ construido |
 | `GET /documentos/{id}` | Contenido completo de un `documento_caso` puntual | ✅ construido |
 | `POST /conductor/sesiones` | Crea una sesión de chat nueva — la ficha creada en el KM (área `conductor_sesiones`) *es* el `session_id`, no hay un id separado que mantener sincronizado. | ✅ construido (v1.2, mismo día; persistencia al KM sumada el mismo día tras la pregunta de Sebas) |
@@ -63,7 +64,8 @@ cualquier corrida de verificación de esta sesión contra el KM real.
 
 | Página | Descripción | Estado |
 |---|---|---|
-| `/` | Lista de casos, tarjetas con nombre/estadío/descripción | ✅ construido |
+| `/` | Lista de casos, tarjetas con nombre/estadío/descripción. Link "+ Nuevo caso" (Etapa 13). | ✅ construido |
+| `/casos/nuevo` | Formulario de alta de caso (Etapa 13, 2026-08-17) — client component, nombre/descripción obligatorios, estadío/notas opcionales. Redirige a `/casos/{id}` al crear. | ✅ construido (Etapa 13, 2026-08-17) |
 | `/casos/[id]` | Detalle: frentes (con estado de documentos — "sin documentos producidos todavía" si no hay ninguno), pendientes (abiertos/resueltos visualmente distintos), artefactos externos | ✅ construido |
 | `/documentos/[id]` | Contenido completo de un documento, **renderizado como markdown real** (`react-markdown` + `remark-gfm` + `@tailwindcss/typography`) — no como texto plano con `##`/`**` literales | ✅ construido |
 | `/conductor` | Chat con el Conductor — único **client component** de la app (los otros 3 son Server Components, esta necesita estado de React porque es interactiva). Botón "Nueva conversación" (Etapa 9): cierra la sesión actual (evalúa lección, muestra un aviso en el chat si guardó una) y crea una sesión nueva vacía. | ✅ construido (v1.2 + Etapa 9, mismo día) |
@@ -205,6 +207,20 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 - [x] Página `/especialistas/[nombre]` sin `?frente=` verificada en el navegador: entra en modo
       libre automáticamente (sin error), muestra el aviso correcto
 - [x] Página `/especialistas` (listado) y link "Especialistas" en el nav global verificados
+- [x] Test (Etapa 13): `POST /casos` con nombre/descripción vacíos → 400; éxito devuelve
+      `caso_id`; falla del KM → 500
+- [x] Test: `utils/casos.py::crear_caso` computa `texto_busqueda` correctamente, propaga error
+      del KM
+- [x] Test: tool `crear_caso` del Conductor — nombre vacío → error, éxito, falla del KM, dispatch
+- [x] Verificación real contra staging (no producción, por decisión explícita de Sebas): caso
+      creado de verdad, leído de vuelta con los campos correctos, aparece en `listar_casos`
+- [x] Verificación real contra el server de producción SIN escribir datos de prueba: página
+      `/casos/nuevo` renderiza bien, botón deshabilitado sin datos completos; "+ Nuevo caso"
+      aparece en `/`; una conversación real con el Conductor describiendo un caso nuevo pidió
+      confirmación y no llamó `crear_caso` — confirmado leyendo `/casos` después que seguían
+      siendo los mismos 2 casos reales, nada de prueba tocó producción
+- [x] `npm run build` sin errores de tipos, ruta estática `/casos/nuevo` no colisiona con la
+      dinámica `/casos/[id]`
 
 ---
 
@@ -216,7 +232,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | Chat con el Conductor vía web | ✅ hecho (v1.2 adelantada, mismo día) | Sebas: "no le encuentro mucha utilidad a lo que hay ahora" al ver solo las páginas de lectura — v1.2 se adelantó en la misma sesión en vez de quedar pendiente. |
 | Chat con cada especialista por separado (no solo con el Conductor) | ✅ hecho (Etapa 10, mismo día) | Pedido explícito de Sebas el mismo día que se resolvió la persistencia de sesiones. |
 | Consulta libre a un especialista, sin caso | ✅ hecho (Etapa 12, mismo día) | Sebas: "me preocupa el consumo de tokens, tal vez necesito hacer una consulta simple antes de abrir un caso nuevo." |
-| Crear casos nuevos desde la web/Conductor | ⏳ Etapa 13, no resuelto hoy | Gap descubierto por Sebas en la misma conversación: hoy no existe NINGÚN camino (web ni Conductor) para dar de alta un caso — los 2 casos actuales se cargaron por script directo al KM. Requiere definir qué datos pide un caso nuevo antes de codear. |
+| Crear casos nuevos desde la web/Conductor | ✅ hecho (Etapa 13, 2026-08-17) | Gap descubierto por Sebas el 16/08: hoy no existía NINGÚN camino para dar de alta un caso — resuelto con formulario (`/casos/nuevo`) + tool del Conductor, ambos sobre la misma función base (`utils/casos.py::crear_caso`). |
 | Entrada por voz, modo documento coautoría, extracción de datos estructurados, vincular artefactos nuevos, dashboard | v2+ | `PROPUESTA_DESTINO.md` §7 los confirma como parte de la visión completa, pero son ideas para sumar al alcance, no lo mínimo de esta etapa. |
 | Autenticación / login real | No planeado todavía | `usuarios.yaml` — decisión ya tomada, sin login real por ahora, un solo usuario (Sebas). |
 
@@ -234,6 +250,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | F | Etapa 10 (2026-08-16) — `api/main.py` necesita las funciones `iniciar_sesion`/`enviar_mensaje` de los 3 especialistas (`microbiologo_agent`, `ingeniero_ambiental_agent`, `agronomo_agent`). ¿Bare import (`from microbiologo_agent import ...`, como `conductor/`) o package-qualificado (`from microbiologo_agent.microbiologo_agent import ...`, como usa `orquestador/registry.py::get_registry()`)? | Bare / package-qualificado / un tercer mecanismo | **Ninguno de los dos — carga por ruta de archivo bajo una clave propia de `sys.modules`** (`importlib.util.spec_from_file_location`, `_api_<nombre>`). Los 3 agentes tienen DOS consumidores reales incompatibles en el mismo proceso del server: `get_registry()` (package-qualificado, perezoso, para cuando el Conductor invoca al especialista) y el propio `conftest.py`/`run.py` de cada agente (bare) — cualquiera de los dos estilos que se usara acá rompía al otro apenas se ejecutaba, confirmado corriendo la regresión combinada y con pruebas reales aisladas. Cargar por ruta de archivo bajo una clave separada no colisiona con ninguno — además hace falta restaurar `sys.path` al estado previo después de cargar cada módulo, porque el archivo del agente inserta su propia carpeta al frente como efecto de lado (eso solo, sin tocar `sys.modules[nombre]`, ya alcanza para romper una resolución package-qualificada posterior si no se deshace). Verificado real: `get_registry()` sigue funcionando después de que `api/main.py` carga los 3 especialistas. | 2026-08-16 |
 | G | Etapa 11 (2026-08-16) — Sebas pidió ver, por agente, qué puede hacer y a qué herramientas está conectado, "que se actualice cuando hay cambios de características o de herramientas". ¿Doc mantenido a mano / endpoint que lee `TOOLS`/`SYSTEM_PROMPT` en vivo de cada módulo? | Doc paralelo / lectura en vivo desde el código | **Lectura en vivo** (`GET /agentes/{nombre}`) — cada agente ya declara `TOOLS` (con `description` por tool, el mismo formato que ya consume el modelo para tool-calling) y `SYSTEM_PROMPT` como constantes de código; el endpoint las lee directo del objeto de módulo (los mismos `_mod_microbiologo`/etc. de la decisión F) — no hay copia que pueda desincronizarse, es literalmente la fuente que el agente usa para operar. `disponible_en_chat` se deriva comparando contra `TOOLS_CHAT` (Etapa 10) para marcar qué tools son exclusivas de la corrida formal. | 2026-08-16 |
 | H | Etapa 12 (2026-08-16) — Sebas, mirando el chat: "¿no puedo hacerles preguntas que no sean en el marco de un caso? me preocupa el consumo de tokens." ¿`frente_id` sigue obligatorio para hablar con un especialista? | Obligatorio / Opcional ("consulta libre") | **Opcional.** `_CrearSesionEspecialistaIn.frente_id: str \| None = None` — sin él, `POST /especialistas/{nombre}/sesiones` no llama `iniciar_sesion` (nada de contexto de caso que armar), la ficha se crea con `frente_id: null`. `/especialistas/[nombre]` sin `?frente=` entra en este modo automáticamente, en vez de mostrar un error. Resultado: la consulta libre es MÁS barata en tokens que el modo con caso, no una alternativa degradada — resuelve la preocupación de Sebas directamente. En la misma conversación surgió un segundo gap real, distinto de este: no existe ningún camino (ni web ni Conductor) para dar de alta un caso nuevo — anotado como Etapa 13, deuda explícita, no resuelto hoy. | 2026-08-16 |
+| I | Etapa 13 (2026-08-17) — ¿cómo se crea un caso: formulario web, Conductor conversacional, o los dos? | Formulario web / Conductor / Los dos | **Los dos**, elegido explícitamente por Sebas. `POST /casos` (`utils/casos.py::crear_caso`) es la base compartida — `/casos/nuevo` (formulario) y la tool `crear_caso` del Conductor (`conductor/docs/DESIGN_GATE.md` decisión G) llaman la misma función, sin duplicar lógica de creación. `nombre`/`descripcion` son los únicos campos obligatorios (son los que arman `texto_busqueda`, el campo vectorizado) — un caso puede crearse sin frentes (`casos.yaml` ya lo permite explícitamente). Verificado real contra staging (creación real, lectura de vuelta correcta, aparece en el listado) — la escritura contra producción vía el server real se verificó indirectamente: la ruta HTTP/validación por tests (mock), y el camino del Conductor con una conversación real que correctamente pidió confirmación sin llegar a escribir nada (decisión explícita de Sebas: no tocar producción con datos de prueba). | 2026-08-17 |
 
 ---
 
@@ -241,7 +258,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-H cerradas, ninguna abierta.
+Decisiones A-I cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Gasto de tokens visible en la web → v1.1, anotado explícitamente para no perderse
