@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -21,6 +21,7 @@ export default function ConductorPage() {
   const [errorSesion, setErrorSesion] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     crearSesionConductor()
@@ -67,12 +68,21 @@ export default function ConductorPage() {
     setCerrandoSesion(false);
   }
 
+  function manejarTecla(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      enviar();
+    }
+    // Shift+Enter: comportamiento por default del textarea (salto de línea), no hace falta nada acá.
+  }
+
   async function enviar() {
     const mensaje = texto.trim();
     if (!mensaje || !sessionId || enviando) return;
 
     setTurnos((t) => [...t, { rol: "vos", texto: mensaje }]);
     setTexto("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     setEnviando(true);
     try {
       const respuesta = await enviarMensajeConductor(sessionId, mensaje);
@@ -157,19 +167,21 @@ export default function ConductorPage() {
         <div ref={finRef} />
       </div>
 
-      <div className="mt-4 flex gap-2">
-        <input
-          className="flex-1 rounded-lg border border-neutral-300 px-4 py-2 text-sm focus:border-neutral-500 focus:outline-none"
-          placeholder="Escribí un mensaje..."
+      <div className="mt-4 flex items-end gap-2">
+        <textarea
+          ref={textareaRef}
+          className="max-h-48 min-h-[42px] flex-1 resize-none overflow-y-auto rounded-lg border border-neutral-300 px-4 py-2 text-sm leading-normal focus:border-neutral-500 focus:outline-none"
+          placeholder="Escribí un mensaje... (Shift+Enter para salto de línea)"
+          rows={1}
           value={texto}
           disabled={!sessionId || enviando}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              enviar();
-            }
+          onChange={(e) => {
+            setTexto(e.target.value);
+            const el = e.target;
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
           }}
+          onKeyDown={manejarTecla}
         />
         <button
           className="rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-40"
