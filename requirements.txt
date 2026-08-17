@@ -38,6 +38,11 @@ fastapi==0.115.6           # api/main.py — backend de solo lectura para la app
 uvicorn==0.32.1             # server ASGI de api/
 httpx==0.28.1                # cliente HTTP async — api/tests (TestClient async, evita el bug de
                               # "Event loop is closed" del TestClient síncrono con el engine async del KM)
+python-multipart==0.0.32    # requerido por FastAPI para parsear UploadFile — POST /archivos/extraer
+                              # (Etapa 17, 2026-08-17)
+pypdf==6.9.2                 # extracción de texto de PDF adjuntos — antes solo transitiva (vía
+                              # knowledge_module.document_store), ahora usada directo por api/main.py
+python-docx==1.2.0           # extracción de texto de .docx adjuntos — POST /archivos/extraer
 
 # mcp — server.py (KM legacy MCP server, Capa 2) lo importa pero el paquete NO está instalado
 # hoy en este entorno — server.py está roto tal cual (hallazgo del 2026-08-15, sin resolver).

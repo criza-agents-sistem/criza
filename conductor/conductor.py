@@ -314,7 +314,16 @@ async def _tool_crear_caso(nombre: str, descripcion: str, estadio: str | None, n
 
 
 async def _tool_ver_documento(documento_id: str) -> dict:
-    doc = await motor_api.obtener(documento_id, tenant=_TENANT)
+    # Encontrado real (2026-08-17, probando adjuntar un archivo): si el modelo pasa algo que no
+    # es un UUID válido (ej. adivinó un nombre en vez de llamar ver_caso primero), la query cruda
+    # de motor_api.obtener revienta con un DataError de asyncpg sin capturar -- eso tira todo el
+    # turno abajo (500, cero respuesta, tokens del turno gastados igual). Mismo criterio que ya
+    # usa _resolver_caso() para el mismo problema: capturar y tratarlo como "no encontrado", no
+    # como error de servidor.
+    try:
+        doc = await motor_api.obtener(documento_id, tenant=_TENANT)
+    except Exception:
+        doc = None
     if not doc or doc.get("tipo") != "documento_caso":
         return {"error": f"No se encontró ningún documento con id '{documento_id}'."}
     props = doc.get("props") or {}

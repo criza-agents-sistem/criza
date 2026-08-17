@@ -118,6 +118,13 @@ Sebas lo corta (`salir`/Ctrl+C), no cuando "terminó de pensar".
       especialista hasta resolver el bloqueo de negocio — comportamiento equivalente al que
       Sebas ejerció a mano el 22/07 (leer antes de actuar, no gastar en un análisis que el
       caso no está listo para recibir).
+- [x] Bug real encontrado y arreglado (2026-08-17, verificando la Etapa 17 de `web/`, adjuntar
+      archivos): `_tool_ver_documento` no capturaba un `documento_id` inválido (el modelo llamó la
+      tool con `"Frente técnico"`, un nombre, no un UUID, sin llamar `ver_caso` primero) — la
+      query cruda del KM reventaba con un `DataError` de asyncpg sin capturar, tirando abajo todo
+      el turno (500, tokens del turno gastados, cero respuesta). Corregido con el mismo patrón
+      `try/except` que ya usa `_resolver_caso()` para el mismo problema. Test nuevo:
+      `test_tool_ver_documento_id_invalido_no_revienta_el_turno`.
 
 ---
 
@@ -146,11 +153,13 @@ Sebas lo corta (`salir`/Ctrl+C), no cuando "terminó de pensar".
 
 ---
 
+| H | Etapa 17 (2026-08-17) — bug real encontrado al verificar "adjuntar archivo" en `web/`: ¿por qué `_tool_ver_documento` tiraba abajo todo el turno con un `documento_id` inválido? | Capturar el error y tratarlo como "no encontrado" / dejar el 500 tal cual | **Capturar**, mismo patrón que ya usaba `_resolver_caso()` para el mismo problema (un `identificador` que no es UUID válido). No hay ninguna razón para que un ID mal formado por el modelo cueste el turno completo — se trata igual que "no se encontró ese documento", el modelo puede reintentar o pedirle a Sebas el id correcto en el mismo turno. | 2026-08-17 |
+
 ## 6. Estado del gate
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-G cerradas, ninguna abierta.
+Decisiones A-H cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Primitivas de Etapa 2 (`oportunidad`+flow) → v2, si aparece un caso real en ese modelo

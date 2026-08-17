@@ -26,12 +26,15 @@ separado que mantener sincronizado.
 Ver docs/DESIGN_GATE.md — decisiones A-E (2026-08-16).
 """
 
+import io
 import re
 import sys
+import tempfile
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
+import docx
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
@@ -47,11 +50,12 @@ sys.path.insert(0, str(_CRIZA_DIR))
 # (encontrado corriendo la regresión completa, no antes).
 sys.path.insert(0, str(_CRIZA_DIR / "conductor"))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from knowledge_module.document_store.store import extract_text as _extraer_texto_pdf_de_path
 from knowledge_module.motor import api as motor_api
 from knowledge_module.motor.loader import load_plantilla
 from utils.ai_client import MODELOS_DISPONIBLES
@@ -280,6 +284,72 @@ async def descargar_documento(documento_id: str) -> Response:
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{nombre_archivo}"'},
     )
+
+
+# ── Adjuntar un archivo al chat (Etapa 17, 2026-08-17) ──────────────────────────
+#
+# Sebas: "cómo le subo un archivo al conductor? Andrés me pasó información de la composición del
+# efluente" — no había ningún camino, ni web ni Conductor. Diseño deliberadamente simple: esto NO
+# persiste el archivo en ningún lado (ni el KM ni disco) — solo extrae el texto y lo devuelve. El
+# frontend lo suma al próximo mensaje que se manda al chat, como si Sebas lo hubiera tipeado él
+# mismo — mismo mecanismo que ya usa el resto del chat (texto plano), sin inventar un tipo de
+# contenido nuevo ni una tabla de "archivos" en el KM. Si en algún momento hace falta guardar el
+# archivo original (no solo su texto), es una decisión aparte — no la pide el pedido de hoy.
+#
+# Extracción de PDF: reusa `knowledge_module.document_store.store.extract_text` — ya es genérico
+# de plataforma (Capa 0-1), no se reimplica acá. Extracción de .docx/.txt/.md: es igual de
+# genérica en espíritu, pero se implementa acá (CRIZA) por ahora — promoverla a `knowledge_module`
+# es un buen candidato si otra instancia la necesita (mismo criterio que ya se usó con el motor
+# dirigido por objetivo, ver Norte global de CLAUDE.md), no antes de que haga falta de verdad.
+
+_EXTENSIONES_SOPORTADAS = {".pdf", ".docx", ".txt", ".md"}
+_MAX_CARACTERES_ARCHIVO = 60_000  # generoso, pero evita mandar un documento gigante en un solo turno
+
+
+def _extraer_pdf(contenido: bytes) -> str:
+    # NamedTemporaryFile(delete=True) + reabrir el mismo path desde otro handle falla en Windows
+    # por el locking del sistema de archivos — confirmado al mano. delete=False + unlink manual
+    # en el finally evita ese problema.
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(contenido)
+        tmp_path = Path(tmp.name)
+    try:
+        return _extraer_texto_pdf_de_path(tmp_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def _extraer_docx(contenido: bytes) -> str:
+    documento = docx.Document(io.BytesIO(contenido))
+    return "\n".join(p.text for p in documento.paragraphs if p.text.strip())
+
+
+@app.post("/archivos/extraer")
+async def extraer_texto_archivo(archivo: UploadFile = File(...)) -> dict:
+    ext = Path(archivo.filename or "").suffix.lower()
+    if ext not in _EXTENSIONES_SOPORTADAS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Formato no soportado ({ext or 'sin extensión'}). Soportados: PDF, Word (.docx), texto (.txt/.md).",
+        )
+
+    contenido = await archivo.read()
+
+    if ext == ".pdf":
+        texto = _extraer_pdf(contenido)
+    elif ext == ".docx":
+        texto = _extraer_docx(contenido)
+    else:
+        texto = contenido.decode("utf-8", errors="replace")
+
+    if not texto.strip():
+        raise HTTPException(status_code=422, detail="No se pudo extraer texto del archivo (¿es un escaneo sin capa de texto?).")
+
+    truncado = len(texto) > _MAX_CARACTERES_ARCHIVO
+    if truncado:
+        texto = texto[:_MAX_CARACTERES_ARCHIVO]
+
+    return {"nombre_archivo": archivo.filename, "texto": texto, "truncado": truncado}
 
 
 def _mensajes_a_turnos(mensajes: list[dict], rol_agente: str) -> list[dict]:

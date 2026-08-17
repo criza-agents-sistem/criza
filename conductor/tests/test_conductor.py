@@ -217,6 +217,18 @@ async def test_tool_ver_documento_no_encontrado():
     assert "error" in result
 
 
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_ver_documento_id_invalido_no_revienta_el_turno():
+    """Encontrado real (2026-08-17): el modelo puede pasar un nombre en vez de un UUID (ej.
+    "Frente técnico") sin llamar ver_caso primero -- eso rompía la query cruda del KM con un
+    DataError sin capturar, tirando abajo todo el turno (500, tokens gastados, cero respuesta).
+    Mismo criterio que ya usa _resolver_caso() para el mismo problema."""
+    with patch("conductor.motor_api.obtener", new=AsyncMock(side_effect=Exception("invalid input syntax for type uuid"))):
+        result = await cond._tool_ver_documento("Frente técnico")
+    assert "error" in result
+
+
 # ── _tool_anotar_leccion (trigger explícito, Etapa 9) ───────────────────────
 
 @pytest.mark.unit

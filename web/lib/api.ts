@@ -153,6 +153,30 @@ export function obtenerSesionEspecialista(id: string): Promise<SesionEspecialist
   return apiFetch<SesionEspecialistaDetalle>(`/especialistas/sesiones/${id}`);
 }
 
+// Etapa 17 (2026-08-17) — adjuntar un archivo al chat. No persiste el archivo en ningún lado
+// (ni KM ni disco) — solo extrae el texto y lo devuelve; el caller lo suma al próximo mensaje.
+export type ExtraccionArchivo = { nombre_archivo: string; texto: string; truncado: boolean };
+
+export async function extraerTextoArchivo(file: File): Promise<ExtraccionArchivo> {
+  const formData = new FormData();
+  formData.append("archivo", file);
+  const res = await fetch(`${API_URL}/archivos/extraer`, { method: "POST", body: formData });
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => ({}));
+    throw new Error(detalle.detail || `No se pudo leer el archivo (${res.status})`);
+  }
+  return res.json();
+}
+
+// El texto combinado ES lo que se manda y lo que se muestra en el chat (mismo string) — así lo
+// que se ve ahora y lo que aparece al reabrir la conversación desde el Historial (Etapa 16) es
+// siempre lo mismo, sin un formato "bonito" en pantalla que diverja de lo realmente persistido.
+export function combinarMensajeConArchivo(texto: string, archivo: ExtraccionArchivo | null): string {
+  if (!archivo) return texto;
+  const encabezado = `[Archivo adjunto: ${archivo.nombre_archivo}]\n${archivo.texto}`;
+  return texto ? `${encabezado}\n\n---\n${texto}` : encabezado;
+}
+
 // ── Conductor (chat) ─────────────────────────────────────────────────────────
 // A diferencia de listarCasos/obtenerCaso/obtenerDocumento (server components, GET,
 // cache: "no-store"), estas se llaman desde un client component — el Conductor puede tardar

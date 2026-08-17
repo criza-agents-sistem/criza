@@ -168,6 +168,94 @@ def test_descargar_documento_otro_tipo_es_404():
     assert resp.status_code == 404
 
 
+# ── Adjuntar un archivo al chat (Etapa 17, 2026-08-17) ──────────────────────────
+
+@pytest.mark.unit
+def test_extraer_texto_pdf_real():
+    """PDF real (no mockeado) construido en memoria con PyMuPDF — confirma la extracción de
+    punta a punta contra `knowledge_module.document_store.store.extract_text`, no solo que la
+    ruta HTTP existe."""
+    import fitz
+
+    doc = fitz.open()
+    pagina = doc.new_page()
+    pagina.insert_text((72, 72), "Composicion del efluente: N amonio 500-5000 mg/L")
+    contenido = doc.tobytes()
+    doc.close()
+
+    resp = client.post("/archivos/extraer", files={"archivo": ("informe.pdf", contenido, "application/pdf")})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["nombre_archivo"] == "informe.pdf"
+    assert "500-5000 mg/L" in data["texto"]
+    assert data["truncado"] is False
+
+
+@pytest.mark.unit
+def test_extraer_texto_pdf_sin_capa_de_texto_es_422():
+    import fitz
+
+    doc = fitz.open()
+    doc.new_page()  # página en blanco, sin texto
+    contenido = doc.tobytes()
+    doc.close()
+
+    resp = client.post("/archivos/extraer", files={"archivo": ("escaneo.pdf", contenido, "application/pdf")})
+    assert resp.status_code == 422
+
+
+@pytest.mark.unit
+def test_extraer_texto_docx_real():
+    import io as _io
+
+    import docx as _docx
+
+    documento = _docx.Document()
+    documento.add_paragraph("Composicion quimica del digestato liquido de Helios.")
+    buffer = _io.BytesIO()
+    documento.save(buffer)
+
+    resp = client.post(
+        "/archivos/extraer",
+        files={"archivo": ("Helios_Informe_Tecnico_Digerido.docx", buffer.getvalue(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "digestato liquido de Helios" in data["texto"]
+
+
+@pytest.mark.unit
+def test_extraer_texto_txt():
+    resp = client.post("/archivos/extraer", files={"archivo": ("notas.txt", b"pH 7,5-8,5, alcalino", "text/plain")})
+    assert resp.status_code == 200
+    assert resp.json()["texto"] == "pH 7,5-8,5, alcalino"
+
+
+@pytest.mark.unit
+def test_extraer_texto_md():
+    resp = client.post("/archivos/extraer", files={"archivo": ("notas.md", b"# Composicion\n\nN: 500 mg/L", "text/markdown")})
+    assert resp.status_code == 200
+    assert "# Composicion" in resp.json()["texto"]
+
+
+@pytest.mark.unit
+def test_extraer_extension_no_soportada_es_400():
+    resp = client.post("/archivos/extraer", files={"archivo": ("planilla.xlsx", b"lo que sea", "application/octet-stream")})
+    assert resp.status_code == 400
+
+
+@pytest.mark.unit
+def test_extraer_trunca_archivo_largo():
+    texto_largo = "x" * 70_000
+    resp = client.post("/archivos/extraer", files={"archivo": ("largo.txt", texto_largo.encode(), "text/plain")})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["truncado"] is True
+    assert len(data["texto"]) == 60_000
+
+
 # ── Elegir modelo por sesión (Etapa 15, 2026-08-17) ─────────────────────────────
 
 @pytest.mark.unit

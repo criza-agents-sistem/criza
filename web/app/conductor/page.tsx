@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -11,8 +11,11 @@ import {
   listarModelos,
   listarSesionesConductor,
   obtenerSesionConductor,
+  extraerTextoArchivo,
+  combinarMensajeConArchivo,
   type ModeloDisponible,
   type SesionResumen,
+  type ExtraccionArchivo,
 } from "@/lib/api";
 
 type Turno = { rol: "vos" | "conductor" | "error" | "sistema"; texto: string };
@@ -42,9 +45,13 @@ export default function ConductorPage() {
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
   const [historial, setHistorial] = useState<SesionResumen[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [archivoAdjunto, setArchivoAdjunto] = useState<ExtraccionArchivo | null>(null);
+  const [subiendoArchivo, setSubiendoArchivo] = useState(false);
+  const [errorArchivo, setErrorArchivo] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
   const sessionIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function guardarSesionActiva(id: string | null) {
     setSessionId(id);
@@ -151,12 +158,32 @@ export default function ConductorPage() {
     // Shift+Enter: comportamiento por default del textarea (salto de línea), no hace falta nada acá.
   }
 
+  // Etapa 17 (2026-08-17) — Sebas: "cómo le subo un archivo al conductor?". No hay adjuntos
+  // reales: se extrae el texto del archivo y se suma al próximo mensaje, como si lo hubiera
+  // tipeado él (mismo mecanismo de siempre — texto plano).
+  async function manejarArchivoSeleccionado(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite volver a elegir el mismo archivo después de sacarlo
+    if (!file) return;
+    setErrorArchivo(null);
+    setSubiendoArchivo(true);
+    try {
+      const extraido = await extraerTextoArchivo(file);
+      setArchivoAdjunto(extraido);
+    } catch (err) {
+      setErrorArchivo(err instanceof Error ? err.message : "No se pudo leer el archivo");
+    } finally {
+      setSubiendoArchivo(false);
+    }
+  }
+
   async function enviar() {
-    const mensaje = texto.trim();
+    const mensaje = combinarMensajeConArchivo(texto.trim(), archivoAdjunto);
     if (!mensaje || !sessionId || enviando) return;
 
     setTurnos((t) => [...t, { rol: "vos", texto: mensaje }]);
     setTexto("");
+    setArchivoAdjunto(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setEnviando(true);
     try {
@@ -284,7 +311,35 @@ export default function ConductorPage() {
         <div ref={finRef} />
       </div>
 
-      <div className="mt-4 flex items-end gap-2">
+      {errorArchivo && (
+        <p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">{errorArchivo}</p>
+      )}
+      {archivoAdjunto && (
+        <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-600">
+          📎 {archivoAdjunto.nombre_archivo}
+          {archivoAdjunto.truncado && <span className="text-amber-600">(recortado, era muy largo)</span>}
+          <button className="text-neutral-400 hover:text-neutral-700" onClick={() => setArchivoAdjunto(null)}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className="mt-2 flex items-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.docx,.txt,.md"
+          className="hidden"
+          onChange={manejarArchivoSeleccionado}
+        />
+        <button
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+          disabled={!sessionId || subiendoArchivo}
+          title="Adjuntar un archivo (PDF, Word, texto)"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {subiendoArchivo ? "..." : "📎"}
+        </button>
         <textarea
           ref={textareaRef}
           className="max-h-48 min-h-[42px] flex-1 resize-none overflow-y-auto rounded-lg border border-neutral-300 px-4 py-2 text-sm leading-normal focus:border-neutral-500 focus:outline-none"
@@ -302,7 +357,7 @@ export default function ConductorPage() {
         />
         <button
           className="rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-40"
-          disabled={!sessionId || enviando || !texto.trim()}
+          disabled={!sessionId || enviando || (!texto.trim() && !archivoAdjunto)}
           onClick={enviar}
         >
           Enviar
