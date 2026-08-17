@@ -301,6 +301,66 @@ conversación en la que se subió. La inyección en una corrida formal de especi
 por código + tests unitarios (no se corrió una corrida real completa, para no gastar tokens ni
 generar un `documento_caso` de prueba en producción sin necesidad).
 
+### Decisión O — hostear la web públicamente: contraseña compartida, no login real ni biométrico (Etapa 19, 2026-08-17)
+
+Sebas: "por lo que veo por el momento sólo los puedo usar en local, qué falta para subirlo a una
+web hosteada." Sin esto, cualquiera que encontrara la URL vería casos reales (Helios, MicroBigs) y
+podría gastar tokens reales de la cuenta de Anthropic — `usuarios.yaml` seguía siendo "sin login,
+un solo usuario" (fila de Scope, arriba), válido en local pero no una vez pública.
+
+**Preguntado explícitamente entre 3 opciones — elegida "contraseña simple (recomendado para
+arrancar)"** sobre "sin login" y sobre "login real con usuario/contraseña" (tabla de usuarios,
+más trabajo no justificado todavía con un solo usuario real). Más tarde, ya con el middleware
+construido, Sebas preguntó si convenía autenticación biométrica (huella/Face ID, WebAuthn) en su
+lugar — evaluado y descartado por ahora: WebAuthn es un sistema de login real completo (server
+que registra/verifica credenciales, tabla de claves públicas por usuario), no una barrera simple,
+y la credencial queda atada a cada dispositivo por separado (recargar desde otro navegador/PC
+exige registrar de nuevo) — fricción mayor que compartir una contraseña con un solo usuario real.
+Queda anotado como upgrade válido si se suma más de una persona.
+
+**Implementada en las dos capas, mismo criterio en ambas — sin las env vars (dev local), no piden
+nada:**
+- `api/main.py` — middleware `@app.middleware("http")` registrado **antes** de
+  `app.add_middleware(CORSMiddleware, ...)` (en Starlette el último agregado queda más externo —
+  este orden hace que CORSMiddleware envuelva al de auth y le sume los headers `Access-Control-*`
+  también a una respuesta 401, no solo a las exitosas; confirmado con un test dedicado, no
+  asumido). Lee `API_AUTH_USER`/`API_AUTH_PASSWORD`, compara con `hmac.compare_digest` (no `==`,
+  evita timing attack). `OPTIONS` (preflight de CORS) siempre pasa sin auth — el navegador nunca
+  manda credenciales ahí.
+- `web/proxy.ts` — mismo patrón, `SITE_AUTH_USER`/`SITE_AUTH_PASSWORD`. Archivo nuevo, no
+  `middleware.ts`: Next.js 16 deprecó `middleware.js`/`.ts` y lo renombró a `proxy.js`/`.ts`
+  (`node_modules/next/dist/docs/`, seguido por instrucción explícita de `web/AGENTS.md` de leer
+  ahí antes de escribir código Next.js en este proyecto) — mismo `NextRequest`/`NextResponse`,
+  export nombrado `proxy` en vez de `middleware`. `matcher` excluye `_next/static`, `_next/image`
+  y `favicon.ico` para no bloquear assets.
+
+**Verificación real (no solo tests):** con las env vars seteadas temporalmente contra el server de
+`api/` corriendo — 401 sin credenciales, `WWW-Authenticate: Basic realm="CRIZA"`; 200 con
+credenciales correctas; 401 con credenciales incorrectas; `OPTIONS` pasa sin auth; el 401 lleva
+headers CORS (`access-control-allow-origin`) cuando el pedido es cross-origin — el motivo real de
+haber elegido ese orden de middlewares. Repetido contra `web/proxy.ts` con el dev server real
+(`SITE_AUTH_USER`/`PASSWORD` en `.env.local`, servidor reiniciado, `curl` real): sin credenciales
+401, credenciales correctas 200, credenciales malas 401, `favicon.ico` 200 sin credenciales (el
+matcher lo excluye). Env vars retiradas y servidor reiniciado de nuevo al terminar — el dev local
+sigue sin pedir nada. `npm run build` limpio, `proxy.ts` aparece como `ƒ Proxy (Middleware)` en la
+tabla de rutas. Regresión completa del backend: 537 passed, 2 skipped.
+
+**Fix relacionado, mismo día — cap de truncado de archivos adjuntos (Etapa 17c):**
+`_MAX_CARACTERES_ARCHIVO` (Decisión M) subido de 60.000 a 400.000 caracteres (~100k tokens).
+Encontrado real, no en tests: una transcripción real de una reunión de Helios
+(`Helios_reunión_equipo_CRIZA_17_08_26.md`) excedía el cap viejo, Sebas la necesitaba subir en el
+momento ("ajustalo ahora porque necesito subir esa transcripción") — priorizado sobre el trabajo
+de auth en curso, corregido y verificado en el momento, retomado el trabajo de auth después. Sigue
+acotado (no ilimitado) para no mandar un documento verdaderamente patológico en un solo turno.
+
+**Deploy en sí (Vercel para `web/`, Railway para `api/`) — decidido, ejecución en curso:** Vercel
+porque no hay infra propia que mantener y el equipo de Sebas (`sebabizzi-7494's projects`) ya
+existe. Railway para `api/` (no Vercel serverless) porque una corrida de especialista real puede
+tardar varios minutos (~5 min la del Biotecnólogo) — excede el timeout típico de una función
+serverless; Railway corre el proceso como un servicio persistente. Sebas ya tiene cuenta de
+Railway conectada a su GitHub (con otros proyectos), así que no hace falta alta de cuenta, solo un
+servicio nuevo apuntando a este repo.
+
 ### KM write — vía el Conductor, no la API en sí
 
 Los 3 endpoints de lectura no escriben nada. `/conductor/sesiones/{id}/mensajes` **sí puede
@@ -471,6 +531,19 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
       y separada** del Conductor (sesión nueva, sin mencionar el archivo) preguntó por él y citó
       el dato exacto (nitrógeno amoniacal 1.200 mg/L) con análisis correcto — confirma que el
       documento sobrevive a la conversación en la que se subió, cerrando el gap que señaló Sebas
+- [x] Test (Etapa 19): sin `API_AUTH_USER`/`PASSWORD` no pide nada; sin credenciales → 401 con
+      `WWW-Authenticate: Basic realm="CRIZA"`; credenciales correctas → 200; credenciales
+      incorrectas → 401; `OPTIONS` pasa siempre sin auth; el 401 lleva headers CORS cuando el
+      pedido es cross-origin (test dedicado a la razón real del orden de middlewares)
+- [x] Test (Etapa 17c): cap de truncado de archivo adjunto subido a 400.000 caracteres
+- [x] `npm run build` sin errores de tipos ni de build con `web/proxy.ts` nuevo — aparece como
+      `ƒ Proxy (Middleware)` en la tabla de rutas
+- [x] Verificación real de punta a punta contra ambos servers corriendo localmente (no solo
+      tests): env vars reales seteadas temporalmente en `api/` y en `web/.env.local`, servers
+      reiniciados, `curl` real confirmando 401/200/401/OPTIONS-pasa en las dos capas y que
+      `favicon.ico` no pide auth (matcher). Env vars retiradas y servers reiniciados de nuevo al
+      terminar — el dev local sigue sin pedir nada. Regresión completa del backend: 537 passed, 2
+      skipped
 
 ---
 
@@ -488,8 +561,9 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | Historial de conversaciones + recordar sesión activa | ✅ hecho (Etapa 16, 2026-08-17) | Bug real: una respuesta del Conductor "se perdió" desde la perspectiva de Sebas — en realidad seguía intacta en el KM, solo inalcanzable desde la web. Ver Decisión L. |
 | Adjuntar un archivo al chat | ✅ hecho (Etapa 17, 2026-08-17) | Sebas: "cómo le subo un archivo al conductor? Andrés me pasó información de la composición del efluente". No persiste el archivo, solo extrae texto y lo suma al mensaje. Ver Decisión M. |
 | El archivo queda conectado al caso (no solo a la conversación) | ✅ hecho (Etapa 17b, 2026-08-17) | Feedback real de Sebas: "no entiendo la lógica de que no quede guardada... esperaba que se sintiera como con vos". Nuevo tipo `documento_aportado`, disponible para el Conductor en cualquier conversación futura y para corridas formales de especialistas. Ver Decisión N. |
+| Barrera de acceso para hostear públicamente (contraseña compartida) | ✅ hecho (Etapa 19, 2026-08-17) | Sebas: "qué falta para subirlo a una web hosteada." HTTP Basic Auth en `api/` y `web/`, sin las env vars no pide nada (dev local sigue igual). Ver Decisión O. |
 | Entrada por voz, modo documento coautoría, extracción de datos estructurados, vincular artefactos nuevos, dashboard | v2+ | `PROPUESTA_DESTINO.md` §7 los confirma como parte de la visión completa, pero son ideas para sumar al alcance, no lo mínimo de esta etapa. |
-| Autenticación / login real | No planeado todavía | `usuarios.yaml` — decisión ya tomada, sin login real por ahora, un solo usuario (Sebas). |
+| Login real (usuario/contraseña por persona) o biométrico (WebAuthn) | No planeado todavía — evaluado y descartado por ahora | `usuarios.yaml` sigue siendo un solo usuario (Sebas). Contraseña compartida (Decisión O) resuelve el riesgo real de hoy (exponer casos/tokens a cualquiera con la URL); login real o biométrico son upgrades válidos si se suma más de una persona, no antes. |
 
 ---
 
@@ -511,6 +585,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 | L | Etapa 16 (2026-08-17) — bug real: una respuesta del Conductor "se perdió" al volver más tarde. ¿Cómo evitar que vuelva a pasar? | `localStorage` solo / historial completo solo / los dos | **Los dos**, elegido explícitamente por Sebas entre 3 opciones. `localStorage` (clave por página/especialista+frente) cubre el caso común (recargar, cerrar/abrir pestaña) sin ningún request extra al montar si ya hay sesión guardada. El historial (`GET /conductor/sesiones`, `GET /especialistas/sesiones?especialista=`) cubre lo que `localStorage` no puede (otro dispositivo/navegador, storage borrado) leyendo directo del KM, que siempre fue la fuente de verdad real — el bug nunca fue de datos, fue de que la web no sabía cómo volver a encontrarlos. | 2026-08-17 |
 | M | Etapa 17 (2026-08-17) — Sebas pidió poder adjuntar un archivo al chat. ¿Fix rápido (pegar texto a mano) o construir carga real? ¿Qué formatos? ¿Se persiste el archivo original? | Fix rápido / carga real — ver detalle en "Decisión M" arriba | **Carga real**, elegido explícitamente por Sebas ("recomendado si vas a subir más seguido"). PDF/`.docx`/`.txt`/`.md`. NO se persiste el archivo original — solo se extrae el texto, que se suma al mensaje como si Sebas lo hubiera tipeado (mismo mecanismo de siempre, sin inventar un tipo de contenido nuevo en el KM). PDF reusa `knowledge_module.document_store.store.extract_text()` (ya genérico de plataforma); `.docx`/`.txt`/`.md` se implementa en CRIZA por ahora, anotado como candidato a promover si hace falta. | 2026-08-17 |
 | N | Etapa 17b (2026-08-17) — feedback real de Sebas: "no entiendo la lógica de que no quede guardada... esperaba que se sintiera como con vos". ¿El archivo queda atado siempre a un caso/frente, o a veces sin caso? | Siempre atado a un caso/frente / A veces sin caso, como la consulta libre | **Siempre atado**, elegido explícitamente por Sebas. Nuevo tipo `documento_aportado` (`config/plantillas/casos.yaml`), conectado al frente vía `frente_tiene_documento_aportado`. `POST /frentes/{id}/documentos-aportados` lo persiste; si la página no sabe el frente todavía (`/conductor`, especialista en consulta libre), un picker inline (caso → frente) pregunta antes de guardar. El Conductor (`ver_caso`/`ver_documento`) y las 3 corridas formales de especialista (`build_input_desde_frente`) ahora lo tienen disponible — no solo la conversación en la que se subió. Ver detalle en "Decisión N" arriba. | 2026-08-17 |
+| O | Etapa 19 (2026-08-17) — Sebas quiere hostear la web públicamente. ¿Barrera de acceso: sin login / contraseña compartida simple / login real / biométrico (WebAuthn)? | Ver detalle en "Decisión O" arriba | **Contraseña compartida simple (HTTP Basic Auth)**, elegida explícitamente por Sebas dos veces — primero sobre "sin login" y "login real", después (al preguntar por biométrico) confirmado que WebAuthn es más trabajo del justificado hoy (login real completo + atado a cada dispositivo). Implementada en `api/main.py` (middleware, antes de CORS a propósito) y `web/proxy.ts` (Next.js 16 renombró `middleware.ts` → `proxy.ts`). Deploy: Vercel (`web/`) + Railway (`api/`, no serverless — corridas de especialista pueden tardar minutos). | 2026-08-17 |
 
 ---
 
@@ -518,7 +593,7 @@ decidir qué corridas promueve, igual que con cualquier otro cliente de la costu
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-N cerradas, ninguna abierta.
+Decisiones A-O cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Gasto de tokens visible en la web → v1.1, anotado explícitamente para no perderse

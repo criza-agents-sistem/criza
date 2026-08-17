@@ -26,7 +26,10 @@ separado que mantener sincronizado.
 Ver docs/DESIGN_GATE.md — decisiones A-E (2026-08-16).
 """
 
+import base64
+import hmac
 import io
+import os
 import re
 import sys
 import tempfile
@@ -50,7 +53,7 @@ sys.path.insert(0, str(_CRIZA_DIR))
 # (encontrado corriendo la regresión completa, no antes).
 sys.path.insert(0, str(_CRIZA_DIR / "conductor"))
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -136,11 +139,52 @@ _TENANT = "criza"
 _PLANTILLA_SESIONES = _CRIZA_DIR / "config" / "plantillas" / "conductor_sesiones.yaml"
 _PLANTILLA_SESIONES_ESPECIALISTA = _CRIZA_DIR / "config" / "plantillas" / "especialista_sesiones.yaml"
 
+# Etapa 19 (2026-08-17) — Sebas quiere hostear esto públicamente. Sin login real
+# (config/plantillas/usuarios.yaml: un solo usuario) — sin esto, cualquiera con la URL vería
+# casos reales (Helios, MicroBigs) y podría gastar tokens reales de la cuenta de Anthropic.
+# Contraseña compartida (HTTP Basic Auth) como primera barrera, elegida explícitamente por Sebas
+# sobre "sin login" y sobre "login real" (más trabajo, no justificado con un solo usuario real
+# hoy). Sin API_AUTH_USER/API_AUTH_PASSWORD configuradas (desarrollo local), no pide nada.
+_API_AUTH_USER = os.getenv("API_AUTH_USER")
+_API_AUTH_PASSWORD = os.getenv("API_AUTH_PASSWORD")
+_FRONTEND_URL = os.getenv("FRONTEND_URL")  # dominio real de Vercel, una vez hosteado
+
 app = FastAPI(title="CRIZA API", description="API para la app web (Etapa 6) — casos de solo lectura + chat del Conductor")
+
+
+@app.middleware("http")
+async def _basic_auth(request: Request, call_next):
+    """
+    Registrada ANTES de `add_middleware(CORSMiddleware, ...)` a propósito: en Starlette, el
+    último middleware agregado queda más externo — así CORSMiddleware envuelve a este y le suma
+    los headers `Access-Control-*` también a la respuesta 401, no solo a las exitosas. Sin esto,
+    el navegador reporta un error de CORS genérico en un pedido cross-origin sin credenciales, en
+    vez de dejar ver el 401 real (confirmado al probarlo, no asumido).
+
+    OPTIONS (preflight de CORS) siempre pasa sin auth — el navegador nunca manda credenciales ahí,
+    exigirlas rompería CORS por completo.
+    """
+    if not _API_AUTH_USER or not _API_AUTH_PASSWORD:
+        return await call_next(request)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+            user, _, password = decoded.partition(":")
+        except Exception:
+            user, password = "", ""
+        if hmac.compare_digest(user, _API_AUTH_USER) and hmac.compare_digest(password, _API_AUTH_PASSWORD):
+            return await call_next(request)
+
+    return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="CRIZA"'})
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[o for o in ("http://localhost:3000", _FRONTEND_URL) if o],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -322,7 +366,11 @@ async def descargar_documento(documento_id: str) -> Response:
 # dirigido por objetivo, ver Norte global de CLAUDE.md), no antes de que haga falta de verdad.
 
 _EXTENSIONES_SOPORTADAS = {".pdf", ".docx", ".txt", ".md"}
-_MAX_CARACTERES_ARCHIVO = 60_000  # generoso, pero evita mandar un documento gigante en un solo turno
+_MAX_CARACTERES_ARCHIVO = 400_000  # ~100k tokens — cubre una transcripción de reunión larga
+                                     # entera; subido de 60k (Etapa 17) tras encontrar real que
+                                     # una transcripción real de Helios lo excedía (Etapa 17c,
+                                     # 2026-08-17). Sigue acotado para no mandar un documento
+                                     # verdaderamente patológico en un solo turno.
 
 
 def _extraer_pdf(contenido: bytes) -> str:

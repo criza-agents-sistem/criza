@@ -289,12 +289,12 @@ def test_extraer_extension_no_soportada_es_400():
 
 @pytest.mark.unit
 def test_extraer_trunca_archivo_largo():
-    texto_largo = "x" * 70_000
+    texto_largo = "x" * 500_000
     resp = client.post("/archivos/extraer", files={"archivo": ("largo.txt", texto_largo.encode(), "text/plain")})
     assert resp.status_code == 200
     data = resp.json()
     assert data["truncado"] is True
-    assert len(data["texto"]) == 60_000
+    assert len(data["texto"]) == 400_000
 
 
 # ── Persistir un documento aportado (Etapa 17b, 2026-08-17) ─────────────────────
@@ -836,6 +836,66 @@ def test_cors_permite_localhost_3000():
         "/casos",
         headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET"},
     )
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+# ── Autenticación básica (Etapa 19, 2026-08-17 — hostear la web públicamente) ───────────────────
+
+@pytest.mark.unit
+def test_basic_auth_sin_env_vars_no_pide_nada():
+    """Ya cubierto implícitamente por todos los tests de arriba (ninguno setea las env vars) —
+    acá se confirma explícitamente, para que el intento quede documentado."""
+    assert api_main._API_AUTH_USER is None
+    assert api_main._API_AUTH_PASSWORD is None
+    resp = client.get("/modelos")
+    assert resp.status_code == 200
+
+
+@pytest.mark.unit
+def test_basic_auth_rechaza_sin_credenciales_cuando_esta_configurado():
+    with patch("main._API_AUTH_USER", "sebas"), patch("main._API_AUTH_PASSWORD", "secreto"):
+        resp = client.get("/modelos")
+    assert resp.status_code == 401
+    assert resp.headers["www-authenticate"] == 'Basic realm="CRIZA"'
+
+
+@pytest.mark.unit
+def test_basic_auth_acepta_credenciales_correctas():
+    import base64
+    creds = base64.b64encode(b"sebas:secreto").decode()
+    with patch("main._API_AUTH_USER", "sebas"), patch("main._API_AUTH_PASSWORD", "secreto"):
+        resp = client.get("/modelos", headers={"Authorization": f"Basic {creds}"})
+    assert resp.status_code == 200
+
+
+@pytest.mark.unit
+def test_basic_auth_rechaza_credenciales_incorrectas():
+    import base64
+    creds = base64.b64encode(b"sebas:contrasena-mala").decode()
+    with patch("main._API_AUTH_USER", "sebas"), patch("main._API_AUTH_PASSWORD", "secreto"):
+        resp = client.get("/modelos", headers={"Authorization": f"Basic {creds}"})
+    assert resp.status_code == 401
+
+
+@pytest.mark.unit
+def test_basic_auth_options_pasa_sin_credenciales():
+    """El preflight de CORS nunca manda credenciales — exigirlas rompería CORS por completo."""
+    with patch("main._API_AUTH_USER", "sebas"), patch("main._API_AUTH_PASSWORD", "secreto"):
+        resp = client.options(
+            "/casos",
+            headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET"},
+        )
+    assert resp.status_code != 401
+
+
+@pytest.mark.unit
+def test_basic_auth_401_incluye_headers_cors():
+    """La razón real de registrar el middleware de auth ANTES de CORSMiddleware: sin este orden,
+    una respuesta 401 a un pedido cross-origin sin credenciales no lleva headers Access-Control-*,
+    y el navegador reporta un error de CORS genérico en vez de dejar ver el 401 real."""
+    with patch("main._API_AUTH_USER", "sebas"), patch("main._API_AUTH_PASSWORD", "secreto"):
+        resp = client.get("/modelos", headers={"Origin": "http://localhost:3000"})
+    assert resp.status_code == 401
     assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
 
 
