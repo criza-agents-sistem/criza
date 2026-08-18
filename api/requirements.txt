@@ -1,5 +1,0 @@
-# api/main.py importa directo conductor/conductor.py y utils/casos.py (sys.path hack, ver
-# main.py) — necesita el mismo set de dependencias que el resto del repo, no un subset propio.
-# Railway con Root Directory=api busca requirements.txt acá; delegamos al de la raíz para no
-# duplicar/desincronizar la lista.
--r ../requirements.txt
