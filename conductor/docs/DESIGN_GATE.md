@@ -154,12 +154,13 @@ Sebas lo corta (`salir`/Ctrl+C), no cuando "terminó de pensar".
 ---
 
 | H | Etapa 17 (2026-08-17) — bug real encontrado al verificar "adjuntar archivo" en `web/`: ¿por qué `_tool_ver_documento` tiraba abajo todo el turno con un `documento_id` inválido? | Capturar el error y tratarlo como "no encontrado" / dejar el 500 tal cual | **Capturar**, mismo patrón que ya usaba `_resolver_caso()` para el mismo problema (un `identificador` que no es UUID válido). No hay ninguna razón para que un ID mal formado por el modelo cueste el turno completo — se trata igual que "no se encontró ese documento", el modelo puede reintentar o pedirle a Sebas el id correcto en el mismo turno. | 2026-08-17 |
+| I | Etapa 19 (2026-08-18) — Sebas le preguntó al Conductor "necesito descargar los últimos informes de cada agente ... cómo se cuáles son?" y no pudo responder con ids reales — el briefing de `ver_caso` solo exponía el conteo y el título del último documento del frente, sin ordenar por fecha ni distinguir por especialista. ¿Detalle completo en `ver_caso` (más tokens) o una tool nueva bajo demanda? | Detalle completo en `ver_caso` / tool nueva `listar_documentos_de_frente` | **Detalle completo en `ver_caso`** (`documentos_producidos_detalle`: id + título + agente + fecha, por frente) — el Conductor ya llama `ver_caso` como primer paso casi siempre, una tool aparte hubiera sido una llamada extra evitable. Requirió arreglar la fuente primero: `utils/casos.py::obtener_documentos_de_frente` no ordenaba ni exponía `created_at` (delegaba en `motor_api.conexiones_de`, genérico, sin esa info) — sin orden confiable, `docs[-1]` (lo que ya se usaba para "último documento") no era realmente el más reciente. Ahora arma su propia consulta con `ORDER BY created_at ASC` — anotado como candidato a promover a `knowledge_module.motor.api.conexiones_de` si otra instancia lo necesita, no antes. Verificado real contra Helios: `ver_caso("Helios")` identificó los 4 últimos informes reales del Frente técnico (uno por especialista, de 13 totales), mismos ids que una consulta directa a la base. | 2026-08-18 |
 
 ## 6. Estado del gate
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-H cerradas, ninguna abierta.
+Decisiones A-I cerradas, ninguna abierta.
 
 **Deuda intencional documentada:**
 - Primitivas de Etapa 2 (`oportunidad`+flow) → v2, si aparece un caso real en ese modelo

@@ -219,6 +219,21 @@ async def _tool_ver_caso(identificador: str) -> dict:
             "estado": (f.get("props") or {}).get("estado"),
             "documentos_producidos": len(docs),
             "ultimo_documento": (docs[-1].get("props") or {}).get("titulo") if docs else None,
+            # Detalle completo, ordenado por fecha (Etapa 19, 2026-08-18) — antes solo se veía el
+            # total y el título del último, sin poder identificar "el último informe de CADA
+            # especialista" ni dar el id para armar el link de descarga (Sebas: "necesito
+            # descargar los últimos informes de cada agente ... cómo se cuáles son?"). `docs` ya
+            # viene ordenado ascendente por `obtener_documentos_de_frente` — el último de cada
+            # agente es el último elemento con ese `agente` en la lista.
+            "documentos_producidos_detalle": [
+                {
+                    "id": d["id"],
+                    "titulo": (d.get("props") or {}).get("titulo"),
+                    "agente": (d.get("props") or {}).get("agente"),
+                    "creado_en": d.get("creado_en"),
+                }
+                for d in docs
+            ],
             # Documentos que Sebas aportó (no producidos por un especialista) — Etapa 17b,
             # 2026-08-17. El Conductor puede traer el contenido completo con ver_documento.
             "documentos_aportados_por_sebas": [
@@ -248,7 +263,15 @@ async def _tool_ver_caso(identificador: str) -> dict:
         "pendientes_abiertos": pendientes_briefing,
         "lecciones_relevantes": lecciones_briefing,
         "decisiones_de_sistema_vigentes": decisiones_briefing,
-        "nota": "Sanity check: 'documentos_producidos' > 0 significa que ya se corrió un especialista sobre ese frente — no asumir que 'estado: activo' implica trabajo pendiente sin chequear esto.",
+        "nota": (
+            "Sanity check: 'documentos_producidos' > 0 significa que ya se corrió un especialista "
+            "sobre ese frente — no asumir que 'estado: activo' implica trabajo pendiente sin "
+            "chequear esto. Para identificar 'el último informe de cada especialista': mirar "
+            "'documentos_producidos_detalle' de cada frente (viene ordenado por fecha ascendente) "
+            "y quedarse con la última entrada de cada 'agente' distinto — cada una trae su 'id' "
+            "real, no inventar uno. Para dar el link de descarga, usar el id tal cual en "
+            "'/documentos/{id}/descargar' (nunca un id de otra ficha ni un id inventado)."
+        ),
     }
 
 

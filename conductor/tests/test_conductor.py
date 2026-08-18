@@ -97,7 +97,7 @@ async def test_tool_ver_caso_arma_briefing_completo():
         patch("conductor._resolver_caso", new=AsyncMock(return_value=CASO_HELIOS)),
         patch("conductor._obtener_frentes_fn", new=AsyncMock(return_value=[FRENTE_TECNICO, FRENTE_ASOCIACION])),
         patch("conductor._obtener_documentos_fn", new=AsyncMock(side_effect=[
-            [{"props": {"titulo": "Evaluación — microbiologo"}}],  # frente técnico ya tiene 1
+            [{"id": "doc-1", "props": {"titulo": "Evaluación — microbiologo", "agente": "microbiologo"}, "creado_en": "2026-08-17T21:35:07"}],  # frente técnico ya tiene 1
             [],  # frente de asociación no tiene ninguno
         ])),
         patch("conductor._obtener_documentos_aportados_fn", new=AsyncMock(return_value=[])),
@@ -115,6 +115,45 @@ async def test_tool_ver_caso_arma_briefing_completo():
     asociacion = next(f for f in result["frentes"] if f["nombre"] == "Frente de asociación")
     assert asociacion["documentos_producidos"] == 0
     assert "Confirmar flete" in result["pendientes_abiertos"]
+    # Etapa 19, 2026-08-18 — detalle completo con id/agente/fecha, no solo el conteo/título del
+    # último, para poder identificar "el último informe de CADA especialista".
+    assert tecnico["documentos_producidos_detalle"] == [
+        {"id": "doc-1", "titulo": "Evaluación — microbiologo", "agente": "microbiologo", "creado_en": "2026-08-17T21:35:07"}
+    ]
+    assert asociacion["documentos_producidos_detalle"] == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_ver_caso_detalle_permite_identificar_ultimo_por_agente():
+    """Etapa 19, 2026-08-18 — Sebas: 'necesito descargar los últimos informes de cada agente ...
+    cómo se cuáles son?' El Conductor no podía distinguir el último documento POR especialista,
+    solo el último de la lista completa. Con varios documentos del mismo agente, el último
+    elemento de 'documentos_producidos_detalle' con ese 'agente' debe ser identificable como el
+    más reciente (la lista viene ordenada ascendente por fecha desde `obtener_documentos_de_frente`)."""
+    docs = [
+        {"id": "doc-1", "props": {"titulo": "v1", "agente": "biotecnologo"}, "creado_en": "2026-08-17T18:54:18"},
+        {"id": "doc-2", "props": {"titulo": "v2", "agente": "biotecnologo"}, "creado_en": "2026-08-17T22:28:04"},
+        {"id": "doc-3", "props": {"titulo": "v1", "agente": "agronomo"}, "creado_en": "2026-08-17T22:33:34"},
+    ]
+    with (
+        patch("conductor._resolver_caso", new=AsyncMock(return_value=CASO_HELIOS)),
+        patch("conductor._obtener_frentes_fn", new=AsyncMock(return_value=[FRENTE_TECNICO])),
+        patch("conductor._obtener_documentos_fn", new=AsyncMock(return_value=docs)),
+        patch("conductor._obtener_documentos_aportados_fn", new=AsyncMock(return_value=[])),
+        patch("conductor._obtener_pendientes_fn", new=AsyncMock(return_value=[])),
+        patch("conductor.aprendizaje.ensure_area", new=AsyncMock()),
+        patch("conductor.aprendizaje.leer_lecciones_caso", new=AsyncMock(return_value=[])),
+        patch("conductor.listar_decisiones_vigentes", new=AsyncMock(return_value=[])),
+    ):
+        result = await cond._tool_ver_caso("helios")
+
+    detalle = result["frentes"][0]["documentos_producidos_detalle"]
+    ultimo_por_agente = {}
+    for d in detalle:
+        ultimo_por_agente[d["agente"]] = d  # el último gana, porque la lista viene ascendente
+    assert ultimo_por_agente["biotecnologo"]["id"] == "doc-2"
+    assert ultimo_por_agente["agronomo"]["id"] == "doc-3"
 
 
 @pytest.mark.unit

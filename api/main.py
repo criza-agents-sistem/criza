@@ -266,7 +266,14 @@ async def obtener_caso(caso_id: str) -> dict:
             "nombre": (f.get("props") or {}).get("nombre"),
             "estado": (f.get("props") or {}).get("estado"),
             "documentos": [
-                {"id": d["id"], "titulo": (d.get("props") or {}).get("titulo"), "modo": (d.get("props") or {}).get("modo"), "estado": (d.get("props") or {}).get("estado")}
+                {
+                    "id": d["id"],
+                    "titulo": (d.get("props") or {}).get("titulo"),
+                    "modo": (d.get("props") or {}).get("modo"),
+                    "estado": (d.get("props") or {}).get("estado"),
+                    "agente": (d.get("props") or {}).get("agente"),
+                    "creado_en": d.get("creado_en"),
+                }
                 for d in documentos
             ],
             "documentos_aportados": [

@@ -10,6 +10,9 @@ Un `frente` no tiene su propio `caso_id` en props — la relación vive en la co
 "entrantes" de `conexiones_de`.
 """
 
+from sqlalchemy import text
+
+from knowledge_module.db import get_session_factory
 from knowledge_module.motor import api as motor_api
 
 _AREA = "casos"
@@ -52,10 +55,31 @@ async def obtener_documentos_de_frente(frente_id: str, tenant: str) -> list[dict
     """Documentos (`documento_caso`) que un frente ya produjo — el análogo, para el modelo de
     `casos.yaml`, de "¿este step ya corrió?" que `orquestador.motor.inspeccionar_caso` responde
     para el modelo `oportunidad`+flow (ver docs/PROTOCOLO_LECTURA_CONDUCTOR.md, nota del paso 2:
-    ambos modelos coexisten, no hay una sola función que vea los dos)."""
-    return await motor_api.conexiones_de(
-        frente_id, tipo_conexion="frente_produce_documento", direccion="salientes", tenant=tenant
-    )
+    ambos modelos coexisten, no hay una sola función que vea los dos).
+
+    Ordenados por fecha de creación (ascendente) — a diferencia de `motor_api.conexiones_de`
+    (que no ordena ni expone `created_at`), acá hace falta el orden real para poder identificar
+    "el último informe de cada especialista" (Etapa 19, 2026-08-18: Sebas no podía saber cuál de
+    los 13 documentos del Frente técnico de Helios era el más reciente por agente). La consulta
+    SQL duplica el patrón de `conexiones_de` con `created_at` sumado — candidato a promover a
+    `knowledge_module.motor.api.conexiones_de` como parámetro `order_by` genérico si otra
+    instancia lo necesita; no se movió ahí todavía porque solo CRIZA lo pidió hasta ahora."""
+    async with get_session_factory()() as s:
+        r = await s.execute(
+            text("""SELECT f2.id, tf2.nombre AS tipo, f2.props, f2.created_at
+                     FROM conexion c
+                     JOIN tipo_conexion tc ON tc.id = c.tipo_conexion_id
+                     JOIN ficha f2 ON f2.id = c.hacia_ficha_id
+                     JOIN tipo_ficha tf2 ON tf2.id = f2.tipo_ficha_id
+                     WHERE c.desde_ficha_id = :id AND c.tenant_id = :t
+                           AND tc.nombre = 'frente_produce_documento'
+                     ORDER BY f2.created_at ASC"""),
+            {"id": frente_id, "t": tenant},
+        )
+        return [
+            {"id": str(x.id), "tipo": x.tipo, "props": x.props, "creado_en": x.created_at.isoformat()}
+            for x in r.fetchall()
+        ]
 
 
 async def obtener_pendientes_de_caso(caso_id: str, tenant: str, solo_abiertos: bool = True) -> list[dict]:

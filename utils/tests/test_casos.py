@@ -75,6 +75,58 @@ async def test_obtener_frente_con_caso_usa_direccion_entrante():
     )
 
 
+# ── Unit: obtener_documentos_de_frente (Etapa 19, 2026-08-18) ──────────────────
+
+def _fila_documento(id_, tipo, props, creado_en):
+    from unittest.mock import MagicMock
+    fila = MagicMock()
+    fila.id = id_
+    fila.tipo = tipo
+    fila.props = props
+    fila.created_at = creado_en
+    return fila
+
+
+def _make_db_mock_documentos(filas):
+    from unittest.mock import MagicMock
+    mock_result = MagicMock()
+    mock_result.fetchall.return_value = filas
+
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+    mock_factory_instance = MagicMock(return_value=mock_cm)
+    return MagicMock(return_value=mock_factory_instance)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_obtener_documentos_de_frente_incluye_creado_en():
+    import datetime
+    creado = datetime.datetime(2026, 8, 17, 22, 52, 4)
+    filas = [_fila_documento("doc-1", "documento_caso", {"titulo": "Evaluación — agronomo", "agente": "agronomo"}, creado)]
+
+    with patch("utils.casos.get_session_factory", return_value=_make_db_mock_documentos(filas)()):
+        result = await casos.obtener_documentos_de_frente("frente-1", tenant="criza")
+
+    assert result[0]["id"] == "doc-1"
+    assert result[0]["props"]["agente"] == "agronomo"
+    assert result[0]["creado_en"] == creado.isoformat()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_obtener_documentos_de_frente_sin_documentos():
+    with patch("utils.casos.get_session_factory", return_value=_make_db_mock_documentos([])()):
+        result = await casos.obtener_documentos_de_frente("frente-1", tenant="criza")
+
+    assert result == []
+
+
 # ── Unit: obtener_pendientes_de_caso ────────────────────────────────────────────
 
 @pytest.mark.unit
