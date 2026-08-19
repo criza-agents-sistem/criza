@@ -5,11 +5,17 @@
 # nuevo del repo no supiera qué instalar. Armado a partir de un escaneo real de imports en todo
 # el código (no de memoria), versiones = las instaladas hoy en este entorno.
 #
-# `knowledge_module` NO está acá — es un paquete separado (repo propio
-# github.com/sebasbizzi/km-knowledge-module), instalado en editable:
+# `knowledge_module` es un paquete separado (repo propio, plataforma —
+# github.com/sebasbizzi/km-knowledge-module). En local se instala en editable:
 #   pip install -e "C:\Users\sebab\Documents\Plataformas\EMPRESAS-IA\knowledge_module"
-# (ver agents.md § Dónde están las cosas). knowledge_module trae sus propias dependencias vía
-# su propio pyproject.toml — no hace falta duplicarlas acá.
+# (ver agents.md § Dónde están las cosas) — eso apunta a una carpeta del disco de Sebas, que no
+# existe en el build de Railway. Para que Railway pueda instalarlo, se agrega acá como dependencia
+# git (repo pasado a público el 2026-08-19 para esto — decisión componente=infra en el KM),
+# pineada a un commit fijo para que el build sea reproducible (no "lo que sea que tenga main hoy").
+# Actualizar el hash a mano cuando knowledge_module cambie y ese cambio deba llegar a producción.
+# knowledge_module trae sus propias dependencias vía su propio pyproject.toml — no hace falta
+# duplicarlas acá.
+git+https://github.com/sebasbizzi/km-knowledge-module.git@77b576a68d242e2dce50f7111582287341c5643a
 #
 # Excluidas a propósito (no son del runtime local de los agentes):
 #   - torch, esm — solo usadas en scientific_agent/pod_server.py, el servidor RunPod ya
