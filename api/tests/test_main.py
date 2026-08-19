@@ -1020,6 +1020,78 @@ async def test_procesar_mensaje_telegram_manda_la_respuesta_por_telegram():
 
 
 @pytest.mark.unit
+def test_telegram_webhook_documento_programa_procesar_documento():
+    s1, s2 = _telegram_patches(allowed_chat="111")
+    with s1, s2, patch("main._procesar_documento_telegram", new=AsyncMock()) as mock_proc:
+        resp = client.post(
+            "/telegram/webhook",
+            json={"message": {"chat": {"id": 111}, "document": {"file_id": "f1", "file_name": "notas.txt"}, "caption": "mirá esto"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "el-secret"},
+        )
+    assert resp.status_code == 200
+    mock_proc.assert_called_once_with("111", "f1", "notas.txt", "mirá esto")
+
+
+@pytest.mark.unit
+def test_telegram_webhook_documento_sin_nombre_usa_fallback():
+    s1, s2 = _telegram_patches(allowed_chat="111")
+    with s1, s2, patch("main._procesar_documento_telegram", new=AsyncMock()) as mock_proc:
+        client.post(
+            "/telegram/webhook",
+            json={"message": {"chat": {"id": 111}, "document": {"file_id": "f1"}}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "el-secret"},
+        )
+    mock_proc.assert_called_once_with("111", "f1", "archivo", "")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_procesar_documento_telegram_combina_y_pasa_al_conductor():
+    with (
+        patch("main._telegram_descargar_archivo", new=AsyncMock(return_value=b"pH 7,5-8,5, alcalino")),
+        patch("main._procesar_mensaje_telegram", new=AsyncMock()) as mock_procesar_mensaje,
+    ):
+        await api_main._procesar_documento_telegram("111", "f1", "notas.txt", "mirá esto")
+
+    mock_procesar_mensaje.assert_called_once()
+    chat_id, texto = mock_procesar_mensaje.call_args[0]
+    assert chat_id == "111"
+    assert "[Archivo adjunto: notas.txt]" in texto
+    assert "pH 7,5-8,5, alcalino" in texto
+    assert texto.endswith("mirá esto")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_procesar_documento_telegram_extension_no_soportada_avisa_y_no_sigue():
+    with (
+        patch("main._telegram_descargar_archivo", new=AsyncMock(return_value=b"lo que sea")),
+        patch("main._telegram_enviar", new=AsyncMock()) as mock_enviar,
+        patch("main._procesar_mensaje_telegram", new=AsyncMock()) as mock_procesar_mensaje,
+    ):
+        await api_main._procesar_documento_telegram("111", "f1", "planilla.xlsx", "")
+
+    mock_procesar_mensaje.assert_not_called()
+    args, _ = mock_enviar.call_args
+    assert args[0] == "111"
+    assert "no soportado" in args[1]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_procesar_documento_telegram_error_de_descarga_avisa_por_telegram():
+    with (
+        patch("main._telegram_descargar_archivo", new=AsyncMock(side_effect=RuntimeError("timeout"))),
+        patch("main._telegram_enviar", new=AsyncMock()) as mock_enviar,
+    ):
+        await api_main._procesar_documento_telegram("111", "f1", "notas.txt", "")
+
+    args, _ = mock_enviar.call_args
+    assert args[0] == "111"
+    assert "timeout" in args[1]
+
+
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_procesar_mensaje_telegram_avisa_el_error_por_telegram_si_algo_falla():
     """Nadie mira los logs del server en Telegram — el único lugar donde Sebas se entera de un

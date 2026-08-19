@@ -412,16 +412,20 @@ def _extraer_docx(contenido: bytes) -> str:
     return "\n".join(p.text for p in documento.paragraphs if p.text.strip())
 
 
-@app.post("/archivos/extraer")
-async def extraer_texto_archivo(archivo: UploadFile = File(...)) -> dict:
-    ext = Path(archivo.filename or "").suffix.lower()
-    if ext not in _EXTENSIONES_SOPORTADAS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Formato no soportado ({ext or 'sin extensión'}). Soportados: PDF, Word (.docx), texto (.txt/.md).",
-        )
+class _ExtraccionInvalida(Exception):
+    """Mismos dos casos de error que ya manejaba el endpoint HTTP (400/422) — separado en su
+    propia excepción para que el webhook de Telegram (Etapa 19 cont., 2026-08-19) pueda
+    distinguirlos de un error real y mandarle a Sebas el mensaje explicativo, no un genérico."""
 
-    contenido = await archivo.read()
+
+def _extraer_texto_generico(nombre_archivo: str, contenido: bytes) -> tuple[str, bool]:
+    """Comparte la lógica de extracción entre /archivos/extraer (web) y el webhook de Telegram —
+    devuelve (texto, truncado)."""
+    ext = Path(nombre_archivo or "").suffix.lower()
+    if ext not in _EXTENSIONES_SOPORTADAS:
+        raise _ExtraccionInvalida(
+            f"Formato no soportado ({ext or 'sin extensión'}). Soportados: PDF, Word (.docx), texto (.txt/.md)."
+        )
 
     if ext == ".pdf":
         texto = _extraer_pdf(contenido)
@@ -431,11 +435,23 @@ async def extraer_texto_archivo(archivo: UploadFile = File(...)) -> dict:
         texto = contenido.decode("utf-8", errors="replace")
 
     if not texto.strip():
-        raise HTTPException(status_code=422, detail="No se pudo extraer texto del archivo (¿es un escaneo sin capa de texto?).")
+        raise _ExtraccionInvalida("No se pudo extraer texto del archivo (¿es un escaneo sin capa de texto?).")
 
     truncado = len(texto) > _MAX_CARACTERES_ARCHIVO
     if truncado:
         texto = texto[:_MAX_CARACTERES_ARCHIVO]
+    return texto, truncado
+
+
+@app.post("/archivos/extraer")
+async def extraer_texto_archivo(archivo: UploadFile = File(...)) -> dict:
+    contenido = await archivo.read()
+    try:
+        texto, truncado = _extraer_texto_generico(archivo.filename or "", contenido)
+    except _ExtraccionInvalida as e:
+        mensaje = str(e)
+        status_code = 400 if "no soportado" in mensaje else 422
+        raise HTTPException(status_code=status_code, detail=mensaje)
 
     return {"nombre_archivo": archivo.filename, "texto": texto, "truncado": truncado}
 
@@ -669,6 +685,47 @@ async def _telegram_sesion_activa(chat_id: str) -> str:
     return resultado["id"]
 
 
+def _combinar_mensaje_con_archivo(texto: str, nombre_archivo: str, texto_archivo: str) -> str:
+    """Mismo formato que combinarMensajeConArchivo en web/lib/api.ts — un archivo adjunto se
+    mete en el texto del turno, no viaja como un campo aparte (así lo que se ve en el chat y lo
+    que queda persistido en `mensajes` es siempre el mismo string)."""
+    encabezado = f"[Archivo adjunto: {nombre_archivo}]\n{texto_archivo}"
+    return f"{encabezado}\n\n---\n{texto}" if texto else encabezado
+
+
+async def _telegram_descargar_archivo(file_id: str) -> bytes:
+    url_info = f"https://api.telegram.org/bot{_TELEGRAM_BOT_TOKEN}/getFile"
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(url_info, params={"file_id": file_id})
+        resp.raise_for_status()
+        file_path = resp.json()["result"]["file_path"]
+        url_descarga = f"https://api.telegram.org/file/bot{_TELEGRAM_BOT_TOKEN}/{file_path}"
+        resp2 = await client.get(url_descarga)
+        resp2.raise_for_status()
+        return resp2.content
+
+
+async def _procesar_documento_telegram(chat_id: str, file_id: str, nombre_archivo: str, caption: str) -> None:
+    """Sin el paso de 'guardar como documento aportado a un frente' que tiene la web (Etapa 17b)
+    — acá el archivo se combina con el mensaje y va directo a la conversación, más simple que
+    armar un flujo de varios turnos por Telegram para elegir el frente. Si hace falta guardarlo
+    formalmente, Sebas lo sigue pudiendo hacer desde la web con el mismo archivo."""
+    try:
+        contenido = await _telegram_descargar_archivo(file_id)
+        texto_archivo, truncado = _extraer_texto_generico(nombre_archivo, contenido)
+        if truncado:
+            await _telegram_enviar(chat_id, f"({nombre_archivo}: el archivo es largo, usé solo las primeras {_MAX_CARACTERES_ARCHIVO:,} letras)")
+        texto_combinado = _combinar_mensaje_con_archivo(caption, nombre_archivo, texto_archivo)
+    except _ExtraccionInvalida as e:
+        await _telegram_enviar(chat_id, str(e))
+        return
+    except Exception as e:
+        await _telegram_enviar(chat_id, f"No pude leer el archivo: {e}")
+        return
+
+    await _procesar_mensaje_telegram(chat_id, texto_combinado)
+
+
 async def _procesar_mensaje_telegram(chat_id: str, texto: str) -> None:
     try:
         session_id = await _telegram_sesion_activa(chat_id)
@@ -694,15 +751,21 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks) 
 
     update = await request.json()
     mensaje = update.get("message") or {}
-    texto = mensaje.get("text")
     chat_id = str((mensaje.get("chat") or {}).get("id") or "")
-    if not texto or not chat_id:
+    texto = mensaje.get("text")
+    documento = mensaje.get("document")
+    if not chat_id or (not texto and not documento):
         return {"ok": True}  # otros tipos de update (edición, sticker, etc.) — nada que hacer
 
     if not _TELEGRAM_ALLOWED_CHAT_ID or chat_id != _TELEGRAM_ALLOWED_CHAT_ID:
         return {"ok": True}  # silencio a propósito — no confirmar que el bot está "vivo" a nadie más
 
-    background_tasks.add_task(_procesar_mensaje_telegram, chat_id, texto)
+    if documento:
+        nombre_archivo = documento.get("file_name") or "archivo"
+        caption = mensaje.get("caption") or ""
+        background_tasks.add_task(_procesar_documento_telegram, chat_id, documento["file_id"], nombre_archivo, caption)
+    else:
+        background_tasks.add_task(_procesar_mensaje_telegram, chat_id, texto)
     return {"ok": True}
 
 
