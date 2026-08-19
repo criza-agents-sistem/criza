@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import docx
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
@@ -53,7 +54,7 @@ sys.path.insert(0, str(_CRIZA_DIR))
 # (encontrado corriendo la regresión completa, no antes).
 sys.path.insert(0, str(_CRIZA_DIR / "conductor"))
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -149,6 +150,17 @@ _API_AUTH_USER = os.getenv("API_AUTH_USER")
 _API_AUTH_PASSWORD = os.getenv("API_AUTH_PASSWORD")
 _FRONTEND_URL = os.getenv("FRONTEND_URL")  # dominio real de Vercel, una vez hosteado
 
+# Etapa 19 (cont., 2026-08-19) — bot de Telegram, segunda interfaz al Conductor además de la web.
+# Telegram nunca manda el Authorization de API_AUTH_USER/PASSWORD (no es HTTP Basic Auth), así
+# que /telegram/webhook queda exento de ese middleware (ver _basic_auth abajo) y se autentica solo
+# con TELEGRAM_WEBHOOK_SECRET — Telegram lo manda de vuelta en el header
+# X-Telegram-Bot-Api-Secret-Token en cada pedido, seteado una vez al registrar el webhook
+# (ver scripts/telegram_set_webhook.py). Sin este chequeo, cualquiera que encuentre la URL podría
+# mandar un POST con un chat_id falso e impersonar al usuario autorizado.
+_TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+_TELEGRAM_ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID")
+_TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+
 app = FastAPI(title="CRIZA API", description="API para la app web (Etapa 6) — casos de solo lectura + chat del Conductor")
 
 
@@ -168,6 +180,8 @@ async def _basic_auth(request: Request, call_next):
         return await call_next(request)
     if request.method == "OPTIONS":
         return await call_next(request)
+    if request.url.path == "/telegram/webhook":
+        return await call_next(request)  # se autentica solo, ver _TELEGRAM_WEBHOOK_SECRET arriba
 
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Basic "):
@@ -604,6 +618,92 @@ async def cerrar_sesion_conductor(session_id: str) -> dict:
     messages = (sesion.get("props") or {}).get("mensajes") or []
     leccion = await _cerrar_sesion_conductor(messages, tenant=_TENANT)
     return {"leccion_guardada": leccion is not None, "id": leccion.get("id") if leccion else None}
+
+
+# ── Bot de Telegram (Etapa 19 cont., 2026-08-19) ────────────────────────────────
+#
+# Segunda interfaz al Conductor, además de la web — mismas sesiones (`conductor_sesiones`,
+# `_enviar_mensaje_conductor`), sin lógica de chat duplicada. Una sesión por `chat_id` de
+# Telegram, encontrada por `telegram_chat_id` en vez de por un `session_id` que la web guarda en
+# localStorage (Telegram no tiene ese concepto — el chat_id ES la identidad persistente acá).
+#
+# Ack inmediato + BackgroundTasks: una corrida de especialista real puede tardar varios minutos
+# (ver la decisión de hosting de Etapa 19) — Telegram espera una respuesta rápida al webhook, no
+# el resultado de la conversación. La respuesta real se manda aparte, vía sendMessage, cuando esté
+# lista.
+
+async def _telegram_enviar(chat_id: str, texto: str) -> None:
+    """Best-effort, como cerrarSesionConductorBeacon del lado web — si Telegram no responde, no
+    hay a quién más avisarle."""
+    if not _TELEGRAM_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{_TELEGRAM_BOT_TOKEN}/sendMessage"
+    # Telegram corta mensajes en 4096 caracteres — un informe de especialista real lo supera fácil.
+    trozos = [texto[i : i + 4000] for i in range(0, len(texto), 4000)] or [""]
+    async with httpx.AsyncClient(timeout=30) as client:
+        for trozo in trozos:
+            try:
+                await client.post(url, json={"chat_id": chat_id, "text": trozo})
+            except Exception:
+                pass
+
+
+async def _telegram_sesion_activa(chat_id: str) -> str:
+    """Última sesión de este chat_id, o una nueva si no tiene ninguna — mismo patrón que
+    crear_sesion_conductor (load_plantilla idempotente + guardar_ficha)."""
+    await load_plantilla(str(_PLANTILLA_SESIONES), tenant=_TENANT)
+
+    sesiones = await motor_api.listar(area="conductor_sesiones", tipo="sesion", limit=200, tenant=_TENANT)
+    propias = [s for s in sesiones if (s.get("props") or {}).get("telegram_chat_id") == chat_id]
+    if propias:
+        propias.sort(key=lambda s: (s.get("props") or {}).get("actualizada_en") or "", reverse=True)
+        return propias[0]["id"]
+
+    ahora = datetime.now(timezone.utc).isoformat()
+    resultado = await motor_api.guardar_ficha(
+        area="conductor_sesiones", tipo="sesion", tenant=_TENANT,
+        campos={"mensajes": [], "iniciada_en": ahora, "actualizada_en": ahora, "modelo": None, "telegram_chat_id": chat_id},
+    )
+    if not resultado.get("success"):
+        raise RuntimeError(f"No se pudo crear la sesión de Telegram: {resultado.get('error')}")
+    return resultado["id"]
+
+
+async def _procesar_mensaje_telegram(chat_id: str, texto: str) -> None:
+    try:
+        session_id = await _telegram_sesion_activa(chat_id)
+        sesion = await motor_api.obtener(session_id, tenant=_TENANT)
+        props = sesion.get("props") or {}
+        messages = props.get("mensajes") or []
+        kwargs_modelo = {"model": props["modelo"]} if props.get("modelo") else {}
+        respuesta, messages = await _enviar_mensaje_conductor(messages, texto, **kwargs_modelo)
+        await motor_api.actualizar_props(
+            session_id,
+            {"mensajes": _serializar_mensajes(messages), "actualizada_en": datetime.now(timezone.utc).isoformat()},
+            tenant=_TENANT,
+        )
+        await _telegram_enviar(chat_id, respuesta)
+    except Exception as e:
+        await _telegram_enviar(chat_id, f"Hubo un error de mi lado: {e}")
+
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks) -> dict:
+    if not _TELEGRAM_WEBHOOK_SECRET or request.headers.get("X-Telegram-Bot-Api-Secret-Token") != _TELEGRAM_WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="Secret inválido")
+
+    update = await request.json()
+    mensaje = update.get("message") or {}
+    texto = mensaje.get("text")
+    chat_id = str((mensaje.get("chat") or {}).get("id") or "")
+    if not texto or not chat_id:
+        return {"ok": True}  # otros tipos de update (edición, sticker, etc.) — nada que hacer
+
+    if not _TELEGRAM_ALLOWED_CHAT_ID or chat_id != _TELEGRAM_ALLOWED_CHAT_ID:
+        return {"ok": True}  # silencio a propósito — no confirmar que el bot está "vivo" a nadie más
+
+    background_tasks.add_task(_procesar_mensaje_telegram, chat_id, texto)
+    return {"ok": True}
 
 
 # ── Chat con un especialista puntual (Etapa 10, 2026-08-16) ────────────────────

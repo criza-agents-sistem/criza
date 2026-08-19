@@ -899,6 +899,141 @@ def test_basic_auth_401_incluye_headers_cors():
     assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
 
 
+# ── Bot de Telegram (Etapa 19 cont., 2026-08-19) ────────────────────────────────
+
+def _telegram_patches(secret="el-secret", allowed_chat="111"):
+    return (
+        patch("main._TELEGRAM_WEBHOOK_SECRET", secret),
+        patch("main._TELEGRAM_ALLOWED_CHAT_ID", allowed_chat),
+    )
+
+
+@pytest.mark.unit
+def test_telegram_webhook_rechaza_sin_secret_configurado():
+    """Falla cerrado, al revés de API_AUTH: este endpoint es alcanzable desde internet en cuanto
+    existe, no hay un "modo local" seguro sin configurar nada."""
+    with patch("main._TELEGRAM_WEBHOOK_SECRET", None):
+        resp = client.post("/telegram/webhook", json={"message": {"chat": {"id": 111}, "text": "hola"}})
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+def test_telegram_webhook_rechaza_secret_incorrecto():
+    s1, s2 = _telegram_patches()
+    with s1, s2:
+        resp = client.post(
+            "/telegram/webhook",
+            json={"message": {"chat": {"id": 111}, "text": "hola"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "otro-secret"},
+        )
+    assert resp.status_code == 403
+
+
+@pytest.mark.unit
+def test_telegram_webhook_ignora_update_sin_texto():
+    """Stickers, ediciones, etc. — nada que procesar, pero se confirma el pedido igual (200)."""
+    s1, s2 = _telegram_patches()
+    with s1, s2, patch("main._procesar_mensaje_telegram", new=AsyncMock()) as mock_proc:
+        resp = client.post(
+            "/telegram/webhook",
+            json={"message": {"chat": {"id": 111}, "sticker": {}}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "el-secret"},
+        )
+    assert resp.status_code == 200
+    mock_proc.assert_not_called()
+
+
+@pytest.mark.unit
+def test_telegram_webhook_ignora_chat_id_no_autorizado():
+    """Silencio a propósito (200, sin procesar) — no confirmarle a un chat_id ajeno que el bot
+    está vivo."""
+    s1, s2 = _telegram_patches(allowed_chat="111")
+    with s1, s2, patch("main._procesar_mensaje_telegram", new=AsyncMock()) as mock_proc:
+        resp = client.post(
+            "/telegram/webhook",
+            json={"message": {"chat": {"id": 222}, "text": "hola"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "el-secret"},
+        )
+    assert resp.status_code == 200
+    mock_proc.assert_not_called()
+
+
+@pytest.mark.unit
+def test_telegram_webhook_procesa_chat_autorizado():
+    s1, s2 = _telegram_patches(allowed_chat="111")
+    with s1, s2, patch("main._procesar_mensaje_telegram", new=AsyncMock()) as mock_proc:
+        resp = client.post(
+            "/telegram/webhook",
+            json={"message": {"chat": {"id": 111}, "text": "Hola Conductor"}},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "el-secret"},
+        )
+    assert resp.status_code == 200
+    mock_proc.assert_called_once_with("111", "Hola Conductor")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_telegram_sesion_activa_reusa_la_mas_reciente():
+    """Un chat_id con sesiones previas encuentra la última por telegram_chat_id, no crea una
+    nueva — mismo criterio que la web con localStorage, pero server-side."""
+    vieja = {"id": "sesion-vieja", "tipo": "sesion", "props": {"telegram_chat_id": "111", "actualizada_en": "2026-08-01T00:00:00+00:00"}}
+    nueva = {"id": "sesion-nueva", "tipo": "sesion", "props": {"telegram_chat_id": "111", "actualizada_en": "2026-08-19T00:00:00+00:00"}}
+    de_otro_chat = {"id": "sesion-otro", "tipo": "sesion", "props": {"telegram_chat_id": "222", "actualizada_en": "2026-08-19T12:00:00+00:00"}}
+
+    with (
+        patch("main.load_plantilla", new=AsyncMock(return_value={})),
+        patch("main.motor_api.listar", new=AsyncMock(return_value=[vieja, nueva, de_otro_chat])),
+    ):
+        session_id = await api_main._telegram_sesion_activa("111")
+    assert session_id == "sesion-nueva"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_telegram_sesion_activa_crea_si_no_hay_ninguna():
+    with (
+        patch("main.load_plantilla", new=AsyncMock(return_value={})),
+        patch("main.motor_api.listar", new=AsyncMock(return_value=[])),
+        patch("main.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "sesion-nueva"})) as mock_guardar,
+    ):
+        session_id = await api_main._telegram_sesion_activa("111")
+    assert session_id == "sesion-nueva"
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["campos"]["telegram_chat_id"] == "111"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_procesar_mensaje_telegram_manda_la_respuesta_por_telegram():
+    async def fake_enviar_mensaje(messages, texto, model=None, verbose=False, tracker=None):
+        return "Respuesta del Conductor", messages + [{"role": "user", "content": texto}]
+
+    with (
+        patch("main._telegram_sesion_activa", new=AsyncMock(return_value="sesion-1")),
+        patch("main.motor_api.obtener", new=AsyncMock(return_value={"id": "sesion-1", "props": {"mensajes": []}})),
+        patch("main.motor_api.actualizar_props", new=AsyncMock(return_value={"success": True})),
+        patch("main._enviar_mensaje_conductor", new=fake_enviar_mensaje),
+        patch("main._telegram_enviar", new=AsyncMock()) as mock_enviar,
+    ):
+        await api_main._procesar_mensaje_telegram("111", "Hola")
+    mock_enviar.assert_called_once_with("111", "Respuesta del Conductor")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_procesar_mensaje_telegram_avisa_el_error_por_telegram_si_algo_falla():
+    """Nadie mira los logs del server en Telegram — el único lugar donde Sebas se entera de un
+    error real es el chat mismo."""
+    with (
+        patch("main._telegram_sesion_activa", new=AsyncMock(side_effect=RuntimeError("boom"))),
+        patch("main._telegram_enviar", new=AsyncMock()) as mock_enviar,
+    ):
+        await api_main._procesar_mensaje_telegram("111", "Hola")
+    args, _ = mock_enviar.call_args
+    assert args[0] == "111"
+    assert "boom" in args[1]
+
+
 # ── Integration: contra el KM real ──────────────────────────────────────────
 #
 # httpx.AsyncClient (no el TestClient síncrono) — el TestClient síncrono crea un event loop

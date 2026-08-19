@@ -31,5 +31,9 @@ tipos_ficha:
       - actualizada_en     # ISO timestamp, se actualiza en cada turno
       - modelo             # Etapa 15, 2026-08-17 — id del modelo elegido para esta sesión
                             # (ver utils/ai_client.py::MODELOS_DISPONIBLES), o null = default del agente
+      - telegram_chat_id   # Etapa 19 (cont., 2026-08-19) — presente solo si la sesión arrancó
+                            # desde el bot de Telegram (api/main.py::POST /telegram/webhook), para
+                            # encontrar "la conversación activa de este chat_id" sin un área nueva.
+                            # null en sesiones que arrancaron desde la web.
     vectorizar: null
     dedup_por: null
