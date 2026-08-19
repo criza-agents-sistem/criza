@@ -1,7 +1,37 @@
 // Cliente delgado de la API de CRIZA (api/main.py, Etapa 6) — server components hacen fetch
 // directo acá, sin capa de estado cliente para las páginas de solo lectura v1.
+//
+// Etapa 19 (cont., 2026-08-19) — este archivo es isomórfico: lo importan tanto server components
+// (listarCasos/obtenerCaso de la home) como el client component del Conductor
+// (conductor/page.tsx). Un mismo helper no puede mandar la Authorization de API_AUTH siempre
+// igual: si el código corre en el browser, esa password terminaría visible en el Network tab de
+// cualquiera con la sesión del sitio abierta — le saca el sentido a tener API_AUTH como capa
+// separada de SITE_AUTH. `esServidor()` decide en runtime (no en build) qué camino tomar: en el
+// server, directo a Railway con el Authorization armado acá (process.env.API_AUTH_* nunca se
+// inlinea en el bundle del cliente, Next.js lo reemplaza por undefined ahí); en el browser, al
+// proxy propio (`/api/backend/...`, mismo origen) que agrega el Authorization del lado del
+// servidor — el browser ni se entera, solo manda las credenciales de SITE_AUTH que ya tiene
+// cacheadas para este origen (comportamiento normal de HTTP Basic Auth, no hace falta código
+// extra para eso).
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const PROXY_BASE = "/api/backend";
+
+function esServidor(): boolean {
+  return typeof window === "undefined";
+}
+
+function authHeaders(): Record<string, string> {
+  if (!esServidor()) return {};
+  const user = process.env.API_AUTH_USER;
+  const password = process.env.API_AUTH_PASSWORD;
+  if (!user || !password) return {};
+  return { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}` };
+}
+
+function urlPara(path: string): string {
+  return esServidor() ? `${API_URL}${path}` : `${PROXY_BASE}${path}`;
+}
 
 export type CasoResumen = {
   id: string;
@@ -60,7 +90,7 @@ export type CasoDetalle = {
 };
 
 async function apiFetch<T>(path: string): Promise<T | null> {
-  const res = await fetch(`${API_URL}${path}`, { cache: "no-store" });
+  const res = await fetch(urlPara(path), { headers: authHeaders(), cache: "no-store" });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`API ${path} respondió ${res.status}`);
   return res.json();
@@ -80,8 +110,11 @@ export function obtenerDocumento(id: string): Promise<Documento | null> {
 
 // Etapa 14 (2026-08-17) — descargar el informe como .md. Link directo (<a href>), no fetch: el
 // Content-Disposition del server dispara la descarga, no hace falta JS del lado del cliente.
+// Siempre el proxy (nunca urlPara/API_URL directo): esto es un href que navega el browser, sin
+// importar si el string se arma en un server o un client component — un link cross-origin
+// directo a Railway nunca tendría el Authorization que ese origen exige.
 export function urlDescargaDocumento(id: string): string {
-  return `${API_URL}/documentos/${id}/descargar`;
+  return `${PROXY_BASE}/documentos/${id}/descargar`;
 }
 
 // Etapa 15 (2026-08-17) — elegir modelo por sesión de chat. Lista curada, ver
@@ -105,9 +138,9 @@ export async function crearCaso(input: {
   fecha_inicio?: string;
   notas?: string;
 }): Promise<string> {
-  const res = await fetch(`${API_URL}/casos`, {
+  const res = await fetch(urlPara("/casos"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(input),
   });
   if (!res.ok) {
@@ -173,7 +206,7 @@ export type ExtraccionArchivo = { nombre_archivo: string; texto: string; truncad
 export async function extraerTextoArchivo(file: File): Promise<ExtraccionArchivo> {
   const formData = new FormData();
   formData.append("archivo", file);
-  const res = await fetch(`${API_URL}/archivos/extraer`, { method: "POST", body: formData });
+  const res = await fetch(urlPara("/archivos/extraer"), { method: "POST", headers: authHeaders(), body: formData });
   if (!res.ok) {
     const detalle = await res.json().catch(() => ({}));
     throw new Error(detalle.detail || `No se pudo leer el archivo (${res.status})`);
@@ -182,9 +215,9 @@ export async function extraerTextoArchivo(file: File): Promise<ExtraccionArchivo
 }
 
 export async function crearDocumentoAportado(frenteId: string, titulo: string, contenido: string): Promise<string> {
-  const res = await fetch(`${API_URL}/frentes/${frenteId}/documentos-aportados`, {
+  const res = await fetch(urlPara(`/frentes/${frenteId}/documentos-aportados`), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ titulo, contenido }),
   });
   if (!res.ok) {
@@ -211,9 +244,9 @@ export function combinarMensajeConArchivo(texto: string, archivo: ExtraccionArch
 
 // modelo ausente/undefined = default del agente (Etapa 15) — ver listarModelos().
 export async function crearSesionConductor(modelo?: string): Promise<string> {
-  const res = await fetch(`${API_URL}/conductor/sesiones`, {
+  const res = await fetch(urlPara("/conductor/sesiones"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(modelo ? { modelo } : {}),
   });
   if (!res.ok) throw new Error(`No se pudo crear la sesión del Conductor (${res.status})`);
@@ -222,9 +255,9 @@ export async function crearSesionConductor(modelo?: string): Promise<string> {
 }
 
 export async function enviarMensajeConductor(sessionId: string, texto: string): Promise<string> {
-  const res = await fetch(`${API_URL}/conductor/sesiones/${sessionId}/mensajes`, {
+  const res = await fetch(urlPara(`/conductor/sesiones/${sessionId}/mensajes`), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ texto }),
   });
   if (!res.ok) {
@@ -236,7 +269,7 @@ export async function enviarMensajeConductor(sessionId: string, texto: string): 
 }
 
 export async function cerrarSesionConductor(sessionId: string): Promise<{ leccion_guardada: boolean; id: string | null }> {
-  const res = await fetch(`${API_URL}/conductor/sesiones/${sessionId}/cerrar`, { method: "POST" });
+  const res = await fetch(urlPara(`/conductor/sesiones/${sessionId}/cerrar`), { method: "POST", headers: authHeaders() });
   if (!res.ok) throw new Error(`No se pudo cerrar la sesión (${res.status})`);
   return res.json();
 }
@@ -244,8 +277,11 @@ export async function cerrarSesionConductor(sessionId: string): Promise<{ leccio
 // `sendBeacon` (no fetch) porque se llama desde `beforeunload` — a esa altura el browser puede
 // matar cualquier fetch en curso antes de que salga; sendBeacon está pensado justo para esto
 // (entrega best-effort, no garantizada, pero no bloquea ni se cancela al cerrar la pestaña).
+// Siempre corre en el browser (usa `navigator`) — siempre el proxy, nunca urlPara/API_URL
+// directo: sendBeacon no puede llevar headers propios, así que la única forma de que este pedido
+// lleve el Authorization de API_AUTH es que lo agregue el proxy del lado del servidor.
 export function cerrarSesionConductorBeacon(sessionId: string): void {
-  navigator.sendBeacon(`${API_URL}/conductor/sesiones/${sessionId}/cerrar`, new Blob());
+  navigator.sendBeacon(`${PROXY_BASE}/conductor/sesiones/${sessionId}/cerrar`, new Blob());
 }
 
 // ── Chat con un especialista puntual (Etapa 10) ─────────────────────────────────
@@ -263,9 +299,9 @@ export const ESPECIALISTAS = [
 // frenteId ausente = "consulta libre" (Etapa 12) — sin caso, sin ese contexto que armar.
 // modelo ausente/undefined = default del agente (Etapa 15) — ver listarModelos().
 export async function crearSesionEspecialista(nombre: string, frenteId?: string, modelo?: string): Promise<string> {
-  const res = await fetch(`${API_URL}/especialistas/${nombre}/sesiones`, {
+  const res = await fetch(urlPara(`/especialistas/${nombre}/sesiones`), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
       ...(frenteId ? { frente_id: frenteId } : {}),
       ...(modelo ? { modelo } : {}),
@@ -280,9 +316,9 @@ export async function crearSesionEspecialista(nombre: string, frenteId?: string,
 }
 
 export async function enviarMensajeEspecialista(sessionId: string, texto: string): Promise<string> {
-  const res = await fetch(`${API_URL}/especialistas/sesiones/${sessionId}/mensajes`, {
+  const res = await fetch(urlPara(`/especialistas/sesiones/${sessionId}/mensajes`), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ texto }),
   });
   if (!res.ok) {
