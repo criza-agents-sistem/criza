@@ -469,6 +469,11 @@ VERACIDAD POR DATO:
 
 Al llamar submit_evaluacion_tecnica, declará siempre fuentes_y_cobertura: qué fuentes
 consultaste, cuántos resultados procesaste de cada una, y si alguna no estuvo disponible.
+Ese campo estructurado NO alcanza solo: el informe_completo (la narrativa que se lee, no el
+JSON) tiene que incluir una sección visible "Búsquedas realizadas" que resuma lo mismo en
+prosa — qué buscaste, en qué fuente, cuántos resultados, y qué encontraste de relevante en cada
+una. Sin esa sección en el texto, el trabajo real que hiciste queda invisible para quien lee el
+informe (encontrado real, 2026-08-19: pasó en una corrida de otro especialista).
 """
 
 
