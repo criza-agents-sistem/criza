@@ -150,6 +150,22 @@ TOOLS = [
         },
     },
     {
+        "name": "ver_herramientas_especialista",
+        "description": (
+            "Lista las herramientas/bases de datos reales que tiene conectadas un especialista "
+            "(ej. OpenAlex, KEGG, CONICET, UniProt — varían por especialista). Usar SIEMPRE que "
+            "Sebas pregunte qué puede hacer un especialista, qué herramientas usa, o pida un "
+            "documento/resumen sobre las capacidades del equipo — nunca describir esto de "
+            "memoria ni inventar, la respuesta correcta sale de acá, no de lo que dice "
+            "TOOLS_DISPONIBLES sobre vos mismo (eso describe TUS tools, no las de ellos)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"especialista": {"type": "string", "enum": list(_ESPECIALISTAS_CASOS.keys())}},
+            "required": ["especialista"],
+        },
+    },
+    {
         "name": "anotar_leccion",
         "description": (
             "Guarda una lección de dominio nueva en el KM (área lecciones, misma que usan los "
@@ -319,6 +335,29 @@ async def _tool_correr_especialista(nombre_especialista: str, caso_ident: str, f
     }
 
 
+async def _tool_ver_herramientas_especialista(nombre_especialista: str) -> dict:
+    """Encontrado real (2026-08-19): Sebas pidió un doc de 'qué potencial tiene cada agente
+    usando las herramientas a su disposición' para una reunión — sin esta tool, el Conductor no
+    tenía ninguna forma de saber qué herramientas tiene cada especialista más allá de su
+    descripción en TOOLS_DISPONIBLES (arriba, escrita a mano) y terminó inventando una respuesta
+    plausible pero falsa ('solo corren sobre Claude, sin herramientas externas'). Lee TOOLS
+    directo del módulo real del especialista (vía el registry, que ya lo carga para invocarlo) —
+    nunca desactualizado a mano."""
+    if nombre_especialista not in _ESPECIALISTAS_CASOS:
+        return {"error": f"'{nombre_especialista}' no es un especialista disponible. Opciones: {list(_ESPECIALISTAS_CASOS.keys())}."}
+
+    spec = get_registry().get(nombre_especialista)
+    if spec is None or spec.modulo_obj is None:
+        return {"error": f"El especialista '{nombre_especialista}' no está disponible (inactivo o sin cargar)."}
+
+    herramientas = [
+        {"nombre": t["name"], "descripcion": t["description"]}
+        for t in getattr(spec.modulo_obj, "TOOLS", [])
+        if t["name"] != "submit_evaluacion_tecnica"  # el output del agente, no una fuente de datos
+    ]
+    return {"especialista": _ESPECIALISTAS_CASOS[nombre_especialista], "herramientas": herramientas}
+
+
 async def _tool_anotar_leccion(contenido: str, contexto: str) -> dict:
     contenido = (contenido or "").strip()
     if not contenido:
@@ -408,6 +447,11 @@ TOOLS DISPONIBLES:
   agrónomo evalúa si un producto/enfoque funciona de verdad como insumo agrícola/ganadero (dosis,
   compatibilidad de cultivo/suelo, normativa de aplicación).
 - ver_documento: el texto completo de un documento puntual, cuando Sebas quiere profundizar.
+- ver_herramientas_especialista: las herramientas/bases de datos reales de un especialista
+  (OpenAlex, KEGG, CONICET, etc. — varían por especialista). Usala SIEMPRE que Sebas pregunte
+  qué hace o qué herramientas tiene un especialista, o pida un documento sobre las capacidades
+  del equipo — nunca inventes esto ni lo describas de memoria, es exactamente el tipo de dato
+  que cambia con el código y que no podés adivinar bien.
 - anotar_leccion: cuando Sebas pide explícitamente "anotá esto" o "que quede como lección" —
   redactala de forma reusable (un patrón, no una transcripción literal de lo que dijo). No la
   llames por tu cuenta sin que te lo pida: el cierre de sesión ya evalúa solo si hay algo nuevo
@@ -448,6 +492,8 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
         )
     if nombre == "ver_documento":
         return await _tool_ver_documento(tool_input.get("documento_id", ""))
+    if nombre == "ver_herramientas_especialista":
+        return await _tool_ver_herramientas_especialista(tool_input.get("especialista", ""))
     if nombre == "anotar_leccion":
         return await _tool_anotar_leccion(tool_input.get("contenido", ""), tool_input.get("contexto", ""))
     if nombre == "crear_caso":

@@ -30,6 +30,7 @@ class AgentSpec:
     prop_key: str
     activo: bool
     run_fn: object | None = None  # se resuelve en _cargar_agente()
+    modulo_obj: object | None = None  # el módulo completo — TOOLS/SYSTEM_PROMPT, no solo run()
 
 
 _REGISTRY: dict[str, AgentSpec] | None = None
@@ -44,6 +45,7 @@ def _cargar_agente(spec: AgentSpec) -> AgentSpec:
     try:
         mod = importlib.import_module(spec.modulo)
         spec.run_fn = mod.run
+        spec.modulo_obj = mod
     except Exception as exc:
         print(f"[registry] AVISO: no se pudo cargar '{spec.nombre}' ({spec.modulo}): {exc}")
         spec.run_fn = None

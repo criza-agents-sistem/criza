@@ -35,13 +35,16 @@ FRENTE_ASOCIACION = {"id": "frente-asociacion", "tipo": "frente", "props": {"nom
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(cond.TOOLS) == 6
+    assert len(cond.TOOLS) == 7
 
 
 @pytest.mark.unit
 def test_tools_names():
     nombres = {t["name"] for t in cond.TOOLS}
-    assert nombres == {"listar_casos", "ver_caso", "correr_especialista", "ver_documento", "anotar_leccion", "crear_caso"}
+    assert nombres == {
+        "listar_casos", "ver_caso", "correr_especialista", "ver_documento",
+        "ver_herramientas_especialista", "anotar_leccion", "crear_caso",
+    }
 
 
 @pytest.mark.unit
@@ -262,6 +265,56 @@ async def test_tool_correr_especialista_ingeniero_ambiental():
 
     mock_invocar.assert_awaited_once()
     assert result["nivel_confianza"] == "alto"
+
+
+# ── ver_herramientas_especialista (Etapa 19 cont., 2026-08-19) ──────────────────
+#
+# Encontrado real: el Conductor no tenía forma de saber qué herramientas tiene cada especialista
+# y, al pedirle un documento sobre las capacidades del equipo, inventó una respuesta plausible
+# pero falsa ("solo corren sobre Claude, sin herramientas externas").
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ver_herramientas_especialista_nombre_invalido():
+    result = await cond._tool_ver_herramientas_especialista("especialista_inventado")
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ver_herramientas_especialista_no_registrado():
+    with patch("conductor.get_registry", return_value={}):
+        result = await cond._tool_ver_herramientas_especialista("microbiologo")
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ver_herramientas_especialista_devuelve_tools_reales_sin_el_submit():
+    modulo_fake = type("Mod", (), {"TOOLS": [
+        {"name": "search_kegg", "description": "Busca en KEGG."},
+        {"name": "search_bacdive", "description": "Busca en BacDive."},
+        {"name": "submit_evaluacion_tecnica", "description": "Output del agente."},
+    ]})()
+    mock_spec = type("Spec", (), {"modulo_obj": modulo_fake})()
+
+    with patch("conductor.get_registry", return_value={"microbiologo": mock_spec}):
+        result = await cond._tool_ver_herramientas_especialista("microbiologo")
+
+    nombres = [h["nombre"] for h in result["herramientas"]]
+    assert nombres == ["search_kegg", "search_bacdive"]
+    assert "submit_evaluacion_tecnica" not in nombres
+    assert result["especialista"] == "Especialista Microbiólogo"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_ver_herramientas_especialista():
+    modulo_fake = type("Mod", (), {"TOOLS": []})()
+    mock_spec = type("Spec", (), {"modulo_obj": modulo_fake})()
+    with patch("conductor.get_registry", return_value={"agronomo": mock_spec}):
+        result = await cond._despachar_tool("ver_herramientas_especialista", {"especialista": "agronomo"}, False)
+    assert result["especialista"] == "Especialista Ingeniero Agrónomo"
 
 
 # ── _tool_ver_documento ──────────────────────────────────────────────────────
