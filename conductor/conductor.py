@@ -41,6 +41,7 @@ from utils.casos import (
     obtener_documentos_aportados_de_frente as _obtener_documentos_aportados_fn,
     obtener_pendientes_de_caso as _obtener_pendientes_fn,
     crear_caso as _crear_caso_fn,
+    guardar_documento_de_frente as _guardar_documento_de_frente_fn,
 )
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
@@ -201,6 +202,32 @@ TOOLS = [
                 "notas": {"type": "string", "description": "Opcional — notas adicionales que no encajan en la descripción."},
             },
             "required": ["nombre", "descripcion"],
+        },
+    },
+    {
+        "name": "crear_documento",
+        "description": (
+            "Redacta y guarda un documento nuevo (documento_caso, agente='conductor') conectado "
+            "a un frente — para minutas de reunión, síntesis de una decisión, o cualquier otro "
+            "documento consolidable a partir de la conversación. Vos redactás el 'contenido' "
+            "(no una transcripción literal del chat, un documento real y legible por sí solo). "
+            "Dos formas válidas de llegar a usarla: (1) Sebas pide explícitamente 'guardá esto "
+            "como documento' / 'hacé una minuta' — ahí redactás y guardás directo, el pedido "
+            "explícito ya es la confirmación; (2) vos detectás que la conversación produjo algo "
+            "consolidable y todavía no te lo pidieron — ahí SUGERÍS guardarlo (mostrando el "
+            "título y un resumen de qué incluiría) y esperás la confirmación de Sebas antes de "
+            "llamar esta tool, mismo criterio que crear_caso. Siempre necesita un frente real — "
+            "si la conversación no es sobre un caso/frente puntual, no hay dónde conectarlo."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "caso": {"type": "string", "description": "Nombre o id del caso."},
+                "frente": {"type": "string", "description": "Nombre o id del frente dentro de ese caso."},
+                "titulo": {"type": "string", "description": "Título corto del documento, ej. 'Minuta — reunión 19/08 con Andrés'."},
+                "contenido": {"type": "string", "description": "El documento completo, redactado por vos — markdown, legible por sí solo (no una transcripción del chat)."},
+            },
+            "required": ["caso", "frente", "titulo", "contenido"],
         },
     },
 ]
@@ -383,6 +410,27 @@ async def _tool_crear_caso(nombre: str, descripcion: str, estadio: str | None, n
     return {"creado": True, "caso_id": resultado["caso_id"]}
 
 
+async def _tool_crear_documento(caso_ident: str, frente_ident: str, titulo: str, contenido: str) -> dict:
+    titulo = (titulo or "").strip()
+    contenido = (contenido or "").strip()
+    if not titulo or not contenido:
+        return {"error": "titulo y contenido no pueden estar vacíos."}
+
+    caso = await _resolver_caso(caso_ident)
+    if not caso:
+        return {"error": f"No se encontró ningún caso que coincida con '{caso_ident}'."}
+    frente = await _resolver_frente(caso, frente_ident)
+    if not frente:
+        return {"error": f"No se encontró ningún frente que coincida con '{frente_ident}' dentro de '{caso_ident}'."}
+
+    resultado = await _guardar_documento_de_frente_fn(
+        frente_id=frente["id"], titulo=titulo, contenido=contenido, tenant=_TENANT, agente="conductor",
+    )
+    if not resultado["success"]:
+        return {"error": f"No se pudo guardar el documento: {resultado['error']}"}
+    return {"guardado": True, "documento_id": resultado["documento_id"], "frente": (frente.get("props") or {}).get("nombre")}
+
+
 async def _tool_ver_documento(documento_id: str) -> dict:
     # Encontrado real (2026-08-17, probando adjuntar un archivo): si el modelo pasa algo que no
     # es un UUID válido (ej. adivinó un nombre en vez de llamar ver_caso primero), la query cruda
@@ -459,6 +507,13 @@ TOOLS DISPONIBLES:
 - crear_caso: cuando Sebas te cuenta un caso nuevo Y confirma explícitamente que quiere darlo de
   alta. Resumíselo de vuelta (nombre + descripción que vas a guardar) y esperá su confirmación
   antes de llamarla — no la llames apenas menciona algo nuevo, podría estar pensando en voz alta.
+- crear_documento: redactás vos un documento (minuta, síntesis de una decisión, etc.) y lo
+  guardás conectado a un frente real. Dos caminos: (1) Sebas lo pide explícito ("guardá esto
+  como documento", "hacé una minuta") — ahí redactás y guardás directo, sin pedir confirmación
+  de nuevo (el pedido ya lo es); (2) vos notás que la conversación dejó algo consolidable sin que
+  te lo hayan pedido — ahí proponés guardarlo (título + de qué se trataría) y esperás el OK de
+  Sebas antes de llamar la tool, mismo criterio que crear_caso. Nunca lo guardes sin que haya
+  quedado claro que Sebas lo quiere guardado, en cualquiera de los dos caminos.
 
 CÓMO RESPONDER (PROPUESTA_CONDUCTOR.md §3.2 — la atención de Sebas es el recurso escaso):
 Llegá con la decisión masticada — qué falta, qué ya está, qué recomendás y por qué — no le
@@ -500,6 +555,11 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
         return await _tool_crear_caso(
             tool_input.get("nombre", ""), tool_input.get("descripcion", ""),
             tool_input.get("estadio"), tool_input.get("notas"),
+        )
+    if nombre == "crear_documento":
+        return await _tool_crear_documento(
+            tool_input.get("caso", ""), tool_input.get("frente", ""),
+            tool_input.get("titulo", ""), tool_input.get("contenido", ""),
         )
     return {"error": f"Tool '{nombre}' no implementado."}
 

@@ -35,7 +35,7 @@ FRENTE_ASOCIACION = {"id": "frente-asociacion", "tipo": "frente", "props": {"nom
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(cond.TOOLS) == 7
+    assert len(cond.TOOLS) == 8
 
 
 @pytest.mark.unit
@@ -43,7 +43,7 @@ def test_tools_names():
     nombres = {t["name"] for t in cond.TOOLS}
     assert nombres == {
         "listar_casos", "ver_caso", "correr_especialista", "ver_documento",
-        "ver_herramientas_especialista", "anotar_leccion", "crear_caso",
+        "ver_herramientas_especialista", "anotar_leccion", "crear_caso", "crear_documento",
     }
 
 
@@ -430,6 +430,85 @@ async def test_despachar_tool_crear_caso():
         result = await cond._despachar_tool("crear_caso", {"nombre": "N", "descripcion": "D", "estadio": "e", "notas": "n"}, verbose=False)
     mock_tool.assert_awaited_once_with("N", "D", "e", "n")
     assert result == {"creado": True, "caso_id": "x"}
+
+
+# ── _tool_crear_documento (Etapa 19 cont., 2026-08-19 — Sebas: "necesito asignarle al ────────
+# Conductor la función de crear documentos") ────────────────────────────────────────────────
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_crear_documento_exito():
+    with (
+        patch("conductor._resolver_caso", new=AsyncMock(return_value=CASO_HELIOS)),
+        patch("conductor._resolver_frente", new=AsyncMock(return_value=FRENTE_TECNICO)),
+        patch("conductor._guardar_documento_de_frente_fn", new=AsyncMock(return_value={"success": True, "documento_id": "doc-1", "error": None})) as mock_guardar,
+    ):
+        result = await cond._tool_crear_documento("helios", "técnico", "Minuta — reunión 19/08", "Contenido de la minuta.")
+
+    assert result == {"guardado": True, "documento_id": "doc-1", "frente": "Frente técnico"}
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["frente_id"] == "frente-tecnico"
+    assert kwargs["titulo"] == "Minuta — reunión 19/08"
+    assert kwargs["agente"] == "conductor"
+    assert kwargs["tenant"] == cond._TENANT
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_crear_documento_titulo_vacio_es_error():
+    result = await cond._tool_crear_documento("helios", "técnico", "   ", "contenido")
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_crear_documento_contenido_vacio_es_error():
+    result = await cond._tool_crear_documento("helios", "técnico", "titulo", "   ")
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_crear_documento_caso_no_encontrado():
+    with patch("conductor._resolver_caso", new=AsyncMock(return_value=None)):
+        result = await cond._tool_crear_documento("no existe", "técnico", "titulo", "contenido")
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_crear_documento_frente_no_encontrado():
+    with (
+        patch("conductor._resolver_caso", new=AsyncMock(return_value=CASO_HELIOS)),
+        patch("conductor._resolver_frente", new=AsyncMock(return_value=None)),
+    ):
+        result = await cond._tool_crear_documento("helios", "no existe", "titulo", "contenido")
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tool_crear_documento_falla_en_km():
+    with (
+        patch("conductor._resolver_caso", new=AsyncMock(return_value=CASO_HELIOS)),
+        patch("conductor._resolver_frente", new=AsyncMock(return_value=FRENTE_TECNICO)),
+        patch("conductor._guardar_documento_de_frente_fn", new=AsyncMock(return_value={"success": False, "documento_id": None, "error": "boom"})),
+    ):
+        result = await cond._tool_crear_documento("helios", "técnico", "titulo", "contenido")
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_crear_documento():
+    with patch("conductor._tool_crear_documento", new=AsyncMock(return_value={"guardado": True, "documento_id": "x", "frente": "Frente técnico"})) as mock_tool:
+        result = await cond._despachar_tool(
+            "crear_documento",
+            {"caso": "helios", "frente": "técnico", "titulo": "T", "contenido": "C"},
+            verbose=False,
+        )
+    mock_tool.assert_awaited_once_with("helios", "técnico", "T", "C")
+    assert result == {"guardado": True, "documento_id": "x", "frente": "Frente técnico"}
 
 
 # ── cerrar_sesion (trigger automático, Etapa 9) ─────────────────────────────
