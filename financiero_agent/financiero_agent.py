@@ -31,8 +31,9 @@ sesgos" — ver docs/DESIGN_GATE.md decisión D, tabla completa de riesgos + mit
 - SYSTEM_PROMPT sin ningún caso concreto mencionado (mismo checklist anti-sesgo de siempre).
 
 Tools: ver_informe_especialista, search_bcra, search_series, get_series_values,
-       search_official_stats, buscar_corpus_cientifico, web_search (nativo Anthropic),
-       fetch_page_text, pedir_informacion_faltante, submit_modelo_financiero.
+       search_official_stats, search_comtrade, buscar_corpus_cientifico,
+       web_search (nativo Anthropic), fetch_page_text, pedir_informacion_faltante,
+       submit_modelo_financiero.
 """
 
 import json
@@ -62,6 +63,12 @@ from market_agent.tools import (
     fetch_page_text,
     buscar_corpus_cientifico,
 )
+# COMTRADE (importaciones reales de Argentina por HS) — NO exportada por market_agent/tools/
+# __init__.py (Mercado la excluyó explícitamente, ver docs/DESIGN_GATE.md decisión H de
+# market_agent: sesga la elección de PRODUCTO hacia sustitución de importaciones). Ese motivo no
+# aplica acá — Financiero no elige producto, solo lo cotiza — así que se importa directo del
+# submódulo para benchmarking real de costos/precios (ver decisión E de este Design Gate).
+from market_agent.tools.comtrade import get_import_data
 from utils.bcra import search_bcra_variables, get_bcra_values
 from utils.casos import (
     obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente,
@@ -235,6 +242,28 @@ TOOLS = [
                 "max_results": {"type": "integer", "description": "Máximo de datasets (default 10)", "default": 10},
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "search_comtrade",
+        "description": (
+            "Trae datos REALES de importaciones de Argentina por código HS (UN Comtrade) — valor "
+            "CIF total, kg totales, precio CIF por kg, países de origen. Usar para benchmarking "
+            "real de precio/costo de un insumo o equipo importado (ej. un reactivo, un compuesto "
+            "químico, un equipo de proceso) cuando no hay una cotización local. NO uses esto para "
+            "razonar si conviene importar o sustituir importación — esa evaluación no es tuya, "
+            "es del Agente de Mercado; acá es solo una fuente de precio de referencia. Código HS "
+            "de 4-6 dígitos (ej. '3105' fertilizantes minerales/químicos, '2922' aminoácidos)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hs_code": {"type": "string", "description": "Código HS del producto/insumo, 4 o 6 dígitos."},
+                "year": {"type": "integer", "description": "Año de consulta. Omitir = 2023 (último disponible)."},
+                "partner_country": {"type": "string", "description": "ISO numérico del país de origen. Omitir = todos."},
+                "max_results": {"type": "integer", "description": "Máximo de filas (default 20).", "default": 20},
+            },
+            "required": ["hs_code"],
         },
     },
     {
@@ -565,10 +594,14 @@ FUENTES DISPONIBLES:
   (INDEC/MAGyP) — volumen/precio del sector, útiles para fundamentar ingresos_proyectados o un
   insumo de costo con datos reales en vez de estimación libre.
 - buscar_corpus_cientifico: literatura CONICET+INTA sobre costos/escala/rendimiento de proceso.
+- search_comtrade: datos REALES de importaciones de Argentina por código HS (valor CIF, precio
+  por kg, países de origen) — usalo para un precio de referencia real de un insumo/equipo
+  importado cuando no hay cotización local. Es solo una fuente de precio, no una fuente para
+  decidir si conviene importar o sustituir importación (eso no te corresponde a vos).
 - web_search + fetch_page_text: comparables de CAPEX/OPEX/precio vigentes que ningún corpus local
-  tiene. NUNCA un costo/precio "recordado" de tu entrenamiento sin una búsqueda real — un número
-  plausible pero fabricado es exactamente el sesgo de anclaje que hay que evitar acá; si no lo
-  podés verificar, va como a-confirmar (o pedís la información con pedir_informacion_faltante).
+  ni COMTRADE tiene. NUNCA un costo/precio "recordado" de tu entrenamiento sin una búsqueda real —
+  un número plausible pero fabricado es exactamente el sesgo de anclaje que hay que evitar acá; si
+  no lo podés verificar, va como a-confirmar (o pedís la información con pedir_informacion_faltante).
 - pedir_informacion_faltante: si un dato es indispensable y ninguna búsqueda lo trae con
   confianza razonable, creá un pendiente real en vez de inventar el número — no abuses de esto
   para dudas menores, esas van como a-confirmar directamente en el campo correspondiente.
@@ -591,8 +624,9 @@ riesgo real de la decisión.
 TU PROCESO:
 1. ver_informe_especialista — identificá producto/proceso (y mercado, si existe) — PASO 0
 2. search_bcra + get_bcra_values — tasa de descuento fundamentada en datos reales
-3. web_search + fetch_page_text (hasta 3) + search_series/search_official_stats — comparables
-   reales de CAPEX/OPEX/precio; buscar_corpus_cientifico para literatura de costo/escala
+3. web_search + fetch_page_text (hasta 3) + search_series/search_official_stats +
+   search_comtrade (si hay un insumo/equipo importado) — comparables reales de CAPEX/OPEX/precio;
+   buscar_corpus_cientifico para literatura de costo/escala
 4. Si algo indispensable no aparece con confianza razonable → pedir_informacion_faltante
    (declarar igual el ítem como a-confirmar en el campo correspondiente)
 5. Armar CAPEX, OPEX, ingresos_proyectados, P&L multianual, flujo de caja
@@ -638,9 +672,9 @@ INPUT_CONTRACT = {
         "conocimiento": "{'frente_id': str} — modelo de casos.yaml, único camino de invocación",
         "herramientas": [
             "ver_informe_especialista", "search_bcra", "get_bcra_values", "search_series",
-            "get_series_values", "search_official_stats", "buscar_corpus_cientifico",
-            "web_search", "fetch_page_text", "pedir_informacion_faltante",
-            "submit_modelo_financiero",
+            "get_series_values", "search_official_stats", "search_comtrade",
+            "buscar_corpus_cientifico", "web_search", "fetch_page_text",
+            "pedir_informacion_faltante", "submit_modelo_financiero",
         ],
     },
 }
@@ -690,6 +724,11 @@ async def _dispatch(name: str, inputs: dict, *, caso_id: str, verbose: bool) -> 
         )
     elif name == "buscar_corpus_cientifico":
         result = await buscar_corpus_cientifico(consulta=inputs["consulta"], limit=inputs.get("limit", 100))
+    elif name == "search_comtrade":
+        result = get_import_data(
+            hs_code=inputs["hs_code"], year=inputs.get("year"),
+            partner_country=inputs.get("partner_country"), max_results=inputs.get("max_results", 20),
+        )
     elif name == "fetch_page_text":
         result = fetch_page_text(url=inputs["url"], max_chars=inputs.get("max_chars", 8000))
     elif name == "pedir_informacion_faltante":

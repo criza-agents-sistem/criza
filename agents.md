@@ -37,7 +37,7 @@ de qué es CRIZA de acá en más — ver "Estado operativo" abajo y `docs/PROPUE
 | Especialista Ingeniero Ambiental | `ingeniero_ambiental_agent/` | 26/26 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 7 del plan — segundo especialista, Ingeniero Ambiental |
 | Especialista Ingeniero Agrónomo | `agronomo_agent/` | 26/26 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Tercer especialista — Ingeniero Agrónomo, pedido explícito de Sebas con señal real |
 | Especialista Biotecnólogo | `biotecnologo_agent/` | 32/32 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-17] Etapa 18 — cuarto especialista: Biotecnólogo |
-| Agente Financiero | `financiero_agent/` | 28/28 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-07] Etapa 21 -- Agente Financiero, construido de cero, con chequeo anti-sesgo explicito |
+| Agente Financiero | `financiero_agent/` | 30/30 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-07] Etapa 21 (cont.) -- COMTRADE sumado + 4o bug real de serializacion |
 <!-- GENERADO:AGENTES_ACTIVOS:FIN -->
 
 ## Borrado (histórico)

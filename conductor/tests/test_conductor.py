@@ -68,17 +68,33 @@ def test_serializar_mensajes_content_block_dataclass():
 
 @pytest.mark.unit
 def test_serializar_mensajes_bloque_nativo_anthropic_con_model_dump():
-    """Bug real (2026-09-07): un turno de chat con Mercado/Financiero (cliente nativo Anthropic)
-    trae objetos pydantic (TextBlock, etc.), no ContentBlock — reventaba json.dumps en
-    api/main.py al persistir la sesión. Simulado acá sin importar el SDK real: cualquier objeto
-    con .model_dump() tiene que resolverse igual."""
+    """Bug real #1 (2026-09-07): un turno de chat con Mercado/Financiero (cliente nativo
+    Anthropic) trae objetos pydantic (TextBlock, etc.), no ContentBlock — reventaba json.dumps
+    en api/main.py al persistir la sesión. Simulado acá sin importar el SDK real: cualquier
+    objeto con .model_dump() tiene que resolverse igual, pasando exclude_none=True."""
     class _FakeTextBlock:
-        def model_dump(self):
+        def model_dump(self, exclude_none=False):
+            assert exclude_none is True
             return {"type": "text", "text": "hola desde mercado"}
 
     messages = [{"role": "assistant", "content": [_FakeTextBlock()]}]
     result = cond.serializar_mensajes(messages)
     assert result[0]["content"][0] == {"type": "text", "text": "hola desde mercado"}
+
+
+@pytest.mark.unit
+def test_serializar_mensajes_excluye_campos_none_de_bloques_nativos():
+    """Bug real #2 (2026-09-07): server_tool_use/web_search_tool_result traen un campo `text:
+    None` que .model_dump() sin exclude_none deja pasar — la API de Anthropic lo rechaza como
+    'Extra inputs are not permitted' al reenviarlo como historial en el turno siguiente."""
+    class _FakeServerToolUseBlock:
+        def model_dump(self, exclude_none=False):
+            data = {"type": "server_tool_use", "id": "x", "name": "web_search", "input": {}, "text": None}
+            return {k: v for k, v in data.items() if v is not None} if exclude_none else data
+
+    messages = [{"role": "assistant", "content": [_FakeServerToolUseBlock()]}]
+    result = cond.serializar_mensajes(messages)
+    assert "text" not in result[0]["content"][0]
 
 
 @pytest.mark.unit

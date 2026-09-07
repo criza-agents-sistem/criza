@@ -152,6 +152,16 @@ vía la corrida real contra producción):
 3. `uvicorn --reload` solo observa `api/` — un cambio en `conductor/conductor.py` o
    `utils/bcra.py` (fuera de ese árbol) no dispara reload; hay que matar y reiniciar el proceso
    completo. Mismo gotcha ya documentado en la Etapa 20 (`docs/progress/2026-09-07.md`).
+4. **Encontrado después de sumar COMTRADE (decisión E) al re-verificar**: el fix del bug #1
+   (`.model_dump()` sin más) no alcanzaba — `server_tool_use`/`web_search_tool_result` incluyen
+   un campo `text: None` que la API de Anthropic rechaza como *"Extra inputs are not permitted"*
+   al reenviarlo como historial en el turno SIGUIENTE al que generó el bloque (no revienta al
+   persistir, revienta un turno después, al re-leer y reenviar). Corregido con
+   `model_dump(exclude_none=True)`. Test nuevo en `conductor/tests/test_conductor.py`.
+   Reverificado real con una sesión nueva de punta a punta: el agente llamó `search_bcra`,
+   `search_comtrade` (`hs_code=3105`, trajo el valor real 2023: USD 805M importado), `web_search`,
+   `buscar_corpus_cientifico` y `pedir_informacion_faltante` en una sola corrida, sin ningún error
+   de serialización en ningún turno subsiguiente.
 
 ---
 
@@ -174,6 +184,7 @@ vía la corrida real contra producción):
 | B | ¿Qué schema exacto para `submit_modelo_financiero`? | Ver detalle abajo | Ver bloque de código más abajo — supuestos con estado establecido/asumido/a-confirmar, CAPEX, OPEX, ingresos proyectados, P&L, cash flow, VAN/TIR/payback, escenarios optimista/base/pesimista, riesgo cambiario declarado si aplica, `fuentes_y_cobertura`. | 2026-09-07 |
 | C | ¿Cliente nativo Anthropic (como Mercado) o traductor genérico (`utils/ai_client.py`, como los otros 4)? | Nativo (permite `web_search`) / Genérico (portable entre proveedores) | **Nativo** — el modelo financiero necesita comparables de costo/inversión/precio vigentes que ningún corpus local tiene; "recordar" un costo del entrenamiento es el mismo sesgo de anclaje que ya se prohibió para Mercado. Misma excepción permanente, mismo motivo. | 2026-09-07 |
 | D | **Chequeo final anti-sesgo, pedido explícito de Sebas** ("sólo te pido último chequeo de que no tenga sesgos") | Ver detalle abajo | Ver tabla de riesgos de sesgo específicos del dominio financiero, cada uno con su mitigación concreta en el diseño (abajo). | 2026-09-07 |
+| E | **¿COMTRADE (importaciones reales por HS)?** — Sebas, tras ver la primera corrida real: "es importante que pueda acceder a toda la información necesaria para cumplir sus funciones." | Incluir (reusando `market_agent/tools/comtrade.py`) / no incluir (mismo criterio que Mercado) | **Incluir** — Mercado la excluyó (decisión H de su Design Gate) porque sesga la elección de PRODUCTO hacia sustitución de importaciones; ese motivo no aplica acá porque Financiero no elige producto, solo lo cotiza. Verificada real antes de sumarla (`get_import_data(hs_code="3105")` → datos reales de 2022, USD 1,04/kg CIF). Se usa solo como precio de referencia (`search_comtrade`), con instrucción explícita de no razonar sobre conveniencia de importar/sustituir con ella. Key ya existía (`market_agent/.env`), copiada a `api/.env` (el proceso real que corre los especialistas). | 2026-09-07 |
 
 ### Detalle decisión B — schema `submit_modelo_financiero`
 
@@ -213,7 +224,7 @@ lecciones_caso: [str]
 
 **Estado actual:** ✅ LISTO
 
-Decisiones A-D cerradas, ninguna abierta. Primer especialista construido de cero desde el
+Decisiones A-E cerradas, ninguna abierta. Primer especialista construido de cero desde el
 Biotecnólogo (2026-08-17) — a diferencia de la reconexión de Mercado (Etapa 20), acá no había
 código previo que adaptar. El chequeo anti-sesgo pedido explícitamente por Sebas (decisión D)
 queda documentado como tabla de riesgos concretos + mitigación, no como una afirmación genérica

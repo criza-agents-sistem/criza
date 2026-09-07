@@ -66,8 +66,9 @@ def test_tools_requeridas_presentes():
     nombres = {t["name"] for t in fa.TOOLS if "name" in t}
     esperadas = {
         "ver_informe_especialista", "search_bcra", "get_bcra_values", "search_series",
-        "get_series_values", "search_official_stats", "buscar_corpus_cientifico",
-        "fetch_page_text", "pedir_informacion_faltante", "submit_modelo_financiero",
+        "get_series_values", "search_official_stats", "search_comtrade",
+        "buscar_corpus_cientifico", "fetch_page_text", "pedir_informacion_faltante",
+        "submit_modelo_financiero",
     }
     faltantes = esperadas - nombres
     assert not faltantes, f"Tools faltantes en el agente: {faltantes}"
@@ -135,6 +136,15 @@ def test_system_prompt_exige_escenario_pesimista_real():
 @pytest.mark.unit
 def test_system_prompt_exige_riesgo_cambiario():
     assert "riesgo cambiario" in fa.SYSTEM_PROMPT.lower()
+
+
+@pytest.mark.unit
+def test_system_prompt_comtrade_no_para_decidir_importacion():
+    """COMTRADE se suma como precio de referencia (decisión E) — el prompt tiene que dejar claro
+    que no es para razonar si conviene importar/sustituir, esa decisión es de Mercado."""
+    sp_lower = fa.SYSTEM_PROMPT.lower()
+    assert "search_comtrade" in sp_lower
+    assert "sustituir importación" in sp_lower or "sustituir importaci" in sp_lower
 
 
 @pytest.mark.unit
@@ -211,6 +221,14 @@ async def test_dispatch_ver_informe_especialista():
         result = await fa._dispatch("ver_informe_especialista", {"documento_id": "doc-1"}, caso_id="caso-1", verbose=False)
     mock_fn.assert_awaited_once_with("doc-1", tenant="criza")
     assert "contenido" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dispatch_search_comtrade():
+    with patch("financiero_agent.financiero_agent.get_import_data", return_value={"success": True, "data": []}) as mock_fn:
+        await fa._dispatch("search_comtrade", {"hs_code": "3105"}, caso_id="caso-1", verbose=False)
+    mock_fn.assert_called_once_with(hs_code="3105", year=None, partner_country=None, max_results=20)
 
 
 @pytest.mark.unit

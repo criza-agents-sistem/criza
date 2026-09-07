@@ -604,19 +604,27 @@ def _bloque_a_dict(b):
     lo produce cualquier agente Anthropic-only: Mercado y Financiero, ver sus docstrings de
     módulo). `json.dumps` no serializa ninguno de los dos tipos de objeto sin ayuda.
 
-    Bug real encontrado en la verificación viva del Agente Financiero (Etapa 21, 2026-09-07):
+    Bug real #1 encontrado en la verificación viva del Agente Financiero (Etapa 21, 2026-09-07):
     esta función solo contemplaba `ContentBlock`, nunca los bloques nativos — cualquier turno de
     chat con Mercado o Financiero que llegara a persistirse reventaba con `TypeError: Object of
     type TextBlock is not JSON serializable` en `motor_api.actualizar_props`. No se había
     encontrado antes porque la verificación de Mercado no había ejercitado este camino completo
     (chat real vía HTTP, con persistencia) — mismo patrón de "la corrida real revela costuras que
-    los tests no ven" ya documentado para el bug de `hasattr(b, "text")`."""
+    los tests no ven" ya documentado para el bug de `hasattr(b, "text")`.
+
+    Bug real #2, mismo día: `.model_dump()` sin más export campos en `None` que el tipo real no
+    declara pero el objeto de la SDK sí trae (verificado real: `server_tool_use` y
+    `web_search_tool_result` incluyen `text: None`, un campo que NO es válido en el schema de
+    request de Anthropic para esos tipos de bloque — reenviarlo como historial revienta con
+    `anthropic.BadRequestError: ...server_tool_use.text: Extra inputs are not permitted`, recién
+    en el turno SIGUIENTE al que generó el bloque, no en el que lo persiste). `exclude_none=True`
+    lo resuelve — un campo ausente nunca es inválido, uno presente en `None` sí puede serlo."""
     if isinstance(b, dict):
         return b
     if isinstance(b, ContentBlock):
         return asdict(b)
     if hasattr(b, "model_dump"):  # objeto nativo del SDK de Anthropic (pydantic v2)
-        return b.model_dump()
+        return b.model_dump(exclude_none=True)
     return b
 
 
