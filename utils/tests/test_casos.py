@@ -127,6 +127,44 @@ async def test_obtener_documentos_de_frente_sin_documentos():
     assert result == []
 
 
+# ── Unit: obtener_documento_por_id (Etapa 20, 2026-09-05) ───────────────────────
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_obtener_documento_por_id_documento_caso():
+    doc = {"id": "doc-1", "tipo": "documento_caso", "props": {"titulo": "t", "contenido": "c", "modo": "chat", "estado": "borrador", "agente": "microbiologo"}}
+    with patch("utils.casos.motor_api.obtener", new=AsyncMock(return_value=doc)):
+        result = await casos.obtener_documento_por_id("doc-1", tenant="criza")
+    assert result["contenido"] == "c"
+    assert result["agente"] == "microbiologo"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_obtener_documento_por_id_documento_aportado():
+    doc = {"id": "doc-aportado-1", "tipo": "documento_aportado", "props": {"titulo": "informe.pdf", "contenido": "texto extraído"}}
+    with patch("utils.casos.motor_api.obtener", new=AsyncMock(return_value=doc)):
+        result = await casos.obtener_documento_por_id("doc-aportado-1", tenant="criza")
+    assert result["contenido"] == "texto extraído"
+    assert result["fuente"] == "aportado_por_sebas"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_obtener_documento_por_id_no_encontrado():
+    with patch("utils.casos.motor_api.obtener", new=AsyncMock(return_value=None)):
+        result = await casos.obtener_documento_por_id("no-existe", tenant="criza")
+    assert "error" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_obtener_documento_por_id_uuid_invalido_no_revienta():
+    with patch("utils.casos.motor_api.obtener", new=AsyncMock(side_effect=Exception("invalid input syntax for type uuid"))):
+        result = await casos.obtener_documento_por_id("Frente técnico", tenant="criza")
+    assert "error" in result
+
+
 # ── Unit: obtener_pendientes_de_caso ────────────────────────────────────────────
 
 @pytest.mark.unit

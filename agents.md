@@ -28,15 +28,15 @@ de qué es CRIZA de acá en más — ver "Estado operativo" abajo y `docs/PROPUE
 <!-- GENERADO:AGENTES_ACTIVOS:INICIO -->
 | Agente | Módulo | Tests | Registrado | Última decisión |
 |---|---|---|---|---|
-| Mercado | `market_agent/` | 67/67 ✅ (+6 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
+| Agente de Mercado | `market_agent/` | 77/77 ✅ (+6 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-07] Etapa 20 -- Agente de Mercado reconectado a casos.yaml, los 5 especialistas se leen entre si |
 | Evidence Generalista | `evidence_generalista/` | 48/48 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
 | Investigación Amplia | `investigacion_amplia/` | 39/39 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
 | Armador | `armador/` | 31/31 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
 | Especialista Proteínas | `scientific_agent/` | sin tests unit (todos integration/deselected) | 🟡 registrado, inactivo, sin DESIGN_GATE.md | — |
-| Especialista Microbiólogo | `microbiologo_agent/` | 52/52 ✅ (+2 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 4 (parte 2) del plan — Microbiólogo conectado al modelo de casos.yaml |
-| Especialista Ingeniero Ambiental | `ingeniero_ambiental_agent/` | 23/23 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 7 del plan — segundo especialista, Ingeniero Ambiental |
-| Especialista Ingeniero Agrónomo | `agronomo_agent/` | 23/23 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Tercer especialista — Ingeniero Agrónomo, pedido explícito de Sebas con señal real |
-| Especialista Biotecnólogo | `biotecnologo_agent/` | 29/29 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-17] Etapa 18 — cuarto especialista: Biotecnólogo |
+| Especialista Microbiólogo | `microbiologo_agent/` | 55/55 ✅ (+2 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 4 (parte 2) del plan — Microbiólogo conectado al modelo de casos.yaml |
+| Especialista Ingeniero Ambiental | `ingeniero_ambiental_agent/` | 26/26 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 7 del plan — segundo especialista, Ingeniero Ambiental |
+| Especialista Ingeniero Agrónomo | `agronomo_agent/` | 26/26 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Tercer especialista — Ingeniero Agrónomo, pedido explícito de Sebas con señal real |
+| Especialista Biotecnólogo | `biotecnologo_agent/` | 32/32 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-17] Etapa 18 — cuarto especialista: Biotecnólogo |
 <!-- GENERADO:AGENTES_ACTIVOS:FIN -->
 
 ## Borrado (histórico)

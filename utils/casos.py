@@ -82,6 +82,42 @@ async def obtener_documentos_de_frente(frente_id: str, tenant: str) -> list[dict
         ]
 
 
+async def obtener_documento_por_id(documento_id: str, tenant: str) -> dict:
+    """
+    Trae un documento puntual (`documento_caso` o `documento_aportado`) por su id, con el
+    contenido completo — para lectura on-demand, no como parte del briefing liviano.
+
+    Extraído de `conductor.py::_tool_ver_documento` (Etapa 20, 2026-09-05) para que los
+    especialistas también puedan leer informes de OTROS especialistas sobre el mismo frente
+    (Sebas: "estaría bueno que todos puedan ver qué está realizando el resto") sin duplicar la
+    lógica 5 veces. Preserva el fix real de la Etapa 16: un id que no es UUID válido no debe
+    tirar abajo el turno completo con un 500 — se trata como "no encontrado".
+
+    Returns: {"error": str} si no existe / id inválido, o el dict del documento (forma distinta
+    según tipo — ver abajo) si existe.
+    """
+    try:
+        doc = await motor_api.obtener(documento_id, tenant=tenant)
+    except Exception:
+        doc = None
+    if not doc or doc.get("tipo") not in ("documento_caso", "documento_aportado"):
+        return {"error": f"No se encontró ningún documento con id '{documento_id}'."}
+    props = doc.get("props") or {}
+    if doc["tipo"] == "documento_aportado":
+        return {
+            "titulo": props.get("titulo"),
+            "fuente": "aportado_por_sebas",
+            "contenido": props.get("contenido"),
+        }
+    return {
+        "titulo": props.get("titulo"),
+        "modo": props.get("modo"),
+        "estado": props.get("estado"),
+        "agente": props.get("agente"),
+        "contenido": props.get("contenido"),
+    }
+
+
 async def obtener_pendientes_de_caso(caso_id: str, tenant: str, solo_abiertos: bool = True) -> list[dict]:
     """
     Pendientes de un caso — cuelgan del caso completo, no de un frente específico

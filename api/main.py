@@ -121,6 +121,7 @@ _mod_microbiologo = _cargar_modulo_agente("microbiologo_agent", _CRIZA_DIR / "mi
 _mod_ingeniero_ambiental = _cargar_modulo_agente("ingeniero_ambiental_agent", _CRIZA_DIR / "ingeniero_ambiental_agent" / "ingeniero_ambiental_agent.py")
 _mod_agronomo = _cargar_modulo_agente("agronomo_agent", _CRIZA_DIR / "agronomo_agent" / "agronomo_agent.py")
 _mod_biotecnologo = _cargar_modulo_agente("biotecnologo_agent", _CRIZA_DIR / "biotecnologo_agent" / "biotecnologo_agent.py")
+_mod_mercado = _cargar_modulo_agente("market_agent", _CRIZA_DIR / "market_agent" / "market_agent.py")
 
 # Mapea a los MÓDULOS, no a (iniciar_sesion, enviar_mensaje) ya extraídas — así un test puede
 # patchear "main._mod_microbiologo.iniciar_sesion" y que el endpoint lo vea (busca el atributo
@@ -130,6 +131,7 @@ _ESPECIALISTAS_CHAT = {
     "ingeniero_ambiental": _mod_ingeniero_ambiental,
     "agronomo": _mod_agronomo,
     "biotecnologo": _mod_biotecnologo,
+    "mercado": _mod_mercado,
 }
 
 # Todos los agentes con superficie de chat, incluido el Conductor — para el panel de
@@ -910,7 +912,12 @@ async def obtener_info_agente(nombre: str) -> dict:
         "tools": [
             {
                 "name": t["name"],
-                "description": t["description"],
+                # .get() con fallback, no t["description"]: las tools NATIVAS de un proveedor
+                # (ej. web_search de Anthropic en market_agent — {"type": "web_search_20250305",
+                # "name": "web_search", "max_uses": N}) no tienen "description" propia, la define
+                # el proveedor, no CRIZA. Encontrado real (Etapa 20, 2026-09-07): GET
+                # /agentes/mercado tiraba 500 (KeyError) antes de este fix.
+                "description": t.get("description") or f"Tool nativa del proveedor ('{t.get('type', 'desconocido')}') — sin descripción propia, la documenta el proveedor.",
                 "disponible_en_chat": t["name"] in nombres_chat,
             }
             for t in tools

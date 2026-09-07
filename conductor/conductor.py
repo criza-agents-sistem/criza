@@ -42,6 +42,7 @@ from utils.casos import (
     obtener_pendientes_de_caso as _obtener_pendientes_fn,
     crear_caso as _crear_caso_fn,
     guardar_documento_de_frente as _guardar_documento_de_frente_fn,
+    obtener_documento_por_id as _obtener_documento_por_id_fn,
 )
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
@@ -64,6 +65,7 @@ _ESPECIALISTAS_CASOS = {
     "ingeniero_ambiental": "Especialista Ingeniero Ambiental",
     "agronomo": "Especialista Ingeniero Agrónomo",
     "biotecnologo": "Especialista Biotecnólogo",
+    "mercado": "Agente de Mercado",
 }
 
 
@@ -432,35 +434,10 @@ async def _tool_crear_documento(caso_ident: str, frente_ident: str, titulo: str,
 
 
 async def _tool_ver_documento(documento_id: str) -> dict:
-    # Encontrado real (2026-08-17, probando adjuntar un archivo): si el modelo pasa algo que no
-    # es un UUID válido (ej. adivinó un nombre en vez de llamar ver_caso primero), la query cruda
-    # de motor_api.obtener revienta con un DataError de asyncpg sin capturar -- eso tira todo el
-    # turno abajo (500, cero respuesta, tokens del turno gastados igual). Mismo criterio que ya
-    # usa _resolver_caso() para el mismo problema: capturar y tratarlo como "no encontrado", no
-    # como error de servidor.
-    try:
-        doc = await motor_api.obtener(documento_id, tenant=_TENANT)
-    except Exception:
-        doc = None
-    # documento_caso (lo produce un especialista) y documento_aportado (Sebas lo sube, Etapa
-    # 17b) comparten esta tool de lectura -- ambos son "un documento del caso con contenido para
-    # leer", la única diferencia real es quién lo generó.
-    if not doc or doc.get("tipo") not in ("documento_caso", "documento_aportado"):
-        return {"error": f"No se encontró ningún documento con id '{documento_id}'."}
-    props = doc.get("props") or {}
-    if doc["tipo"] == "documento_aportado":
-        return {
-            "titulo": props.get("titulo"),
-            "fuente": "aportado_por_sebas",
-            "contenido": props.get("contenido"),
-        }
-    return {
-        "titulo": props.get("titulo"),
-        "modo": props.get("modo"),
-        "estado": props.get("estado"),
-        "agente": props.get("agente"),
-        "contenido": props.get("contenido"),
-    }
+    # Lógica movida a utils/casos.py::obtener_documento_por_id (Etapa 20, 2026-09-05) — reusada
+    # ahora también por los especialistas, que ganaron la misma tool para leerse informes entre
+    # ellos. Preserva el fix real de la Etapa 16 (UUID inválido no tira abajo el turno).
+    return await _obtener_documento_por_id_fn(documento_id, tenant=_TENANT)
 
 
 # ── System prompt ────────────────────────────────────────────────────────────
@@ -485,15 +462,19 @@ TOOLS DISPONIBLES:
 - ver_caso: el briefing completo — identidad, frentes (y si cada uno ya tiene documentos
   producidos), pendientes abiertos, lecciones relevantes, decisiones de sistema vigentes.
 - correr_especialista: invoca a un especialista de la biblioteca (microbiólogo, ingeniero
-  ambiental) contra un frente. GASTA TOKENS REALES Y ESCRIBE AL KM — no lo llames sin que Sebas
-  lo haya pedido o aprobado explícitamente. Antes de sugerirlo, chequeá con ver_caso si ese
-  frente ya tiene un documento producido — no re-correr un análisis que ya existe sin decírselo
-  a Sebas primero (puede que igual quiera reintentar, pero es su decisión, no la tuya). Elegí el
-  especialista según qué pregunta hay que responder — el microbiólogo evalúa si un enfoque es
-  biológica/químicamente viable, el ingeniero ambiental evalúa si ese enfoque ya identificado se
-  puede construir y operar de verdad (balances de masa/energía, dimensionamiento), el ingeniero
-  agrónomo evalúa si un producto/enfoque funciona de verdad como insumo agrícola/ganadero (dosis,
-  compatibilidad de cultivo/suelo, normativa de aplicación).
+  ambiental, agrónomo, biotecnólogo, mercado) contra un frente. GASTA TOKENS REALES Y ESCRIBE AL
+  KM — no lo llames sin que Sebas lo haya pedido o aprobado explícitamente. Antes de sugerirlo,
+  chequeá con ver_caso si ese frente ya tiene un documento producido — no re-correr un análisis
+  que ya existe sin decírselo a Sebas primero (puede que igual quiera reintentar, pero es su
+  decisión, no la tuya). Elegí el especialista según qué pregunta hay que responder — el
+  microbiólogo evalúa si un enfoque es biológica/químicamente viable, el ingeniero ambiental
+  evalúa si ese enfoque ya identificado se puede construir y operar de verdad (balances de
+  masa/energía, dimensionamiento), el ingeniero agrónomo evalúa si un producto/enfoque funciona
+  de verdad como insumo agrícola/ganadero (dosis, compatibilidad de cultivo/suelo, normativa de
+  aplicación), el biotecnólogo evalúa qué producto de valor se puede FABRICAR vía bioprocesos y
+  con qué ruta, el Agente de Mercado evalúa demanda/competencia/accesibilidad de mercado para un
+  producto candidato ya identificado (corré primero al que identifica el producto — normalmente
+  el biotecnólogo — antes que a mercado, que necesita saber qué está evaluando).
 - ver_documento: el texto completo de un documento puntual, cuando Sebas quiere profundizar.
 - ver_herramientas_especialista: las herramientas/bases de datos reales de un especialista
   (OpenAlex, KEGG, CONICET, etc. — varían por especialista). Usala SIEMPRE que Sebas pregunte
@@ -523,8 +504,8 @@ es exactamente el tipo de cosa que solo vos podés ver.
 
 LÍMITES EXPLÍCITOS DE ESTA VERSIÓN (no prometas lo que no hacés todavía):
 - Solo podés invocar los especialistas conectados al modelo de casos.yaml (hoy: microbiólogo,
-  ingeniero ambiental, ingeniero agrónomo) — los 4 agentes del expediente viejo (mercado,
-  evidencia, investigación amplia, armador) todavía no están conectados a este modelo.
+  ingeniero ambiental, agrónomo, biotecnólogo, mercado) — los 3 agentes del expediente viejo que
+  quedan (evidencia, investigación amplia, armador) todavía no están conectados a este modelo.
 - Esta conversación SÍ queda guardada (el historial completo vive en el KM, sobrevive a un
   reinicio del servidor) — podés decirle a Sebas que si vuelve a esta misma sesión más tarde vas
   a recordar lo que se habló. Además, al cerrar la sesión se evalúa automáticamente si hay una

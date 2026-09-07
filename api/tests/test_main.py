@@ -831,6 +831,22 @@ def test_obtener_info_agente_especialista_marca_submit_fuera_del_chat():
 
 
 @pytest.mark.unit
+def test_obtener_info_agente_mercado_incluye_tool_nativa_sin_description():
+    """Etapa 20, 2026-09-07 — bug real encontrado verificando: `mercado` tiene una tool nativa
+    de Anthropic (web_search, {"type": "web_search_20250305", "name": "web_search", ...}) sin
+    "description" propia — el endpoint tiraba 500 (KeyError) antes del fix a .get() con
+    fallback."""
+    resp = client.get("/agentes/mercado")
+    assert resp.status_code == 200
+    data = resp.json()
+    tools_por_nombre = {t["name"]: t for t in data["tools"]}
+    assert "web_search" in tools_por_nombre
+    assert tools_por_nombre["web_search"]["description"]  # no vacío, tiene el fallback
+    assert tools_por_nombre["submit_analysis"]["disponible_en_chat"] is False
+    assert tools_por_nombre["ver_informe_especialista"]["disponible_en_chat"] is True
+
+
+@pytest.mark.unit
 def test_cors_permite_localhost_3000():
     resp = client.options(
         "/casos",

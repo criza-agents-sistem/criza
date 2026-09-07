@@ -45,7 +45,10 @@ from utils.openalex import search_literature as _search_literature_fn
 from km_tools.search import get_sector_corpus as _get_sector_corpus_fn
 from utils.agrovoc import expand_term as _expand_agrovoc_fn
 from utils.corpus import buscar_corpus_cientifico as _buscar_corpus_cientifico_fn
-from utils.casos import obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente
+from utils.casos import (
+    obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente,
+    obtener_documentos_de_frente, obtener_documento_por_id,
+)
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
@@ -201,6 +204,22 @@ TOOLS = [
                 "limit": {"type": "integer", "description": "Máximo de papers (default 100).", "default": 100},
             },
             "required": ["consulta"],
+        },
+    },
+    {
+        "name": "ver_informe_especialista",
+        "description": (
+            "Trae el contenido completo de un informe puntual — ya sea uno que vos u OTRO "
+            "especialista produjo antes sobre este mismo frente (ver la lista 'Informes ya "
+            "producidos en este frente' en tu input), o un documento que Sebas aportó. Usala "
+            "solo cuando el título de algo en esa lista es relevante para tu evaluación actual — "
+            "no leas todos los informes, solo los que importan para tu tarea. Nunca inventes un "
+            "id, usá el que aparece en la lista tal cual."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"documento_id": {"type": "string"}},
+            "required": ["documento_id"],
         },
     },
     {
@@ -373,6 +392,7 @@ FUENTES DISPONIBLES:
   inglés. Útil para problemas ligados a producción agropecuaria argentina.
 - expand_agrovoc: expande un término contra el tesauro AGROVOC (FAO). Usar antes de
   search_corpus_inta cuando tenés un término en inglés para buscar en el corpus español.
+- ver_informe_especialista: trae el contenido completo de un informe que vos u otro especialista ya produjo sobre este mismo frente (tu input trae la lista de títulos disponibles, si hay alguno). Usala solo cuando un título de esa lista es relevante para tu evaluación actual — no leas todos los informes de memoria, solo los que importan para tu tarea.
 
 Flujo sugerido: buscar_corpus_cientifico primero (cualquier problema) → expand_agrovoc si hace
 falta traducir el término → search_corpus_inta con términos ES → search_literature con términos
@@ -444,10 +464,15 @@ OUTPUT_CONTRACT = {
 def build_input_desde_frente(
     frente_dict: dict, caso_dict: dict, pendientes: list[dict],
     documentos_aportados: list[dict] | None = None,
+    documentos_producidos: list[dict] | None = None,
 ) -> str:
     """`documentos_aportados` (Etapa 17b, 2026-08-17): archivos que Sebas subió desde el chat y
     quedaron conectados a este frente — se suman al input para que una corrida formal también
-    los tenga disponibles, no solo el Conductor."""
+    los tenga disponibles, no solo el Conductor.
+
+    `documentos_producidos` (Etapa 20, 2026-09-05): informes que OTROS especialistas (o vos
+    mismo antes) ya produjeron sobre este frente — lista liviana (título/agente/fecha/id), el
+    contenido completo se lee bajo demanda con ver_informe_especialista."""
     caso_props = caso_dict.get("props") or {}
     frente_props = frente_dict.get("props") or {}
 
@@ -459,6 +484,20 @@ def build_input_desde_frente(
     if pendientes:
         lista = "\n".join(f"- {(p.get('props') or {}).get('descripcion', '')}" for p in pendientes)
         secciones.append(f"# Pendientes abiertos del caso (contexto, no necesariamente de este frente)\n\n{lista}")
+
+    if documentos_producidos:
+        lista = "\n".join(
+            f"- [{d.get('id', '')}] {(d.get('props') or {}).get('titulo', '')} "
+            f"— {(d.get('props') or {}).get('agente', '')} ({(d.get('creado_en') or '')[:10]})"
+            for d in documentos_producidos
+        )
+        secciones.append(
+            "# Informes ya producidos en este frente (por vos u otros especialistas)\n\n"
+            f"{lista}\n\n"
+            "Son solo títulos — si alguno es relevante para tu evaluación, usá "
+            "ver_informe_especialista(documento_id) para leer el contenido completo. No hace "
+            "falta leerlos todos, solo los que importan para tu tarea."
+        )
 
     if documentos_aportados:
         bloques = "\n\n".join(
@@ -495,6 +534,11 @@ def _bloque_instruccion(tarea: str | None, contexto_extra: str | None, foco: str
 async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
     """Todas las tools EXCEPTO submit_evaluacion_tecnica — ver microbiologo_agent.py::
     _despachar_tool, mismo patrón, extraída para que el chat conversacional (Etapa 10) la reuse."""
+    if nombre == "ver_informe_especialista":
+        documento_id = tool_input.get("documento_id", "")
+        if verbose:
+            print(f"  -> ver_informe_especialista: {documento_id}")
+        return await obtener_documento_por_id(documento_id, tenant=_TENANT)
     if nombre == "expand_agrovoc":
         term = tool_input.get("term", "")
         if verbose:
@@ -662,6 +706,7 @@ async def run_agent_desde_frente(
 
     pendientes = await obtener_pendientes_de_caso(caso_dict["id"], tenant=_TENANT)
     documentos_aportados = await obtener_documentos_aportados_de_frente(frente_id, tenant=_TENANT)
+    documentos_producidos = await obtener_documentos_de_frente(frente_id, tenant=_TENANT)
 
     await aprendizaje.ensure_area(tenant=_TENANT)
     caso_props = caso_dict.get("props") or {}
@@ -675,7 +720,9 @@ async def run_agent_desde_frente(
         "text": SYSTEM_PROMPT + bloque,
         "cache_control": {"type": "ephemeral"},
     }]
-    user_input = build_input_desde_frente(frente_dict, caso_dict, pendientes, documentos_aportados) + _bloque_instruccion(
+    user_input = build_input_desde_frente(
+        frente_dict, caso_dict, pendientes, documentos_aportados, documentos_producidos
+    ) + _bloque_instruccion(
         tarea, contexto_extra, foco
     )
 
@@ -758,7 +805,10 @@ async def iniciar_sesion(frente_id: str, *, tenant: str = _TENANT) -> list[dict]
         raise ValueError(f"Frente {frente_id} no tiene un caso asociado (conexión tiene_frente ausente)")
     pendientes = await obtener_pendientes_de_caso(caso_dict["id"], tenant=tenant)
     documentos_aportados = await obtener_documentos_aportados_de_frente(frente_id, tenant=tenant)
-    user_input = build_input_desde_frente(frente_dict, caso_dict, pendientes, documentos_aportados)
+    documentos_producidos = await obtener_documentos_de_frente(frente_id, tenant=tenant)
+    user_input = build_input_desde_frente(
+        frente_dict, caso_dict, pendientes, documentos_aportados, documentos_producidos
+    )
     return [{"role": "user", "content": user_input}]
 
 

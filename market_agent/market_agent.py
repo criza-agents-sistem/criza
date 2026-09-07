@@ -1,15 +1,34 @@
 """
-Agente de Mercado CRIZA v1 (SEB-148)
+Agente de Mercado CRIZA (SEB-148, reconectado a casos.yaml en Etapa 20, 2026-09-07)
 
-Demand-first. Evalúa cruces 1 (demanda), 3 (competencia) y 4 (viabilidad en contexto)
-para oportunidades de biotech agro. No analiza importaciones.
+Demand-first. Evalúa cruces 1 (demanda), 3 (competencia) y 4 (viabilidad en contexto) para un
+frente del modelo de casos.yaml — mismo patrón de conexión que los otros 4 especialistas
+(microbiólogo/ingeniero ambiental/agrónomo/biotecnólogo). Ya no soporta `oportunidad_id` (el
+modelo viejo, `pipeline_sector.yaml`/`pipeline_dolor.yaml`) — ningún caso real lo usa desde que
+todo pasó a `casos.yaml`; mismo criterio que ya aplicaron los otros 4 al conectarse.
 
-Tools: buscar_corpus_cientifico, search_series, get_series_values,
-       search_official_stats, fetch_page_text, draft_outreach_email, submit_analysis.
+Quinto agente de la biblioteca de especialistas, y el primero adaptado de un agente ya existente
+en vez de construido desde cero — decisión explícita de Sebas (docs/DESIGN_GATE.md decisión K):
+sus tools/framework/excepción de web_search nativo son hard-won, adaptarlos no arriesga el mismo
+sesgo que costó abandonar scientific_agent/specialist_proteins.py (ese tenía supuestos
+INCORRECTOS hardcodeados a un caso cancelado; acá el gap era una consideración AUSENTE, no una
+equivocada).
+
+Sebas: "no quiero que lo del flete sea un sesgo... qué tipo de análisis haga dependerá de los
+productos que son viables realizar técnicamente" — el agente NO asume mercado local ni
+exportador de antemano. Lee los informes que otros especialistas (en particular el Biotecnólogo)
+ya produjeron sobre este frente, y para cada producto candidato razona su densidad de valor
+(valor económico por unidad de volumen/peso) para derivar qué alcance geográfico tiene sentido —
+ver Decisión M del Design Gate.
+
+Tools: buscar_corpus_cientifico, search_series, get_series_values, search_official_stats,
+       web_search (nativo Anthropic), fetch_page_text, draft_outreach_email,
+       ver_informe_especialista, submit_analysis.
 """
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
@@ -40,6 +59,10 @@ from market_agent.tools import (
     draft_outreach_email,
 )
 
+from utils.casos import (
+    obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente,
+    obtener_documentos_de_frente, obtener_documento_por_id,
+)
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
@@ -254,6 +277,23 @@ TOOLS = [
         },
     },
     {
+        "name": "ver_informe_especialista",
+        "description": (
+            "Trae el contenido completo de un informe puntual que otro especialista (o vos "
+            "mismo antes) ya produjo sobre este mismo frente — ver la lista 'Informes ya "
+            "producidos en este frente' en tu input. Usala SIEMPRE que necesites identificar qué "
+            "producto(s) candidato(s) evaluar (el Biotecnólogo suele ser la fuente de eso) o su "
+            "densidad de valor real — no adivines el producto ni su valor, leelo del informe "
+            "correspondiente. No leas todos los informes, solo los relevantes para tu evaluación "
+            "de mercado. Nunca inventes un id, usá el que aparece en la lista tal cual."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"documento_id": {"type": "string"}},
+            "required": ["documento_id"],
+        },
+    },
+    {
         "name": "submit_analysis",
         "description": (
             "Envía el análisis completo — LLAMAR SIEMPRE COMO ÚLTIMO PASO.\n"
@@ -344,8 +384,32 @@ TOOLS = [
                                 "valor": {"type": "string"},
                                 "estado": {"type": "string"},
                                 "dónde_confirmar": {"type": "string"},
+                                "densidad_valor_producto": {
+                                    "type": "string",
+                                    "enum": ["alta", "media", "baja"],
+                                    "description": (
+                                        "Valor económico por unidad de volumen/peso del producto "
+                                        "candidato evaluado — determina si el costo de flete es "
+                                        "una restricción real de mercado. Derivarlo de las "
+                                        "características reales del producto (ver informes de "
+                                        "otros especialistas), nunca asumirlo."
+                                    ),
+                                },
+                                "alcance_geografico_recomendado": {
+                                    "type": "string",
+                                    "description": (
+                                        "Radio de mercado razonable dado el costo de flete vs. la "
+                                        "densidad de valor del producto — ej. 'local (radio de "
+                                        "flete viable)', 'nacional', 'exportación', o una "
+                                        "combinación. Nunca asumido de antemano — justificado con "
+                                        "densidad_valor_producto."
+                                    ),
+                                },
                             },
-                            "required": ["valor", "estado"],
+                            "required": [
+                                "valor", "estado", "densidad_valor_producto",
+                                "alcance_geografico_recomendado",
+                            ],
                         },
                         "factibilidad_costo": {
                             "type": "object",
@@ -454,12 +518,17 @@ TOOLS = [
 SYSTEM_PROMPT = (
     _MARCO
     + "\n\n---\n\n"
-    + """Sos el Agente de Mercado de CRIZA v1. Tu misión: evaluar si hay una DEMANDA REAL NO RESUELTA para una oportunidad de biotech agro, y qué tan accesible es ese mercado para una empresa emergente argentina.
+    + """Sos el Agente de Mercado de CRIZA. Tu misión: evaluar si hay una DEMANDA REAL NO RESUELTA para el frente de un caso de biotech agro, y qué tan accesible es ese mercado.
 
 El marco cargado arriba define QUÉ es un blue ocean para CRIZA — las 12 condiciones must, las
 2 should, y las 6 maneras en que algo aporta valor. Tu análisis las usa directamente, no las
 reinterpreta. En particular: la condición 12 (no sustitución de importación) es la única "sin
 excepción" del marco — la declarás siempre en submit_analysis, nunca la omitís.
+
+QUÉ RECIBÍS: el caso/frente completo (contract_input via frente_id — ver build_input_desde_frente)
+y, si otros especialistas ya corrieron sobre este frente, la lista de sus informes. Usá
+ver_informe_especialista para leer el que identificó el/los producto(s) candidato(s) a evaluar
+(normalmente el Biotecnólogo) — no adivines qué producto es ni inventes sus características.
 
 FRAMEWORK: llenás tres cruces del expediente de decisión.
 
@@ -478,17 +547,39 @@ FRAMEWORK: llenás tres cruces del expediente de decisión.
 ¿Qué regulación aplica? → web_search + fetch_page_text (SENASA uso animal, ANMAT humano, MAGYP agro-alimentos)
 ¿Cómo se llega a los compradores? → web_search (asociaciones de productores, distribuidores)
 ¿Es factible en costo? → comparables, estimaciones razonables; a-confirmar si no hay datos
+¿Qué alcance geográfico tiene sentido? → ver "ALCANCE GEOGRÁFICO DEL MERCADO" abajo, obligatorio.
+
+ALCANCE GEOGRÁFICO DEL MERCADO — nunca asumas de antemano que el mercado es local ni que es de
+exportación. Lo derivás de las características reales del producto candidato, caso por caso:
+- Identificá el producto candidato leyendo los informes de otros especialistas (ver_informe_especialista)
+  — normalmente el Biotecnólogo, a veces el Agrónomo/Ingeniero Ambiental. Si hay varios candidatos,
+  evaluá el alcance de cada uno por separado, no un promedio.
+- Estimá su DENSIDAD DE VALOR — valor económico por unidad de volumen/peso. Un producto voluminoso
+  y de bajo valor por unidad (ej. un gel, un fertilizante diluido, biomasa húmeda) hace que el costo
+  de flete sea una restricción real — el mercado alcanzable puede estar limitado a un radio donde el
+  flete no se coma el margen. Un producto concentrado de alto valor por unidad (ej. un compuesto
+  bioactivo, un principio activo de aplicación en pequeñas dosis) puede justificar un radio mucho
+  mayor, incluso exportación.
+- Si el input físico del caso está atado a una ubicación fija (una planta, un campo — buscá esto en
+  el frente/caso, no lo asumas), esa ubicación es el punto de partida para pensar el radio, no el
+  país entero de entrada.
+- Declará esto explícitamente en submit_analysis (cruce_4.accesibilidad_mercado.densidad_valor_producto
+  y .alcance_geografico_recomendado), con la justificación — nunca lo omitas ni lo asumas sin
+  evidencia del producto real que estás evaluando.
 
 WORKFLOW OBLIGATORIO (en orden):
-1. buscar_corpus_cientifico — literatura argentina sobre el problema (corpus_cientifico completo: CONICET+INTA)
-2. search_series + get_series_values — tamaño del sector afectado en números
-3. search_official_stats — datasets complementarios del sector
-4. web_search — descubrir competidores/soluciones/registros reales (Cruce 3 y 4). NO uses tu
+1. Si hay informes de otros especialistas en tu input, leé (ver_informe_especialista) el que
+   identifica el/los producto(s) candidato(s) — no arranques el resto sin saber qué estás evaluando.
+2. buscar_corpus_cientifico — literatura argentina sobre el problema (corpus_cientifico completo: CONICET+INTA)
+3. search_series + get_series_values — tamaño del sector afectado en números
+4. search_official_stats — datasets complementarios del sector
+5. web_search — descubrir competidores/soluciones/registros reales (Cruce 3 y 4). NO uses tu
    conocimiento de entrenamiento para nombrar competidores — buscalo, es verificable o no lo afirmes.
-5. fetch_page_text (hasta 3 páginas) — profundizar en los resultados más relevantes de web_search
-6. draft_outreach_email (máximo 2) — solo para gaps críticos irreducibles
-7. submit_analysis — SIEMPRE el último paso, aunque falten datos. Incluye obligatoriamente
-   sustitucion_importacion, valor_cliente (las 6 dimensiones) y fuentes_y_cobertura.
+6. fetch_page_text (hasta 3 páginas) — profundizar en los resultados más relevantes de web_search
+7. draft_outreach_email (máximo 2) — solo para gaps críticos irreducibles
+8. submit_analysis — SIEMPRE el último paso, aunque falten datos. Incluye obligatoriamente
+   sustitucion_importacion, valor_cliente (las 6 dimensiones), fuentes_y_cobertura, y la
+   evaluación de alcance geográfico de CRUCE 4.
 
 CONVENCIÓN DE ESTADO — OBLIGATORIO en todo dato reportado:
 - establecido: verificado, tiene fuente citable (paper CONICET, serie oficial, SENASA, resultado de web_search)
@@ -502,6 +593,8 @@ búsqueda real es exactamente el sesgo de anclaje que el marco prohíbe.
 REGLAS:
 - Máximo 3 fetch_page_text por corrida — elegí bien las URLs (las que devolvió web_search).
 - Máximo 2 draft_outreach_email — solo gaps críticos irreducibles.
+- ver_informe_especialista: leé solo los informes relevantes para identificar el producto y su
+  densidad de valor — no leas todos los que aparezcan en la lista.
 - submit_analysis es el último paso — siempre llamarlo.
   Un expediente con gaps declarados es mejor que uno que no cierra.
 - Emails: siempre PENDIENTE_APROBACION. Nunca decir "vamos a enviar"."""
@@ -512,27 +605,28 @@ REGLAS:
 
 INPUT_CONTRACT = {
     "agent": "mercado",
-    "version": "1.1",
+    "version": "2.0",
     "fields": {
-        "caso": "Descripción del dolor o problema a analizar",
-        "tarea": "Evaluar cruces 1 (demanda), 3 (competencia) y 4 (viabilidad en contexto)",
-        "contexto": "Opcional — outputs de agentes anteriores relevantes para el análisis de mercado",
-        "conocimiento": "Opcional — {'oportunidad_id': str} para leer la ficha del KM",
+        "caso": "Recorte/foco de esta invocación (opcional) — no reemplaza al frente/caso, que sale del KM",
+        "tarea": "Evaluación de mercado pedida en esta corrida",
+        "contexto": "Opcional — contexto adicional de otro agente o de quien invoca",
+        "conocimiento": "{'frente_id': str} — modelo de casos.yaml, único camino de invocación (ya no soporta 'oportunidad_id')",
         "herramientas": [
             "buscar_corpus_cientifico", "search_series", "get_series_values",
             "search_official_stats", "web_search", "fetch_page_text",
-            "draft_outreach_email", "submit_analysis",
+            "draft_outreach_email", "ver_informe_especialista", "submit_analysis",
         ],
     },
 }
 
 OUTPUT_CONTRACT = {
     "agent": "mercado",
-    "version": "1.2",
-    # Contrato de conexión (2026-07-22): qué deja este agente en el KM para que otro lo
-    # consuma. Lo verifica `check_km_conexion` del auditor contra el código real de ESTE
-    # módulo — si la escritura vive en un runner, el camino orquestado no la ejecuta.
-    "km_escribe": ["props.mercado"],
+    "version": "2.0",
+    # Contrato de conexión (2026-07-22, actualizado Etapa 20 2026-09-07 al reconectar a
+    # casos.yaml): qué deja este agente en el KM para que otro lo consuma. Lo verifica
+    # `check_km_conexion` del auditor contra el código real de ESTE módulo — si la escritura
+    # vive en un runner, el camino orquestado no la ejecuta.
+    "km_escribe": ["documento_caso conectado al frente vía frente_produce_documento (agente='mercado')"],
     "fields": {
         "análisis": (
             "{'resumen': str, 'cruces': {'cruce_1': dict, 'cruce_3': dict, 'cruce_4': dict, "
@@ -587,9 +681,68 @@ async def _dispatch(name: str, inputs: dict) -> str:
             sender_name=inputs.get("sender_name", "Equipo CRIZA"),
             language=inputs.get("language", "es"),
         )
+    elif name == "ver_informe_especialista":
+        result = await obtener_documento_por_id(inputs.get("documento_id", ""), tenant=_TENANT)
     else:
         result = {"error": f"Tool desconocida: {name}"}
     return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+# ── Input builder ─────────────────────────────────────────────────────────────
+
+def build_input_desde_frente(
+    frente_dict: dict, caso_dict: dict, pendientes: list[dict],
+    documentos_aportados: list[dict] | None = None,
+    documentos_producidos: list[dict] | None = None,
+) -> str:
+    """Construye el input contra el modelo de casos.yaml (frente_id) — mismo patrón que los
+    otros 4 especialistas, ver microbiologo_agent.py::build_input_desde_frente.
+
+    `documentos_producidos` es especialmente importante acá (Etapa 20, 2026-09-07): sin ver qué
+    producto candidato identificó el Biotecnólogo (u otro especialista), el Agente de Mercado no
+    tiene forma de saber QUÉ está evaluando ni su densidad de valor — ver "ALCANCE GEOGRÁFICO DEL
+    MERCADO" en el SYSTEM_PROMPT."""
+    caso_props = caso_dict.get("props") or {}
+    frente_props = frente_dict.get("props") or {}
+
+    secciones = [
+        f"# Caso\n\n**Nombre:** {caso_props.get('nombre', '')}\n\n{caso_props.get('descripcion', '')}",
+        f"# Frente: {frente_props.get('nombre', '')}\n\n{frente_props.get('descripcion', '')}",
+    ]
+
+    if pendientes:
+        lista = "\n".join(f"- {(p.get('props') or {}).get('descripcion', '')}" for p in pendientes)
+        secciones.append(f"# Pendientes abiertos del caso (contexto, no necesariamente de este frente)\n\n{lista}")
+
+    if documentos_producidos:
+        lista = "\n".join(
+            f"- [{d.get('id', '')}] {(d.get('props') or {}).get('titulo', '')} "
+            f"— {(d.get('props') or {}).get('agente', '')} ({(d.get('creado_en') or '')[:10]})"
+            for d in documentos_producidos
+        )
+        secciones.append(
+            "# Informes ya producidos en este frente (por otros especialistas)\n\n"
+            f"{lista}\n\n"
+            "Son solo títulos — usá ver_informe_especialista(documento_id) para leer el que "
+            "identifica el producto candidato a evaluar (normalmente del Biotecnólogo) y "
+            "cualquier otro relevante. No hace falta leerlos todos."
+        )
+
+    if documentos_aportados:
+        bloques = "\n\n".join(
+            f"## {(d.get('props') or {}).get('titulo', '')}\n\n{(d.get('props') or {}).get('contenido', '')}"
+            for d in documentos_aportados
+        )
+        secciones.append(f"# Documentos aportados por Sebas para este frente\n\n{bloques}")
+
+    secciones.append(
+        "---\n"
+        "Tu tarea: evaluar demanda, competencia y accesibilidad de mercado (incluido el alcance "
+        "geográfico razonable) para el/los producto(s) candidato(s) de este frente. "
+        "Llamá submit_analysis cuando tengas suficiente evidencia."
+    )
+
+    return "\n\n".join(secciones)
 
 
 # ── Agentic loop ──────────────────────────────────────────────────────────────
@@ -597,21 +750,11 @@ async def _dispatch(name: str, inputs: dict) -> str:
 def _bloque_instruccion(
     tarea: str | None, contexto_extra: str | None, foco: str | None = None
 ) -> str:
-    """Instrucción propia de ESTA invocación, para el mensaje de usuario.
+    """Instrucción propia de ESTA invocación, para el mensaje de usuario — ver
+    microbiologo_agent.py::_bloque_instruccion, mismo patrón.
 
     Va en el mensaje de usuario y NO en el SYSTEM_PROMPT a propósito: el system prompt
     es lo estable (y lo cacheable); esto es lo que cambia en cada corrida.
-
-    Existe porque hasta 2026-07-22 el contrato SEB-115 declaraba `tarea` y `contexto`,
-    los flows los pasaban en cada paso, y ningún agente los leía — así que todo agente
-    corría siempre igual, sin enterarse de qué se le pedía esta vez. Ver
-    `check_contrato_input_no_leido` del auditor.
-
-    `foco` es el campo `caso` cuando además hay `oportunidad_id`. Importa: en
-    `pipeline_sector` el `caso` es `{gate.candidato_elegido}` — la respuesta que da el
-    humano en el gate. Hasta 2026-07-22 se descartaba (había oportunidad_id, así que
-    `texto_libre` quedaba en None), o sea que la elección del humano no llegaba a
-    ningún agente y todos re-analizaban el sector completo.
     """
     partes = []
     if foco:
@@ -626,94 +769,32 @@ def _bloque_instruccion(
     return ("\n\n" + "\n\n".join(partes)) if partes else ""
 
 
-async def run_agent(
-    oportunidad_id: str | None = None,
-    texto_libre: str | None = None,
-    oportunidad_descripcion: str | None = None,
-    verbose: bool = True,
-    model: str = DEFAULT_MODEL,
-    tarea: str | None = None,
-    contexto_extra: str | None = None,
-    foco: str | None = None,
-) -> tuple[str, dict, list[str]]:
-    """
-    Corre el agente de mercado.
-
-    Args:
-        oportunidad_id: UUID de la oportunidad en el KM (modo principal).
-        texto_libre: Descripción sin KM (modo testing).
-        oportunidad_descripcion: Override del texto de contexto (opcional con oportunidad_id).
-        verbose: Imprime tool calls en tiempo real.
-        model: Modelo Claude a usar.
-
-    Returns:
-        (resumen_markdown, cruces_dict, lecciones_auto)
-        - cruces_dict: listo para write-back bajo clave "mercado" en el KM.
-        - lecciones_auto: lista de strings para el loop de aprendizaje.
-    """
-    if verbose:
-        print("\n" + "=" * 60)
-        print(f"  AGENTE DE MERCADO CRIZA v1 — {model}")
-        print("=" * 60 + "\n")
-
-    tracker = TokenTracker(agent=_AGENTE, oportunidad_id=oportunidad_id or "test", model=model)
-
-    # 1. Construir contexto de la oportunidad
-    props: dict = {}
-    if oportunidad_id:
-        ficha = await motor_api.obtener(oportunidad_id, tenant=_TENANT)
-        props = ficha.get("props", {}) if ficha else {}
-        contexto_texto = oportunidad_descripcion or props.get("descripcion") or props.get("titulo") or ""
-        user_message = (
-            f"Oportunidad a analizar (id: {oportunidad_id}):\n\n"
-            + json.dumps(props, ensure_ascii=False, indent=2)
-        )
-        if verbose:
-            print(f"  Oportunidad: {contexto_texto[:100]}\n")
-    else:
-        contexto_texto = texto_libre or ""
-        user_message = texto_libre or "Análisis de mercado libre."
-        if verbose:
-            print(f"  Modo testing: {contexto_texto[:100]}\n")
-
-    user_message += _bloque_instruccion(tarea, contexto_extra, foco)
-
-    # 1.5 Pre-flight: verificar fuentes críticas antes de arrancar el loop agéntico
-    #     (objective-first — si lo que controlamos no está listo, frenamos).
+async def _preflight() -> None:
     preflight = await run_preflight([
         FuenteCheck("corpus_cientifico", bloqueante=True, check_fn=_check_corpus_cientifico),
         FuenteCheck("datos.gob.ar", bloqueante=False, check_fn=_check_datos_gob_ar),
         FuenteCheck("web_search", bloqueante=True, check_fn=_check_web_search),
     ])
-    if verbose:
-        for adv in preflight.advertencias:
-            print(f"  ⚠️  {adv}")
+    for adv in preflight.advertencias:
+        logging.getLogger(__name__).warning(adv)
     if not preflight.ok:
         raise RuntimeError(
             "Pre-flight bloqueante — Agente de Mercado no puede continuar:\n"
             + "\n".join(preflight.bloqueantes)
         )
 
-    # 2. Inyectar lecciones al system prompt
-    await aprendizaje.ensure_area(tenant=_TENANT)
-    bloque = await aprendizaje.bloque_lecciones_para_prompt(
-        agente=_AGENTE,
-        consulta=contexto_texto,
-        tenant=_TENANT,
-    )
-    effective_system = SYSTEM_PROMPT + bloque
-    # Prompt caching (2026-07-22): el loop agéntico reenvía el mismo system+tools en
-    # cada vuelta (mercado hizo 6-7 llamadas en la corrida real) — sin esto, el prefijo
-    # completo se factura a precio pleno todas las veces. El breakpoint en el último
-    # bloque de system cachea tools+system juntos (orden de render: tools -> system ->
-    # messages). ~9.5K chars de system + ~10.5K de tools, arriba del mínimo cacheable.
-    system_blocks = [{
-        "type": "text",
-        "text": effective_system,
-        "cache_control": {"type": "ephemeral"},
-    }]
 
-    # 3. Loop agéntico
+async def _run_loop(
+    identificador: str,
+    system_blocks: list[dict],
+    user_message: str,
+    model: str,
+    verbose: bool,
+) -> tuple[str, dict, list[str], TokenTracker]:
+    """Loop agéntico de la corrida formal (termina en submit_analysis) — usa el cliente nativo
+    de Anthropic (excepción permanente, ver docstring del módulo), no `utils.ai_client`. No
+    persiste nada al KM, eso lo hace la costura (orquestador/invocador.py)."""
+    tracker = TokenTracker(agent=_AGENTE, oportunidad_id=identificador, model=model)
     messages = [{"role": "user", "content": user_message}]
     analysis_result = None
     web_search_calls = 0
@@ -806,21 +887,22 @@ async def run_agent(
         else:
             break
 
-    # 4. Extraer resultado
-    async def _persist_tokens() -> None:
-        tracker.log(verbose)
-        if oportunidad_id:
-            existing = props.get("token_usage") or {}
-            existing[_AGENTE] = tracker.to_dict()
-            await motor_api.actualizar_props(oportunidad_id, {"token_usage": existing}, tenant=_TENANT)
+    # 4. Extraer resultado — no persiste nada al KM, eso lo hace la costura
+    #    (orquestador/invocador.py::invocar_agente) vía el documento_caso que arma con lo que
+    #    devuelve run(). El caller (run_agent_desde_frente) persiste token_usage en el frente.
+    tracker.log(verbose)
 
     if not analysis_result:
+        # getattr(b, "text", None), no hasattr: bloques nativos de Anthropic distintos de texto
+        # (ej. server_tool_use, web_search_tool_result — reales cuando el modelo usó web_search
+        # en el último turno sin llamar submit_analysis) SÍ tienen atributo `text`, pero en None
+        # — hasattr(b, "text") da True igual y "".join() revienta con TypeError (encontrado real,
+        # 2026-09-07, verificando el chat contra Helios).
         resumen = next(
-            (b.text for b in response.content if hasattr(b, "text")),
+            (b.text for b in response.content if getattr(b, "text", None)),
             "Análisis incompleto — el agente no llamó submit_analysis.",
         )
-        await _persist_tokens()
-        return resumen, {}, []
+        return resumen, {}, [], tracker
 
     resumen_markdown = analysis_result.get("resumen_markdown", "")
     lecciones_auto = analysis_result.get("lecciones_caso") or []
@@ -845,13 +927,157 @@ async def run_agent(
         "modelo":          model,
     }
 
-    # El write-back de resultado+informe al KM (props.mercado) ya NO es responsabilidad de
-    # este agente — lo hace la costura (orquestador/invocador.py::invocar_agente), siempre,
-    # para cualquier camino de invocación (Motor o directo). Antes vivía acá porque vivía en
-    # run.py y el Motor no pasaba por ahí — ver docs/progress/2026-07-22.md para el bug
-    # original. Ver "Regla de escritura al KM" en CLAUDE.md y agents_registry.yaml.
-    await _persist_tokens()
+    return resumen_markdown, cruces_dict, lecciones_auto, tracker
+
+
+async def run_agent_desde_frente(
+    frente_id: str,
+    verbose: bool = False,
+    model: str = DEFAULT_MODEL,
+    tarea: str | None = None,
+    contexto_extra: str | None = None,
+    foco: str | None = None,
+) -> tuple[str, dict, list[str]]:
+    """
+    Corre el Agente de Mercado contra un frente del modelo de casos.yaml — único camino de
+    invocación (Etapa 20, 2026-09-07 — ver docs/DESIGN_GATE.md decisión L, ya no soporta
+    oportunidad_id).
+
+    Returns:
+        (resumen_markdown, cruces_dict, lecciones_caso)
+        No escribe al KM — eso lo hace la costura (orquestador/invocador.py::invocar_agente),
+        que persiste un documento_caso conectado vía frente_produce_documento.
+    """
+    if verbose:
+        print(f"\n{'='*60}\n  AGENTE DE MERCADO — CRIZA (frente)\n  Modelo: {model}\n{'='*60}\n")
+
+    contexto = await obtener_frente_con_caso(frente_id, tenant=_TENANT)
+    frente_dict, caso_dict = contexto["frente"], contexto["caso"]
+    if not frente_dict:
+        raise ValueError(f"Frente {frente_id} no encontrado en el KM")
+    if not caso_dict:
+        raise ValueError(f"Frente {frente_id} no tiene un caso asociado (conexión tiene_frente ausente)")
+
+    await _preflight()
+
+    pendientes = await obtener_pendientes_de_caso(caso_dict["id"], tenant=_TENANT)
+    documentos_aportados = await obtener_documentos_aportados_de_frente(frente_id, tenant=_TENANT)
+    documentos_producidos = await obtener_documentos_de_frente(frente_id, tenant=_TENANT)
+
+    await aprendizaje.ensure_area(tenant=_TENANT)
+    caso_props = caso_dict.get("props") or {}
+    bloque = await aprendizaje.bloque_lecciones_para_prompt(
+        agente=_AGENTE,
+        consulta=caso_props.get("descripcion") or caso_props.get("nombre") or frente_id,
+        tenant=_TENANT,
+    )
+    # Prompt caching (2026-07-22): el loop agéntico reenvía el mismo system+tools en cada
+    # vuelta — sin esto, el prefijo completo se factura a precio pleno todas las veces.
+    system_blocks = [{
+        "type": "text",
+        "text": SYSTEM_PROMPT + bloque,
+        "cache_control": {"type": "ephemeral"},
+    }]
+    user_message = build_input_desde_frente(
+        frente_dict, caso_dict, pendientes, documentos_aportados, documentos_producidos
+    ) + _bloque_instruccion(tarea, contexto_extra, foco)
+
+    resumen_markdown, cruces_dict, lecciones_auto, tracker = await _run_loop(
+        frente_id, system_blocks, user_message, model, verbose
+    )
+
+    existing_tu = (frente_dict.get("props") or {}).get("token_usage") or {}
+    existing_tu[_AGENTE] = tracker.to_dict()
+    await motor_api.actualizar_props(frente_id, {"token_usage": existing_tu}, tenant=_TENANT)
+
     return resumen_markdown, cruces_dict, lecciones_auto
+
+
+# ── Chat conversacional (mismo patrón que los otros 4 especialistas) ───────────
+#
+# Distinto de run()/run_agent_desde_frente() (contrato SEB-115, un turno, termina en
+# submit_analysis, la costura persiste un documento_caso) — esto es para que Sebas pueda
+# CONVERSAR con el Agente de Mercado sin que cada intercambio dispare un análisis formal.
+# TOOLS_CHAT excluye submit_analysis a propósito.
+
+TOOLS_CHAT = [t for t in TOOLS if t.get("name") != "submit_analysis"]
+
+
+async def iniciar_sesion(frente_id: str, *, tenant: str = _TENANT) -> list[dict]:
+    """Arma el primer mensaje de una sesión de chat contra un frente — mismo contexto que
+    run_agent_desde_frente() arma para una corrida de un turno."""
+    contexto = await obtener_frente_con_caso(frente_id, tenant=tenant)
+    frente_dict, caso_dict = contexto["frente"], contexto["caso"]
+    if not frente_dict:
+        raise ValueError(f"Frente {frente_id} no encontrado en el KM")
+    if not caso_dict:
+        raise ValueError(f"Frente {frente_id} no tiene un caso asociado (conexión tiene_frente ausente)")
+    pendientes = await obtener_pendientes_de_caso(caso_dict["id"], tenant=tenant)
+    documentos_aportados = await obtener_documentos_aportados_de_frente(frente_id, tenant=tenant)
+    documentos_producidos = await obtener_documentos_de_frente(frente_id, tenant=tenant)
+    user_input = build_input_desde_frente(
+        frente_dict, caso_dict, pendientes, documentos_aportados, documentos_producidos
+    )
+    return [{"role": "user", "content": user_input}]
+
+
+async def enviar_mensaje(
+    messages: list[dict],
+    texto_usuario: str,
+    frente_id: str | None = None,
+    model: str = DEFAULT_MODEL,
+    verbose: bool = False,
+    tracker: TokenTracker | None = None,
+    tenant: str = _TENANT,
+) -> tuple[str, list[dict]]:
+    """
+    Un turno de chat con el Agente de Mercado. `messages` se muta y se devuelve, mismo patrón
+    que `conductor.enviar_mensaje()`. Usa el cliente nativo de Anthropic (excepción permanente
+    del módulo), no `utils.ai_client` — TOOLS_CHAT incluye la tool nativa `web_search`.
+
+    `frente_id=None` es el modo "consulta libre" — Sebas puede preguntarle algo puntual sin
+    necesitar un caso/frente ya creado.
+    """
+    messages.append({"role": "user", "content": texto_usuario})
+    tracker = tracker or TokenTracker(agent=_AGENTE, oportunidad_id=frente_id or "", model=model)
+
+    await aprendizaje.ensure_area(tenant=tenant)
+    if frente_id:
+        contexto = await obtener_frente_con_caso(frente_id, tenant=tenant)
+        caso_dict = contexto["caso"] or {}
+        caso_props = caso_dict.get("props") or {}
+        consulta_lecciones = caso_props.get("descripcion") or caso_props.get("nombre") or frente_id
+    else:
+        consulta_lecciones = texto_usuario
+    bloque = await aprendizaje.bloque_lecciones_para_prompt(agente=_AGENTE, consulta=consulta_lecciones, tenant=tenant)
+    system_blocks = [{"type": "text", "text": SYSTEM_PROMPT + bloque, "cache_control": {"type": "ephemeral"}}]
+
+    while True:
+        response = client.messages.create(
+            model=model, max_tokens=4096,
+            system=system_blocks, tools=TOOLS_CHAT, messages=messages,
+        )
+        messages.append({"role": "assistant", "content": response.content})
+        tracker.add(response.usage)
+
+        if response.stop_reason != "tool_use":
+            # getattr(b, "text", None), no hasattr — ver comentario en _run_loop, mismo bug real.
+            texto = "".join(b.text for b in response.content if getattr(b, "text", None))
+            return texto, messages
+
+        tool_results = []
+        for block in response.content:
+            if block.type != "tool_use":
+                continue
+            if verbose:
+                print(f"  -> {block.name}({block.input})")
+            result_str = await _dispatch(block.name, block.input)
+            tool_results.append({
+                "type": "tool_result", "tool_use_id": block.id,
+                "content": result_str,
+            })
+
+        messages.append({"role": "user", "content": tool_results})
 
 
 # ── Interfaz de contrato estándar (SEB-115) ───────────────────────────────────
@@ -883,28 +1109,28 @@ async def run(
     verbose: bool = False,
     model: str = DEFAULT_MODEL,
 ) -> dict:
-    """
-    Interfaz de contrato estándar para el Orquestador (SEB-115).
-    Wraps run_agent() — acepta y retorna el formato estándar de agente.
-    """
+    """Interfaz de contrato estándar para el Orquestador (SEB-115). Solo acepta frente_id — ver
+    INPUT_CONTRACT (Etapa 20, 2026-09-07 — ya no soporta oportunidad_id)."""
     conocimiento = contract_input.get("conocimiento") or {}
+    frente_id = conocimiento.get("frente_id") if isinstance(conocimiento, dict) else None
     oportunidad_id = conocimiento.get("oportunidad_id") if isinstance(conocimiento, dict) else None
-    texto_libre = contract_input.get("caso") or ""
 
-    resumen, cruces, lecciones = await run_agent(
-        oportunidad_id=oportunidad_id,
-        texto_libre=texto_libre if not oportunidad_id else None,
+    if oportunidad_id:
+        raise ValueError("Agente de Mercado solo acepta 'frente_id' en contract_input['conocimiento'] — no soporta 'oportunidad_id'")
+    if not frente_id:
+        raise ValueError("Agente de Mercado requiere 'frente_id' en contract_input['conocimiento']")
+
+    resumen, cruces, lecciones = await run_agent_desde_frente(
+        frente_id,
         verbose=verbose,
         model=model,
         tarea=contract_input.get("tarea") or None,
         contexto_extra=contract_input.get("contexto") or None,
-        # Con oportunidad_id, `caso` no es el input principal (eso sale del KM) pero sí
-        # es el recorte pedido — en pipeline_sector es la respuesta del gate humano.
-        foco=texto_libre if (oportunidad_id and texto_libre) else None,
+        foco=contract_input.get("caso") or None,
     )
 
     return {
-        # `análisis` es exactamente lo que la costura persiste en props.mercado — por eso
+        # `análisis` es exactamente lo que la costura persiste en el documento_caso — por eso
         # incluye `informe_completo`, no un campo `resumen` aparte (ver invocador.py).
         "análisis": {**cruces, "informe_completo": resumen},
         "nivel_confianza": _derive_confidence(cruces),

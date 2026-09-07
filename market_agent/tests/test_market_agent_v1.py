@@ -17,6 +17,39 @@ sys.path.insert(0, str(_AGENT))
 from market_agent import market_agent as ma
 from utils.corpus import buscar_corpus_cientifico
 
+# ── Fixtures — Etapa 20 (2026-09-07), reconexión a casos.yaml ───────────────────
+
+CASO_TEST = {
+    "id": "caso-uuid-1",
+    "tipo": "caso",
+    "props": {"nombre": "Efluentes biogás (Helios)", "descripcion": "Biodigestor con efluente de alta carga orgánica."},
+}
+FRENTE_TEST = {
+    "id": "frente-uuid-1",
+    "tipo": "frente",
+    "props": {"nombre": "Frente técnico", "descripcion": "Definir enfoque de valorización del efluente.", "estado": "activo"},
+}
+PENDIENTES_TEST = [
+    {"id": "pend-1", "props": {"descripcion": "Confirmar quién paga el flete.", "estado": "abierto"}},
+]
+
+ANALISIS_MOCK = {
+    "cruce_1": {"tamaño": {"valor": "1200 productores", "estado": "establecido"}},
+    "cruce_3": {"qué_existe": {"valor": "sin competencia directa", "estado": "establecido"}},
+    "cruce_4": {
+        "accesibilidad_mercado": {
+            "valor": "productores en radio de 50km", "estado": "establecido",
+            "densidad_valor_producto": "baja", "alcance_geografico_recomendado": "local (radio de flete viable)",
+        },
+    },
+    "sustitucion_importacion": {"es_sustitucion": False, "justificacion": "no se importa este producto"},
+    "valor_cliente": {"productividad": "fuerte"},
+    "fuentes_y_cobertura": {"fuentes_consultadas": [], "cobertura_declarada": "exhaustiva"},
+    "gaps_prioritarios": [],
+    "agente": "mercado",
+    "informe_completo": "# Análisis de mercado — gel voluminoso de bajo valor por unidad, mercado local",
+}
+
 
 def _fts_response(results):
     """Helper: construye una respuesta tipo search_fuentes_externas."""
@@ -254,16 +287,17 @@ def test_derive_confidence_muchos_gaps():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_contract_formato_output():
-    """run() retorna el formato estándar de contrato."""
+    """run() retorna el formato estándar de contrato (Etapa 20, 2026-09-07: vía
+    run_agent_desde_frente, ya no run_agent)."""
     resumen = "# Análisis de mercado"
     cruces = {"cruce_1": {}, "cruce_3": {}, "cruce_4": {}, "gaps_prioritarios": ["gap1"]}
     lecciones = ["leccion 1"]
 
-    with patch("market_agent.market_agent.run_agent", new=AsyncMock(return_value=(resumen, cruces, lecciones))):
-        result = await ma.run({"caso": "estiércol porcino olor", "conocimiento": None})
+    with patch("market_agent.market_agent.run_agent_desde_frente", new=AsyncMock(return_value=(resumen, cruces, lecciones))):
+        result = await ma.run({"caso": None, "conocimiento": {"frente_id": "frente-uuid-1"}})
 
     assert "análisis" in result
-    # análisis == lo que la costura persiste en props.mercado: cruces + informe_completo
+    # análisis == lo que la costura persiste en el documento_caso: cruces + informe_completo
     # (ver orquestador/invocador.py) — no un campo "resumen" separado.
     assert result["análisis"]["informe_completo"] == resumen
     assert result["análisis"]["cruce_1"] == {}
@@ -275,15 +309,18 @@ async def test_run_contract_formato_output():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_run_contract_con_oportunidad_id():
-    """run() extrae oportunidad_id de conocimiento y lo pasa a run_agent."""
-    with patch("market_agent.market_agent.run_agent", new=AsyncMock(return_value=("", {}, []))) as mock_fn:
-        await ma.run({"caso": "test", "conocimiento": {"oportunidad_id": "uuid-123"}})
+async def test_run_contract_requiere_frente_id():
+    with pytest.raises(ValueError, match="frente_id"):
+        await ma.run(contract_input={"conocimiento": {}}, verbose=False)
 
-    mock_fn.assert_called_once()
-    _, kwargs = mock_fn.call_args
-    assert kwargs.get("oportunidad_id") == "uuid-123"
-    assert kwargs.get("texto_libre") is None
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_contract_no_acepta_oportunidad_id():
+    """Etapa 20, 2026-09-07 — mismo criterio que los otros 4 especialistas al conectarse: ya
+    no soporta el modelo viejo (oportunidad_id + pipeline_sector.yaml/pipeline_dolor.yaml)."""
+    with pytest.raises(ValueError, match="frente_id"):
+        await ma.run(contract_input={"conocimiento": {"oportunidad_id": "uuid-123"}}, verbose=False)
 
 
 # ── Integration ───────────────────────────────────────────────────────────────
@@ -439,17 +476,96 @@ async def test_check_web_search_sin_api_key_bloquea():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_run_agent_frena_si_preflight_bloqueante():
+async def test_run_agent_desde_frente_frena_si_preflight_bloqueante():
     """Pre-flight bloqueante debe abortar antes del loop agéntico (objective-first)."""
     from knowledge_module.preflight import PreflightResult
 
     bloqueado = PreflightResult(ok=False, bloqueantes=["corpus_cientifico: 0 fichas"], advertencias=[])
     with (
+        patch("market_agent.market_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})),
         patch("market_agent.market_agent.run_preflight", new=AsyncMock(return_value=bloqueado)),
-        patch("market_agent.market_agent.aprendizaje.ensure_area", new=AsyncMock()),
     ):
         with pytest.raises(RuntimeError, match="Pre-flight bloqueante"):
-            await ma.run_agent(texto_libre="control biológico de garrapatas", verbose=False)
+            await ma.run_agent_desde_frente("frente-uuid-1", verbose=False)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_desde_frente_sin_frente_levanta_valueerror():
+    with patch("market_agent.market_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": None, "caso": None})):
+        with pytest.raises(ValueError, match="no encontrado"):
+            await ma.run_agent_desde_frente("no-existe")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_agent_desde_frente_sin_caso_asociado_levanta_valueerror():
+    with patch("market_agent.market_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": None})):
+        with pytest.raises(ValueError, match="no tiene un caso asociado"):
+            await ma.run_agent_desde_frente("frente-uuid-1")
+
+
+@pytest.mark.unit
+def test_build_input_desde_frente_incluye_caso_y_frente():
+    result = ma.build_input_desde_frente(FRENTE_TEST, CASO_TEST, [])
+    assert "Efluentes biogás (Helios)" in result
+    assert "Frente técnico" in result
+    assert "submit_analysis" in result
+
+
+@pytest.mark.unit
+def test_build_input_desde_frente_incluye_pendientes():
+    result = ma.build_input_desde_frente(FRENTE_TEST, CASO_TEST, PENDIENTES_TEST)
+    assert "Confirmar quién paga el flete" in result
+
+
+@pytest.mark.unit
+def test_build_input_desde_frente_incluye_documentos_producidos():
+    """Etapa 20, 2026-09-07 — sin ver el informe del Biotecnólogo (u otro especialista), el
+    Agente de Mercado no tiene forma de saber qué producto está evaluando."""
+    producidos = [
+        {"id": "doc-1", "props": {"titulo": "Evaluación — biotecnologo", "agente": "biotecnologo"}, "creado_en": "2026-08-17T22:28:04"},
+    ]
+    result = ma.build_input_desde_frente(FRENTE_TEST, CASO_TEST, [], None, producidos)
+    assert "doc-1" in result
+    assert "biotecnologo" in result
+    assert "ver_informe_especialista" in result
+
+
+@pytest.mark.unit
+def test_build_input_desde_frente_incluye_documentos_aportados():
+    aportados = [{"props": {"titulo": "Helios_Informe_Tecnico_Digerido.pdf", "contenido": "N amonio: 1200 mg/L"}}]
+    result = ma.build_input_desde_frente(FRENTE_TEST, CASO_TEST, [], aportados)
+    assert "Helios_Informe_Tecnico_Digerido.pdf" in result
+    assert "N amonio: 1200 mg/L" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_ver_informe_especialista():
+    with patch("market_agent.market_agent.obtener_documento_por_id", new=AsyncMock(return_value={"titulo": "t", "contenido": "c"})) as mock_fn:
+        result_str = await ma._dispatch("ver_informe_especialista", {"documento_id": "doc-1"})
+    mock_fn.assert_awaited_once_with("doc-1", tenant=ma._TENANT)
+    import json as _json
+    assert _json.loads(result_str) == {"titulo": "t", "contenido": "c"}
+
+
+@pytest.mark.unit
+def test_tools_chat_excluye_submit_analysis():
+    nombres_chat = {t.get("name") for t in ma.TOOLS_CHAT}
+    assert "submit_analysis" not in nombres_chat
+    assert "web_search" in nombres_chat
+    assert "ver_informe_especialista" in nombres_chat
+
+
+@pytest.mark.unit
+def test_cruce_4_accesibilidad_mercado_exige_densidad_y_alcance():
+    """Etapa 20, 2026-09-07 — Sebas: 'no quiero que lo del flete sea un sesgo'. El esquema
+    obliga a declarar la densidad de valor y el alcance geográfico, nunca asumirlo en silencio."""
+    submit = next(t for t in ma.TOOLS if t["name"] == "submit_analysis")
+    accesibilidad = submit["input_schema"]["properties"]["cruce_4"]["properties"]["accesibilidad_mercado"]
+    assert "densidad_valor_producto" in accesibilidad["required"]
+    assert "alcance_geografico_recomendado" in accesibilidad["required"]
 
 
 @pytest.mark.integration

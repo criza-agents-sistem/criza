@@ -84,7 +84,7 @@ EVALUACION_MOCK = {
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(ag.TOOLS) == 5, f"Esperado 5 tools, tiene {len(ag.TOOLS)}"
+    assert len(ag.TOOLS) == 6, f"Esperado 6 tools, tiene {len(ag.TOOLS)}"
 
 
 @pytest.mark.unit
@@ -92,7 +92,7 @@ def test_tools_names():
     nombres = {t["name"] for t in ag.TOOLS}
     assert nombres == {
         "search_literature", "buscar_corpus_cientifico", "search_corpus_inta",
-        "expand_agrovoc", "submit_evaluacion_tecnica",
+        "expand_agrovoc", "ver_informe_especialista", "submit_evaluacion_tecnica",
     }
 
 
@@ -166,6 +166,35 @@ def test_build_input_desde_frente_incluye_documentos_aportados():
     assert "N amonio: 1200 mg/L" in result
 
 
+@pytest.mark.unit
+def test_build_input_desde_frente_incluye_documentos_producidos():
+    """Etapa 20, 2026-09-05 -- Sebas: 'estaría bueno que todos puedan ver qué está realizando
+    el resto'. Solo la lista liviana (título/agente/fecha/id), no el contenido completo."""
+    producidos = [
+        {"id": "doc-1", "props": {"titulo": "Evaluación — biotecnologo", "agente": "biotecnologo"}, "creado_en": "2026-08-17T22:28:04"},
+    ]
+    result = ag.build_input_desde_frente(FRENTE_TEST, CASO_TEST, [], None, producidos)
+    assert "doc-1" in result
+    assert "Evaluación — biotecnologo" in result
+    assert "biotecnologo" in result
+    assert "ver_informe_especialista" in result
+
+
+@pytest.mark.unit
+def test_build_input_desde_frente_sin_documentos_producidos_no_falla():
+    result = ag.build_input_desde_frente(FRENTE_TEST, CASO_TEST, [])
+    assert "Informes ya producidos" not in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_ver_informe_especialista():
+    with patch("agronomo_agent.obtener_documento_por_id", new=AsyncMock(return_value={"titulo": "t", "contenido": "c"})) as mock_fn:
+        result = await ag._despachar_tool("ver_informe_especialista", {"documento_id": "doc-1"}, verbose=False)
+    mock_fn.assert_awaited_once_with("doc-1", tenant=ag._TENANT)
+    assert result == {"titulo": "t", "contenido": "c"}
+
+
 # ── Unit: run_agent_desde_frente (mock) ─────────────────────────────────────────
 
 @pytest.mark.unit
@@ -184,6 +213,7 @@ async def test_run_agent_desde_frente_captura_submit_y_escribe_token_usage_en_fr
          patch("agronomo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})), \
          patch("agronomo_agent.obtener_pendientes_de_caso", new=AsyncMock(return_value=PENDIENTES_TEST)), \
          patch("agronomo_agent.obtener_documentos_aportados_de_frente", new=AsyncMock(return_value=[])), \
+         patch("agronomo_agent.obtener_documentos_de_frente", new=AsyncMock(return_value=[])), \
          patch("agronomo_agent.motor_api.actualizar_props", new=mock_actualizar), \
          patch("agronomo_agent.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("agronomo_agent.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
@@ -233,6 +263,7 @@ async def test_run_agent_desde_frente_despacha_expand_agrovoc():
          patch("agronomo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})), \
          patch("agronomo_agent.obtener_pendientes_de_caso", new=AsyncMock(return_value=[])), \
          patch("agronomo_agent.obtener_documentos_aportados_de_frente", new=AsyncMock(return_value=[])), \
+         patch("agronomo_agent.obtener_documentos_de_frente", new=AsyncMock(return_value=[])), \
          patch("agronomo_agent.motor_api.actualizar_props", new=AsyncMock()), \
          patch("agronomo_agent.aprendizaje.ensure_area", new=AsyncMock()), \
          patch("agronomo_agent.run_preflight", new=AsyncMock(return_value=_PREFLIGHT_OK)), \
@@ -309,6 +340,7 @@ async def test_iniciar_sesion_arma_primer_mensaje_con_contexto_del_frente():
         patch("agronomo_agent.obtener_frente_con_caso", new=AsyncMock(return_value={"frente": FRENTE_TEST, "caso": CASO_TEST})),
         patch("agronomo_agent.obtener_pendientes_de_caso", new=AsyncMock(return_value=PENDIENTES_TEST)),
         patch("agronomo_agent.obtener_documentos_aportados_de_frente", new=AsyncMock(return_value=[])),
+        patch("agronomo_agent.obtener_documentos_de_frente", new=AsyncMock(return_value=[])),
     ):
         messages = await ag.iniciar_sesion("frente-uuid-1")
 

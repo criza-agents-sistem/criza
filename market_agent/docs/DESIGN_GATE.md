@@ -1,9 +1,9 @@
-# Design Gate — Agente de Mercado v1 (SEB-148)
+# Design Gate — Agente de Mercado (SEB-148)
 
-**Versión:** 1.2
-**Fecha:** 2026-06-16 · última revisión 2026-07-02
+**Versión:** 2.0
+**Fecha:** 2026-06-16 · última revisión 2026-09-07 (Etapa 20 — reconexión a casos.yaml)
 **Módulo:** `criza/market_agent/` (Capa 2 — instancia CRIZA)
-**Estado:** ✅ LISTO — decisiones A–J cerradas (2026-07-02)
+**Estado:** ✅ LISTO — decisiones A–N cerradas (2026-09-07)
 
 > **Regla de uso:** se crea ANTES de codear. Desarrollo arranca con estado 🟡 o ✅.
 > Trazabilidad: `criza/docs/architecture.md` + épico SEB-143 / issue SEB-148.
@@ -207,8 +207,49 @@ run.py
 
 ---
 
-## 9. Estado del gate
+## 9. Etapa 20 (2026-09-07) — reconexión al modelo de casos.yaml
 
-**Estado:** ✅ **LISTO** — decisiones A–J cerradas. Desarrollo puede arrancar.
+Este agente había quedado sin tocar desde 2026-07-02, mientras los otros 4 especialistas
+(microbiólogo/ingeniero ambiental/agrónomo/biotecnólogo) se construyeron ya conectados a
+`casos.yaml` (frente_id). Sebas: "Vamos con el análisis de mercado, te pido que revises bien el
+código para que esté bien alineado con lo que tenemos ahora... recuerda que no tenga sesgo
+exportador, porque los principales clientes serán cercanos por cuestión de flete, salvo que sea
+algo de muy grande valor agregado que se pueda exportar."
 
-*Siguiente: implementar. Patrón de referencia para todos los agentes investigadores (SEB-149, SEB-146).*
+| # | Pregunta | Decisión | Fecha |
+|---|---|---|---|
+| K | ¿Adaptar el agente existente o construir de cero (preocupación explícita de Sebas: "me preocupa que adaptar sea un error, tal vez lo mejor sea crear de cero")? | Adaptar / Construir de cero | **Adaptar.** No aplica el mismo problema que `scientific_agent/specialist_proteins.py` (abandonado, no adaptado) — ese tenía un `SYSTEM_PROMPT` hardcodeado a un caso cancelado, con supuestos tecnológicos INCORRECTOS imposibles de extraer limpio. `market_agent` ya era genérico (nunca mencionaba un caso ni una tecnología) y el gap real (razonar sobre densidad de valor/alcance geográfico) es una consideración AUSENTE, no una equivocada — se agrega, no se arranca nada. Las tools reales (INDEC/MAGyP, corpus CONICET/INTA, `web_search` nativo con su excepción ya decidida), el framework de blue ocean completo (compartido con evidencia/investigación amplia/armador — reinventarlo los desalinearía), y el patrón de conexión SEB-115+chat ya probado 4 veces son hard-won — reconstruirlos de cero solo para "empezar limpio" hubiera sido caro sin ganar nada real. | 2026-09-07 |
+| L | ¿Mantener soporte a `oportunidad_id` (modelo viejo, `pipeline_sector.yaml`/`pipeline_dolor.yaml`) o pasar a `frente_id`-only? | Mantener ambos / Solo `frente_id` | **Solo `frente_id`** — mismo criterio que los otros 4 especialistas al conectarse (todos dejaron de soportar `oportunidad_id` por completo). Ningún caso real usa el modelo viejo desde que todo pasó a `casos.yaml`; los 2 flows viejos quedan sin poder invocar a `mercado` si alguna vez se corrieran, deuda intencional documentada (no en uso hoy). | 2026-09-07 |
+| M | ¿Cómo evitar el sesgo exportador sin caer en el sesgo opuesto (asumir mercado local por default)? Sebas, corrigiendo el planteo inicial: "no quiero que lo de flete sea un sesgo, la cuestión es desde donde hace el análisis este agente... qué tipo de análisis haga dependerá de los productos que son viables realizar técnicamente." | Regla fija ("priorizar local") / Derivar caso por caso de la densidad de valor del producto | **Derivar caso por caso, nunca una regla fija.** El agente no asume ni local ni exportador de antemano — para cada producto candidato, estima su densidad de valor (valor económico por unidad de volumen/peso) y de ahí deriva el alcance geográfico razonable: bajo valor por volumen (ej. un gel voluminoso) → el flete es una restricción real, radio limitado; alto valor por volumen (ej. un compuesto concentrado) → radio mayor, exportación puede tener sentido. Implementado en `SYSTEM_PROMPT` (sección "ALCANCE GEOGRÁFICO DEL MERCADO") + campos nuevos obligatorios en `submit_analysis.cruce_4.accesibilidad_mercado` (`densidad_valor_producto`, `alcance_geografico_recomendado`) — declarados explícitamente, nunca omitidos ni asumidos en silencio. Para saber QUÉ producto está evaluando, necesita la decisión N. | 2026-09-07 |
+| N | ¿Cómo sabe el Agente de Mercado qué producto candidato evaluar, si él no investiga factibilidad técnica? Pedido de Sebas, generalizado durante la conversación: "me parece que estaría bueno que todos puedan ver qué está realizando el resto" (los 5 especialistas, no solo mercado) — con el riesgo explícito que señaló: "cuál es el costo de tokens... a medida que crece el proyecto es mayor la cantidad de documentos que se generan, cuáles ve y cuáles no?" | Inyectar contenido completo de todo / Lista liviana + lectura on-demand | **Lista liviana siempre + lectura on-demand por tool.** `build_input_desde_frente` de los 5 especialistas (los 4 activos retrofit + mercado desde el arranque) incluye la lista COMPLETA de documentos ya producidos en el frente (id/título/agente/fecha — metadata, no contenido) vía `utils/casos.py::obtener_documentos_de_frente` (ya existía, Etapa 19). Tool nueva `ver_informe_especialista(documento_id)`, reusando el helper nuevo `utils/casos.py::obtener_documento_por_id` (extraído de `conductor.py::_tool_ver_documento`, no duplicado 5 veces), trae el contenido completo bajo demanda — el agente decide qué leer según el título, no recibe todo de entrada. Responde directamente la preocupación de escala: la lista crece linealmente pero es barata (solo metadata) sin importar cuántos documentos existan; el costo de tokens real solo se paga por los que el agente decide leer, acotado por instrucción explícita ("no leas todos, solo los relevantes"). | 2026-09-07 |
+
+**Bug real encontrado y arreglado durante la verificación (no relacionado con la reconexión en
+sí):** `resumen = next((b.text for b in response.content if hasattr(b, "text")), ...)` y su
+equivalente en `enviar_mensaje()` rompían con `TypeError` cuando la respuesta del modelo incluía
+un bloque nativo de Anthropic (`server_tool_use`, `web_search_tool_result` — reales al usar
+`web_search`) que SÍ tiene el atributo `.text` pero en `None` — `hasattr(b, "text")` da `True`
+igual. Corregido con `getattr(b, "text", None)`. El mismo patrón existe en los otros 8 módulos de
+agentes del repo — flageado aparte (no corregido acá, para no inflar este cambio) vía
+`spawn_task`, pendiente de auditoría en una sesión separada.
+
+**Verificado real de punta a punta contra producción (no solo mocks):** conversación de chat real
+contra el Frente técnico de Helios — el agente leyó los 2 informes reales del Biotecnólogo (tool
+`ver_informe_especialista`, sin que se le dijera cuáles leer), identificó 2 productos candidatos
+distintos (ectoína y un gel SAM biopolimérico), y recomendó alcance geográfico **opuesto para cada
+uno con justificación real**: ectoína (€500–2.000/kg, densidad de valor "extremadamente alta") →
+exportación/global, citando el mercado europeo real (Evonik/bitop AG); gel SAM (mayormente agua,
+densidad de valor "baja-media") → local, radio ~200-300km, citando el costo de flete como
+restricción real — sin que ninguna de las dos conclusiones estuviera sesgada de antemano. Citó
+fuentes argentinas reales verificables (Patricia Bres/INTA, relevamiento INTA-Secretaría de
+Agricultura 2022, serie oficial de potencia instalada de biogás). Regresión completa del backend:
+593 passed, 2 skipped (excluyendo el fallo ambiental preexistente de `sentence_transformers`, no
+relacionado). `npm run build` de `web/` limpio con `mercado` sumado a `ESPECIALISTAS`.
+
+---
+
+## 10. Estado del gate
+
+**Estado:** ✅ **LISTO** — decisiones A–N cerradas.
+
+*Quinto agente de la biblioteca de especialistas conectado a `casos.yaml`, y el primero adaptado
+de un agente ya existente en vez de construido desde cero.*
