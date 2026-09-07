@@ -37,6 +37,7 @@ de qué es CRIZA de acá en más — ver "Estado operativo" abajo y `docs/PROPUE
 | Especialista Ingeniero Ambiental | `ingeniero_ambiental_agent/` | 26/26 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 7 del plan — segundo especialista, Ingeniero Ambiental |
 | Especialista Ingeniero Agrónomo | `agronomo_agent/` | 26/26 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Tercer especialista — Ingeniero Agrónomo, pedido explícito de Sebas con señal real |
 | Especialista Biotecnólogo | `biotecnologo_agent/` | 32/32 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-17] Etapa 18 — cuarto especialista: Biotecnólogo |
+| Agente Financiero | `financiero_agent/` | 28/28 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-07] Etapa 21 -- Agente Financiero, construido de cero, con chequeo anti-sesgo explicito |
 <!-- GENERADO:AGENTES_ACTIVOS:FIN -->
 
 ## Borrado (histórico)
@@ -281,8 +282,20 @@ criza/                          ← este repo: CRIZA-biotech (Capa 2)
     │   ├── conductor.py · run.py (REPL interactivo)
     │   ├── docs/DESIGN_GATE.md  ← decisiones A-D
     │   └── tests/
-    └── utils/casos.py            ← helpers del modelo casos.yaml (frente/pendiente/documento_caso),
-                                     genérico, usado por microbiologo_agent y conductor
+    ├── financiero_agent/          ← sexto especialista (2026-09-07, Etapa 21) — modelo económico-
+    │                                 financiero, construido de cero, cliente nativo Anthropic (web_search)
+    │   ├── financiero_agent.py · run.py
+    │   ├── docs/DESIGN_GATE.md  ← decisiones A-D, incluye tabla de chequeo anti-sesgo específica
+    │   └── tests/
+    └── utils/
+        ├── casos.py               ← helpers del modelo casos.yaml (frente/pendiente/documento_caso/
+        │                             crear_pendiente), genérico, usado por todos los especialistas + conductor
+        └── bcra.py                 ← cliente API pública del BCRA (tasas/inflación/tipo de cambio),
+                                        usado por financiero_agent
+
+(Árbol no exhaustivo: `ingeniero_ambiental_agent/`, `agronomo_agent/` y `biotecnologo_agent/`
+siguen el mismo patrón que `microbiologo_agent/` — ver la tabla "Agentes activos" arriba para el
+estado real de cada uno, esta sección de árbol no se mantiene 1:1 con cada especialista nuevo.)
 
 knowledge_module (Capa 1 — memoria semántica compartida): repo propio, `github.com/sebasbizzi/
 km-knowledge-module`, instalado por pip en modo editable. Comando exacto verificado post-move

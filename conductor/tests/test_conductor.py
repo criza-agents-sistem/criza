@@ -47,6 +47,40 @@ def test_tools_names():
     }
 
 
+# ── serializar_mensajes (Etapa 21, 2026-09-07 — bug real de bloques nativos Anthropic) ─────
+
+@pytest.mark.unit
+def test_serializar_mensajes_bloque_dict_plano_pasa_tal_cual():
+    messages = [{"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "x"}]}]
+    result = cond.serializar_mensajes(messages)
+    assert result[0]["content"][0]["type"] == "tool_result"
+
+
+@pytest.mark.unit
+def test_serializar_mensajes_content_block_dataclass():
+    from utils.ai_client import ContentBlock
+    bloque = ContentBlock(type="text", text="hola")
+    messages = [{"role": "assistant", "content": [bloque]}]
+    result = cond.serializar_mensajes(messages)
+    assert result[0]["content"][0]["type"] == "text"
+    assert result[0]["content"][0]["text"] == "hola"
+
+
+@pytest.mark.unit
+def test_serializar_mensajes_bloque_nativo_anthropic_con_model_dump():
+    """Bug real (2026-09-07): un turno de chat con Mercado/Financiero (cliente nativo Anthropic)
+    trae objetos pydantic (TextBlock, etc.), no ContentBlock — reventaba json.dumps en
+    api/main.py al persistir la sesión. Simulado acá sin importar el SDK real: cualquier objeto
+    con .model_dump() tiene que resolverse igual."""
+    class _FakeTextBlock:
+        def model_dump(self):
+            return {"type": "text", "text": "hola desde mercado"}
+
+    messages = [{"role": "assistant", "content": [_FakeTextBlock()]}]
+    result = cond.serializar_mensajes(messages)
+    assert result[0]["content"][0] == {"type": "text", "text": "hola desde mercado"}
+
+
 @pytest.mark.unit
 def test_correr_especialista_requiere_especialista_caso_y_frente():
     tool = next(t for t in cond.TOOLS if t["name"] == "correr_especialista")
@@ -56,7 +90,7 @@ def test_correr_especialista_requiere_especialista_caso_y_frente():
 @pytest.mark.unit
 def test_correr_especialista_enum_incluye_los_especialistas_disponibles():
     tool = next(t for t in cond.TOOLS if t["name"] == "correr_especialista")
-    assert set(tool["input_schema"]["properties"]["especialista"]["enum"]) == {"microbiologo", "ingeniero_ambiental", "agronomo", "biotecnologo", "mercado"}
+    assert set(tool["input_schema"]["properties"]["especialista"]["enum"]) == {"microbiologo", "ingeniero_ambiental", "agronomo", "biotecnologo", "mercado", "financiero"}
 
 
 # ── _resolver_caso ───────────────────────────────────────────────────────────

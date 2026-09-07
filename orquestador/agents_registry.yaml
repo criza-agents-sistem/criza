@@ -119,3 +119,19 @@ agentes:
     km:
       prop_key: biotecnologo
     activo: true
+
+  - nombre: financiero
+    nombre_display: Agente Financiero
+    modulo: financiero_agent.financiero_agent
+    descripcion: >
+      Modelo económico-financiero (CAPEX, OPEX, P&L multianual, flujo de caja, VAN, TIR,
+      payback, análisis de sensibilidad) para el producto/proceso candidato que otro especialista
+      ya identificó. Sexto agente de la biblioteca — gap que el propio Conductor identificó
+      (docs/progress/2026-08-24.md), construido de cero (no adaptado) en la Etapa 21
+      (2026-09-07, ver financiero_agent/docs/DESIGN_GATE.md). Tasa de descuento siempre derivada
+      de tasas reales del BCRA (nunca un default de manual), puede pedir información faltante en
+      vez de asumirla (crea un pendiente real). Solo invocable vía frente_id — no soporta
+      oportunidad_id.
+    km:
+      prop_key: financiero
+    activo: true

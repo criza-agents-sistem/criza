@@ -176,6 +176,51 @@ async def obtener_documentos_aportados_de_frente(frente_id: str, tenant: str) ->
     )
 
 
+async def crear_pendiente(
+    caso_id: str,
+    descripcion: str,
+    tenant: str,
+    fecha: str | None = None,
+) -> dict:
+    """
+    Crea un `pendiente` nuevo, conectado al caso (no al frente — cuelga del caso completo, ver
+    docstring de `obtener_pendientes_de_caso`) vía `tiene_pendiente`.
+
+    Nueva (Etapa 21, 2026-09-07): hasta acá ningún agente —ni el Conductor— podía crear un
+    pendiente, solo leerlos (`obtener_pendientes_de_caso`) o (el Conductor) marcarlos resueltos.
+    La necesitó primero el Agente Financiero para poder pedir información que le falta en vez de
+    asumirla o quedar bloqueado (Sebas: "el agente podría pedir qué información necesita para
+    trabajar") — queda acá, no en financiero_agent/, porque cualquier especialista futuro puede
+    necesitar lo mismo.
+
+    `fecha=None` usa la fecha del día — mismo criterio que el resto del modelo (nunca se le pide
+    la fecha a quien llama si se puede derivar).
+
+    Returns: {"success": bool, "pendiente_id": str | None, "error": str | None}
+    """
+    from datetime import date as _date
+
+    doc = await motor_api.guardar_ficha(
+        area=_AREA, tipo="pendiente", tenant=tenant,
+        campos={
+            "descripcion": descripcion,
+            "estado": "abierto",
+            "fecha": fecha or _date.today().isoformat(),
+        },
+    )
+    if not doc.get("success"):
+        return {"success": False, "pendiente_id": None, "error": doc.get("error")}
+
+    conexion = await motor_api.guardar_conexion(
+        area=_AREA, tipo="tiene_pendiente",
+        desde_ficha_id=caso_id, hacia_ficha_id=doc["id"], tenant=tenant,
+    )
+    if not conexion.get("success"):
+        return {"success": False, "pendiente_id": doc["id"], "error": conexion.get("error")}
+
+    return {"success": True, "pendiente_id": doc["id"], "error": None}
+
+
 async def guardar_documento_aportado(
     frente_id: str,
     titulo: str,

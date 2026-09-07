@@ -66,6 +66,7 @@ _ESPECIALISTAS_CASOS = {
     "agronomo": "Especialista Ingeniero Agrónomo",
     "biotecnologo": "Especialista Biotecnólogo",
     "mercado": "Agente de Mercado",
+    "financiero": "Agente Financiero",
 }
 
 
@@ -462,19 +463,21 @@ TOOLS DISPONIBLES:
 - ver_caso: el briefing completo — identidad, frentes (y si cada uno ya tiene documentos
   producidos), pendientes abiertos, lecciones relevantes, decisiones de sistema vigentes.
 - correr_especialista: invoca a un especialista de la biblioteca (microbiólogo, ingeniero
-  ambiental, agrónomo, biotecnólogo, mercado) contra un frente. GASTA TOKENS REALES Y ESCRIBE AL
-  KM — no lo llames sin que Sebas lo haya pedido o aprobado explícitamente. Antes de sugerirlo,
-  chequeá con ver_caso si ese frente ya tiene un documento producido — no re-correr un análisis
-  que ya existe sin decírselo a Sebas primero (puede que igual quiera reintentar, pero es su
-  decisión, no la tuya). Elegí el especialista según qué pregunta hay que responder — el
+  ambiental, agrónomo, biotecnólogo, mercado, financiero) contra un frente. GASTA TOKENS REALES Y
+  ESCRIBE AL KM — no lo llames sin que Sebas lo haya pedido o aprobado explícitamente. Antes de
+  sugerirlo, chequeá con ver_caso si ese frente ya tiene un documento producido — no re-correr un
+  análisis que ya existe sin decírselo a Sebas primero (puede que igual quiera reintentar, pero es
+  su decisión, no la tuya). Elegí el especialista según qué pregunta hay que responder — el
   microbiólogo evalúa si un enfoque es biológica/químicamente viable, el ingeniero ambiental
   evalúa si ese enfoque ya identificado se puede construir y operar de verdad (balances de
   masa/energía, dimensionamiento), el ingeniero agrónomo evalúa si un producto/enfoque funciona
   de verdad como insumo agrícola/ganadero (dosis, compatibilidad de cultivo/suelo, normativa de
   aplicación), el biotecnólogo evalúa qué producto de valor se puede FABRICAR vía bioprocesos y
   con qué ruta, el Agente de Mercado evalúa demanda/competencia/accesibilidad de mercado para un
-  producto candidato ya identificado (corré primero al que identifica el producto — normalmente
-  el biotecnólogo — antes que a mercado, que necesita saber qué está evaluando).
+  producto candidato ya identificado, el Agente Financiero arma el modelo económico-financiero
+  (CAPEX/OPEX/VAN/TIR/payback/sensibilidad) para ese producto — corré primero al que identifica
+  el producto (normalmente el biotecnólogo) y, si aplica, a mercado (define alcance geográfico,
+  relevante para el riesgo cambiario del modelo financiero) antes que al financiero.
 - ver_documento: el texto completo de un documento puntual, cuando Sebas quiere profundizar.
 - ver_herramientas_especialista: las herramientas/bases de datos reales de un especialista
   (OpenAlex, KEGG, CONICET, etc. — varían por especialista). Usala SIEMPRE que Sebas pregunte
@@ -504,8 +507,9 @@ es exactamente el tipo de cosa que solo vos podés ver.
 
 LÍMITES EXPLÍCITOS DE ESTA VERSIÓN (no prometas lo que no hacés todavía):
 - Solo podés invocar los especialistas conectados al modelo de casos.yaml (hoy: microbiólogo,
-  ingeniero ambiental, agrónomo, biotecnólogo, mercado) — los 3 agentes del expediente viejo que
-  quedan (evidencia, investigación amplia, armador) todavía no están conectados a este modelo.
+  ingeniero ambiental, agrónomo, biotecnólogo, mercado, financiero) — los 3 agentes del expediente
+  viejo que quedan (evidencia, investigación amplia, armador) todavía no están conectados a este
+  modelo.
 - Esta conversación SÍ queda guardada (el historial completo vive en el KM, sobrevive a un
   reinicio del servidor) — podés decirle a Sebas que si vuelve a esta misma sesión más tarde vas
   a recordar lo que se habló. Además, al cerrar la sesión se evalúa automáticamente si hay una
@@ -592,16 +596,41 @@ async def enviar_mensaje(
         messages.append({"role": "user", "content": tool_results})
 
 
+def _bloque_a_dict(b):
+    """Un bloque de contenido de un turno assistant puede ser: dict plano (tool_result que el
+    propio dispatcher ya arma como dict), `ContentBlock` (utils/ai_client.py, dataclass simple,
+    lo usan los 4 especialistas del traductor genérico), o un objeto nativo del SDK de Anthropic
+    (`TextBlock`/`ToolUseBlock`/`ServerToolUseBlock`/`WebSearchToolResultBlock` — pydantic v2,
+    lo produce cualquier agente Anthropic-only: Mercado y Financiero, ver sus docstrings de
+    módulo). `json.dumps` no serializa ninguno de los dos tipos de objeto sin ayuda.
+
+    Bug real encontrado en la verificación viva del Agente Financiero (Etapa 21, 2026-09-07):
+    esta función solo contemplaba `ContentBlock`, nunca los bloques nativos — cualquier turno de
+    chat con Mercado o Financiero que llegara a persistirse reventaba con `TypeError: Object of
+    type TextBlock is not JSON serializable` en `motor_api.actualizar_props`. No se había
+    encontrado antes porque la verificación de Mercado no había ejercitado este camino completo
+    (chat real vía HTTP, con persistencia) — mismo patrón de "la corrida real revela costuras que
+    los tests no ven" ya documentado para el bug de `hasattr(b, "text")`."""
+    if isinstance(b, dict):
+        return b
+    if isinstance(b, ContentBlock):
+        return asdict(b)
+    if hasattr(b, "model_dump"):  # objeto nativo del SDK de Anthropic (pydantic v2)
+        return b.model_dump()
+    return b
+
+
 def serializar_mensajes(messages: list[dict]) -> list[dict]:
     """
-    Convierte `messages` a JSON-safe para persistir (ver docs/DESIGN_GATE.md decisión E) —
-    los turnos assistant traen `ContentBlock` (utils/ai_client.py, dataclass simple, no un tipo
-    opaco de SDK), que `json.dumps` no serializa sin ayuda.
+    Convierte `messages` a JSON-safe para persistir (ver docs/DESIGN_GATE.md decisión E) — ver
+    `_bloque_a_dict` para los 3 tipos de bloque que puede traer un turno assistant.
 
-    No hace falta una función inversa: `utils/ai_client.py::_mensajes_a_formato_openai` ya
-    acepta indistintamente `ContentBlock` o dict plano (`b = block if isinstance(block, dict)
-    else block.__dict__`) — un mensaje recién cargado de storage se re-envía tal cual al
-    próximo turno, sin reconstruir nada.
+    No hace falta una función inversa para `ContentBlock`: `utils/ai_client.py::
+    _mensajes_a_formato_openai` ya acepta indistintamente `ContentBlock` o dict plano (`b = block
+    if isinstance(block, dict) else block.__dict__`) — un mensaje recién cargado de storage se
+    re-envía tal cual al próximo turno, sin reconstruir nada. Los agentes Anthropic-only
+    (Mercado/Financiero) reciben `messages` con dicts planos en su próximo turno igual —
+    `client.messages.create` de la SDK acepta bloques como dict plano, no exige el tipo nativo.
     """
     out = []
     for m in messages:
@@ -609,10 +638,7 @@ def serializar_mensajes(messages: list[dict]) -> list[dict]:
         if isinstance(content, str):
             out.append(m)
         else:
-            out.append({
-                "role": m["role"],
-                "content": [asdict(b) if isinstance(b, ContentBlock) else b for b in content],
-            })
+            out.append({"role": m["role"], "content": [_bloque_a_dict(b) for b in content]})
     return out
 
 

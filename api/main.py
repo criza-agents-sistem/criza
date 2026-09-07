@@ -122,6 +122,7 @@ _mod_ingeniero_ambiental = _cargar_modulo_agente("ingeniero_ambiental_agent", _C
 _mod_agronomo = _cargar_modulo_agente("agronomo_agent", _CRIZA_DIR / "agronomo_agent" / "agronomo_agent.py")
 _mod_biotecnologo = _cargar_modulo_agente("biotecnologo_agent", _CRIZA_DIR / "biotecnologo_agent" / "biotecnologo_agent.py")
 _mod_mercado = _cargar_modulo_agente("market_agent", _CRIZA_DIR / "market_agent" / "market_agent.py")
+_mod_financiero = _cargar_modulo_agente("financiero_agent", _CRIZA_DIR / "financiero_agent" / "financiero_agent.py")
 
 # Mapea a los MÓDULOS, no a (iniciar_sesion, enviar_mensaje) ya extraídas — así un test puede
 # patchear "main._mod_microbiologo.iniciar_sesion" y que el endpoint lo vea (busca el atributo
@@ -132,6 +133,7 @@ _ESPECIALISTAS_CHAT = {
     "agronomo": _mod_agronomo,
     "biotecnologo": _mod_biotecnologo,
     "mercado": _mod_mercado,
+    "financiero": _mod_financiero,
 }
 
 # Todos los agentes con superficie de chat, incluido el Conductor — para el panel de

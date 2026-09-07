@@ -320,6 +320,70 @@ async def test_crear_caso_falla():
     assert result == {"success": False, "caso_id": None, "error": "boom"}
 
 
+# ── Unit: crear_pendiente (Etapa 21, 2026-09-07) ────────────────────────────────
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_crear_pendiente_exito():
+    with (
+        patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "pend-1"})) as mock_guardar,
+        patch("utils.casos.motor_api.guardar_conexion", new=AsyncMock(return_value={"success": True, "id": "conn-1"})) as mock_conn,
+    ):
+        result = await casos.crear_pendiente(
+            caso_id="caso-1", descripcion="Costo real del equipo X", tenant="criza",
+        )
+
+    assert result == {"success": True, "pendiente_id": "pend-1", "error": None}
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["area"] == "casos"
+    assert kwargs["tipo"] == "pendiente"
+    assert kwargs["campos"]["descripcion"] == "Costo real del equipo X"
+    assert kwargs["campos"]["estado"] == "abierto"
+    assert kwargs["campos"]["fecha"]  # se autocompleta con la fecha de hoy
+    mock_conn.assert_awaited_once_with(
+        area="casos", tipo="tiene_pendiente",
+        desde_ficha_id="caso-1", hacia_ficha_id="pend-1", tenant="criza",
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_crear_pendiente_usa_fecha_explicita_si_se_pasa():
+    with (
+        patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "pend-1"})) as mock_guardar,
+        patch("utils.casos.motor_api.guardar_conexion", new=AsyncMock(return_value={"success": True, "id": "conn-1"})),
+    ):
+        await casos.crear_pendiente(
+            caso_id="caso-1", descripcion="x", tenant="criza", fecha="2026-01-01",
+        )
+
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["campos"]["fecha"] == "2026-01-01"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_crear_pendiente_falla_al_crear_ficha():
+    with patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": False, "error": "boom"})):
+        result = await casos.crear_pendiente(caso_id="caso-1", descripcion="x", tenant="criza")
+
+    assert result == {"success": False, "pendiente_id": None, "error": "boom"}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_crear_pendiente_falla_al_conectar():
+    with (
+        patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "pend-1"})),
+        patch("utils.casos.motor_api.guardar_conexion", new=AsyncMock(return_value={"success": False, "error": "no existe caso"})),
+    ):
+        result = await casos.crear_pendiente(caso_id="caso-inexistente", descripcion="x", tenant="criza")
+
+    assert result["success"] is False
+    assert result["pendiente_id"] == "pend-1"  # el pendiente sí se creó, aunque la conexión falló
+    assert result["error"] == "no existe caso"
+
+
 # ── Integration: contra el KM real (branch de staging) ──────────────────────────
 
 @pytest.mark.integration
