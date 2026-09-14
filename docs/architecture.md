@@ -62,9 +62,19 @@ Para arquitectura de plataforma → `KRIZA_Foundation_Document.md` en el repo `E
 
 ### [2026-05] Modelos configurables por agente
 
-**Decisión:** Cada agente lee su modelo desde `.env` (SCOUT_MODEL, SPECIALIST_MODEL, MARKET_MODEL). Default: `claude-sonnet-4-6`.
+**Decisión:** Cada agente lee su modelo desde `.env` (SCOUT_MODEL, SPECIALIST_MODEL, MARKET_MODEL, y una variable `<AGENTE>_MODEL` por cada uno de los 11 agentes). Default: `claude-sonnet-5` (cambiado desde `claude-sonnet-4-6` el 2026-09-14, ver decisión de abajo).
 
 **Por qué:** Routing de costo — scout corre muchas veces (barato), especialista corre poco pero necesita profundidad (puede ser Opus). No hardcodear.
+
+---
+
+### [2026-09-14] Default de modelo: Sonnet 4.6 → Sonnet 5 en todos los agentes
+
+**Decisión:** `DEFAULT_MODEL` pasa de `claude-sonnet-4-6` a `claude-sonnet-5` en los 11 agentes, en el `.env` real de market_agent (único con override explícito), en los 13 `.env.example`, y en `utils/ai_client.py::MODELOS_DISPONIBLES` (Sonnet 5 ahora el default de esa lista, Sonnet 4.6 queda disponible pero ya no es default).
+
+**Por qué:** Mismo tier de capacidad que Sonnet 4.6, ~33% más barato por token ($2/$10 por MTok vs $3/$15) — con el volumen real del período (Console, 2026-09-14: 18.5M tokens in / 411K out en 30 días) el costo baja de ~USD 61.70 a ~USD 41.14 sin cambiar de tier. Mejora de calidad en las tareas específicas de CRIZA: **a-confirmar**, no medida — se ofreció una comparación A/B real y Sebas priorizó el ahorro de costo ya confirmado.
+
+**Detalle completo:** `decisiones_sistema` (KM), componente `ai_client`, id `7e5d92cf-80b8-4e50-b60d-afe997bf55d5`.
 
 ---
 

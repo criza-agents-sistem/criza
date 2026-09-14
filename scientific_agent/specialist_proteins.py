@@ -530,7 +530,7 @@ def dispatch_tool(name: str, inputs: dict) -> str:
 # AGENTIC LOOP
 # ──────────────────────────────────────────────
 
-DEFAULT_MODEL = os.getenv("SPECIALIST_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = os.getenv("SPECIALIST_MODEL", "claude-sonnet-5")
 
 
 def run_agent(
@@ -545,7 +545,7 @@ def run_agent(
         user_input: Description of the protein/objective to analyze
         verbose: Print tool calls as they happen
         model: Claude model to use. Default: SPECIALIST_MODEL from .env,
-               fallback to claude-sonnet-4-6. For deep analysis, use claude-opus-4-5.
+               fallback to claude-sonnet-5. For deep analysis, use claude-opus-4-5.
 
     Returns:
         Final text analysis (technical brief)

@@ -51,7 +51,7 @@ from orquestador.registry import get_registry
 from orquestador.invocador import invocar_agente
 from utils.token_tracker import TokenTracker
 
-DEFAULT_MODEL = os.getenv("CONDUCTOR_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = os.getenv("CONDUCTOR_MODEL", "claude-sonnet-5")
 _TENANT = "criza"
 
 # Especialistas conectados al modelo de casos.yaml (invocables vía frente_id) — lista explícita,

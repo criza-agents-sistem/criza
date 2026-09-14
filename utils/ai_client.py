@@ -49,9 +49,9 @@ def resolver_modelo(valor: str) -> str:
 # rompe al elegirla. Cuando se sume otra credencial (OpenAI, etc.), esta lista es el único lugar
 # a tocar — la UI la lee de acá, no la duplica (`GET /modelos` en api/main.py).
 MODELOS_DISPONIBLES = [
-    {"id": "claude-sonnet-4-6", "nombre": "Sonnet 4.6", "nota": "el default actual del sistema — balance costo/calidad probado en esta sesión"},
+    {"id": "claude-sonnet-5", "nombre": "Sonnet 5", "nota": "el default actual del sistema — mismo tier que Sonnet 4.6, ~33% más barato por token (Etapa 22, 2026-09-14)"},
     {"id": "claude-opus-5", "nombre": "Opus 5", "nota": "el más capaz — más lento y más caro, para análisis que lo ameriten"},
-    {"id": "claude-sonnet-5", "nombre": "Sonnet 5", "nota": "el más nuevo de gama media — no probado todavía en este proyecto"},
+    {"id": "claude-sonnet-4-6", "nombre": "Sonnet 4.6", "nota": "generación anterior — se mantiene como opción, ya no es el default"},
     {"id": "claude-haiku-4-5-20251001", "nombre": "Haiku 4.5", "nota": "el más rápido y barato — para consultas simples"},
 ]
 

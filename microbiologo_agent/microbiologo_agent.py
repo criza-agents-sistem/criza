@@ -57,7 +57,7 @@ from knowledge_module.preflight import FuenteCheck, FuenteCheckResult, run_prefl
 from knowledge_module.db import get_session_factory
 from sqlalchemy import text as _sql_text
 
-DEFAULT_MODEL = os.getenv("MICROBIOLOGO_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = os.getenv("MICROBIOLOGO_MODEL", "claude-sonnet-5")
 _AGENTE = "microbiologo"
 _TENANT = "criza"
 

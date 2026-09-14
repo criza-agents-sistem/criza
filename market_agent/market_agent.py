@@ -78,7 +78,7 @@ from sqlalchemy import text as _sql_text
 # un proveedor específico en el formato de función que el traductor entiende. Decisión
 # `componente=ai_client` en `decisiones_sistema` (KM), confirmada por Sebas el 2026-08-15.
 client = anthropic.Anthropic()
-DEFAULT_MODEL = os.getenv("MARKET_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = os.getenv("MARKET_MODEL", "claude-sonnet-5")
 _AGENTE = "mercado"
 _TENANT = "criza"
 _WEB_SEARCH_MAX_USES = 5

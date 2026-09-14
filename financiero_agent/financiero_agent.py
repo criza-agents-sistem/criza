@@ -86,7 +86,7 @@ from sqlalchemy import text as _sql_text
 # nativa `web_search_20250305` para comparables de costo/inversión/precio vigentes, sin
 # equivalente en utils/ai_client.py.
 client = anthropic.Anthropic()
-DEFAULT_MODEL = os.getenv("FINANCIERO_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = os.getenv("FINANCIERO_MODEL", "claude-sonnet-5")
 _AGENTE = "financiero"
 _TENANT = "criza"
 _WEB_SEARCH_MAX_USES = 5

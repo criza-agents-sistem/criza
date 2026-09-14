@@ -31,7 +31,7 @@ import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
 from knowledge_module.preflight import PreflightResult
 
-DEFAULT_MODEL = os.getenv("ARMADOR_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = os.getenv("ARMADOR_MODEL", "claude-sonnet-5")
 
 # El expediente son 5-10 páginas de markdown viajando dentro del input de
 # `submit_expediente`. Con 16.000 no entraba: la primera corrida real cortó
