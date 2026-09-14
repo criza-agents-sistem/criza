@@ -85,7 +85,7 @@ EVALUACION_MOCK = {
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(bt.TOOLS) == 10, f"Esperado 10 tools, tiene {len(bt.TOOLS)}"
+    assert len(bt.TOOLS) == 11, f"Esperado 11 tools, tiene {len(bt.TOOLS)}"
 
 
 @pytest.mark.unit
@@ -93,7 +93,7 @@ def test_tools_names():
     nombres = {t["name"] for t in bt.TOOLS}
     assert nombres == {
         "search_literature", "buscar_corpus_cientifico", "search_corpus_inta", "expand_agrovoc",
-        "search_kegg", "search_rhea", "search_pubchem", "search_chebi",
+        "buscar_web_tecnico", "search_kegg", "search_rhea", "search_pubchem", "search_chebi",
         "ver_informe_especialista", "submit_evaluacion_tecnica",
     }
 
@@ -284,6 +284,25 @@ async def test_despachar_tool_search_corpus_inta_ignora_limit_del_modelo():
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_buscar_web_tecnico():
+    with patch("biotecnologo_agent._buscar_web_tecnico_fn", return_value={"results": [{"titulo": "x"}]}) as mock_fn:
+        result = await bt._despachar_tool("buscar_web_tecnico", {"query": "ectoine product", "idioma": "en", "pais": "us"}, verbose=False)
+    mock_fn.assert_called_once_with(query="ectoine product", idioma="en", pais="us", max_total=30)
+    assert result["results"][0]["titulo"] == "x"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_buscar_web_tecnico_registra_en_el_tracker():
+    tracker: dict = {}
+    with patch("biotecnologo_agent._buscar_web_tecnico_fn", return_value={"results": []}):
+        await bt._despachar_tool("buscar_web_tecnico", {"query": "en inglés", "idioma": "en"}, verbose=False, consultas_tracker=tracker)
+        await bt._despachar_tool("buscar_web_tecnico", {"query": "en español", "idioma": "es"}, verbose=False, consultas_tracker=tracker)
+    assert tracker["buscar_web_tecnico"] == ["en inglés", "en español"]
+
+
+@pytest.mark.unit
 def test_chequear_exhaustividad_rechaza_sin_ninguna_busqueda():
     error = bt._chequear_exhaustividad({})
     assert error is not None
@@ -317,11 +336,25 @@ def test_chequear_exhaustividad_rechaza_sin_corpus_inta():
 
 
 @pytest.mark.unit
+def test_chequear_exhaustividad_rechaza_sin_suficientes_variantes_web():
+    tracker = {
+        "search_literature": [f"query {i}" for i in range(4)],
+        "buscar_corpus_cientifico": ["digestato"],
+        "search_corpus_inta": ["digestato"],
+        "buscar_web_tecnico": ["digestate valorization"],  # solo 1, hace falta 2
+    }
+    error = bt._chequear_exhaustividad(tracker)
+    assert error is not None
+    assert "buscar_web_tecnico" in error
+
+
+@pytest.mark.unit
 def test_chequear_exhaustividad_ok_con_el_minimo_cumplido():
     tracker = {
         "search_literature": [f"query {i}" for i in range(4)],
         "buscar_corpus_cientifico": ["digestato"],
         "search_corpus_inta": ["digestato"],
+        "buscar_web_tecnico": ["digestate valorization products", "productos valorización digestato"],
     }
     assert bt._chequear_exhaustividad(tracker) is None
 
@@ -385,6 +418,8 @@ async def test_run_loop_poda_resultados_de_turnos_anteriores():
     ] + [
         type("ToolUseBlock", (), {"type": "tool_use", "name": "buscar_corpus_cientifico", "id": "tc1", "input": {"consulta": "digestato"}})(),
         type("ToolUseBlock", (), {"type": "tool_use", "name": "search_corpus_inta", "id": "ti1", "input": {"query": "digestato"}})(),
+        type("ToolUseBlock", (), {"type": "tool_use", "name": "buscar_web_tecnico", "id": "wt1", "input": {"query": "digestate product", "idioma": "en"}})(),
+        type("ToolUseBlock", (), {"type": "tool_use", "name": "buscar_web_tecnico", "id": "wt2", "input": {"query": "producto digestato", "idioma": "es"}})(),
     ]
     busqueda_turno_2 = type("ToolUseBlock", (), {"type": "tool_use", "name": "search_literature", "id": "tl_extra", "input": {"query": "query extra"}})()
     submit = type("ToolUseBlock", (), {"type": "tool_use", "name": "submit_evaluacion_tecnica", "id": "s1", "input": EVALUACION_MOCK})()
@@ -408,6 +443,7 @@ async def test_run_loop_poda_resultados_de_turnos_anteriores():
         patch("biotecnologo_agent._search_literature_exhaustivo_fn", return_value=contenido_pesado),
         patch("biotecnologo_agent._buscar_corpus_cientifico_fn", new=AsyncMock(return_value={"papers": []})),
         patch("biotecnologo_agent._search_inta_fn", new=AsyncMock(return_value={"success": True, "data": {"results": []}})),
+        patch("biotecnologo_agent._buscar_web_tecnico_fn", return_value={"results": []}),
     ):
         await bt._run_loop("op-1", [{"type": "text", "text": "system"}], "input", bt.DEFAULT_MODEL, verbose=False)
 
@@ -438,6 +474,8 @@ async def test_run_loop_rechaza_submit_sin_busqueda_exhaustiva_y_reintenta():
     ] + [
         type("ToolUseBlock", (), {"type": "tool_use", "name": "buscar_corpus_cientifico", "id": "tc1", "input": {"consulta": "digestato"}})(),
         type("ToolUseBlock", (), {"type": "tool_use", "name": "search_corpus_inta", "id": "ti1", "input": {"query": "digestato"}})(),
+        type("ToolUseBlock", (), {"type": "tool_use", "name": "buscar_web_tecnico", "id": "wt1", "input": {"query": "digestate product", "idioma": "en"}})(),
+        type("ToolUseBlock", (), {"type": "tool_use", "name": "buscar_web_tecnico", "id": "wt2", "input": {"query": "producto digestato", "idioma": "es"}})(),
     ]
     submit_ok = type("ToolUseBlock", (), {
         "type": "tool_use", "name": "submit_evaluacion_tecnica", "id": "t2", "input": EVALUACION_MOCK,
@@ -455,6 +493,7 @@ async def test_run_loop_rechaza_submit_sin_busqueda_exhaustiva_y_reintenta():
         patch("biotecnologo_agent._search_literature_exhaustivo_fn", return_value={"results": []}),
         patch("biotecnologo_agent._buscar_corpus_cientifico_fn", new=AsyncMock(return_value={"papers": []})),
         patch("biotecnologo_agent._search_inta_fn", new=AsyncMock(return_value={"success": True, "data": {"results": []}})),
+        patch("biotecnologo_agent._buscar_web_tecnico_fn", return_value={"results": []}),
     ):
         informe, evaluacion, lecciones, tracker = await bt._run_loop(
             "op-1", [{"type": "text", "text": "system"}], "input de prueba", bt.DEFAULT_MODEL, verbose=False,

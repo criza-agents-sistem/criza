@@ -48,6 +48,7 @@ from utils.kegg import search_kegg as _search_kegg_fn
 from utils.rhea import search_rhea as _search_rhea_fn
 from utils.pubchem import search_pubchem as _search_pubchem_fn
 from utils.chebi import search_chebi as _search_chebi_fn
+from utils.brightdata_serp import buscar_web_tecnico as _buscar_web_tecnico_fn
 from utils.casos import (
     obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente,
     obtener_documentos_de_frente, obtener_documento_por_id,
@@ -59,7 +60,7 @@ from knowledge_module.preflight import FuenteCheck, FuenteCheckResult, run_prefl
 from knowledge_module.db import get_session_factory
 from sqlalchemy import text as _sql_text
 
-DEFAULT_MODEL = os.getenv("BIOTECNOLOGO_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = os.getenv("BIOTECNOLOGO_MODEL", "claude-sonnet-5")
 _AGENTE = "biotecnologo"
 _TENANT = "criza"
 
@@ -275,6 +276,33 @@ TOOLS = [
         },
     },
     {
+        "name": "buscar_web_tecnico",
+        "description": (
+            "Busca en la web general (Google, vía Bright Data) — la única fuente que llega a "
+            "prensa especializada, sitios de empresas y notas técnicas sobre productos "
+            "COMERCIALES o de otros países, que no van a estar en OpenAlex/CONICET/INTA (esas "
+            "son fuentes académicas). Usar cuando sospeches que existe un producto o proceso ya "
+            "en el mercado (no solo en literatura científica) que ninguna otra fuente va a "
+            "mostrar — típicamente productos nicho, de empresas extranjeras, o muy recientes.\n"
+            "NO es un buscador de redes sociales — no indexa contenido de Instagram/TikTok "
+            "directamente, pero sí encuentra cobertura de prensa/sitios de empresa sobre "
+            "productos que ya tienen tracción comercial.\n"
+            "Exhaustiva por diseño, igual que search_literature — no hay parámetro de cantidad.\n"
+            "REQUISITO PARA CERRAR: usarla al menos una vez, en inglés Y en español como mínimo "
+            "(parámetro idioma) — un producto de una empresa europea o asiática puede no "
+            "aparecer bien indexado en una sola lengua."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Búsqueda técnica y específica — el producto/proceso/material buscado."},
+                "idioma": {"type": "string", "description": "Código de idioma de los resultados (ej. 'en', 'es', 'pt', 'de').", "default": "en"},
+                "pais": {"type": "string", "description": "Código de país opcional para geo-targeting (ej. 'us', 'ar', 'de')."},
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "ver_informe_especialista",
         "description": (
             "Trae el contenido completo de un informe puntual — ya sea uno que vos u OTRO "
@@ -474,6 +502,12 @@ FUENTES DISPONIBLES:
   siempre.
 - search_corpus_inta: corpus INTA Digital local (1.600+ papers, exhaustivo por diseño). Español o
   inglés. Útil para problemas ligados a producción agropecuaria/agroindustrial argentina.
+- buscar_web_tecnico: búsqueda web general (Google, vía Bright Data), exhaustiva por diseño. La
+  única fuente que llega a productos COMERCIALES o de otros países — prensa especializada,
+  sitios de empresas — que no van a estar en ninguna de las anteriores (todas académicas). Usar
+  cuando sospeches un producto ya en el mercado que la literatura científica no va a mostrar.
+  Mínimo 2 consultas distintas antes de cerrar, en idiomas distintos — un producto de una
+  empresa europea o asiática puede no estar bien indexado solo en inglés.
 - expand_agrovoc: expande un término contra el tesauro AGROVOC (FAO). Usar antes de
   search_corpus_inta cuando tenés un término en inglés para buscar en el corpus español.
 - search_kegg: rutas metabólicas/módulos/compuestos/genes KEGG. Usar para precisar la ruta de
@@ -491,17 +525,19 @@ FUENTES DISPONIBLES:
 
 Flujo sugerido: buscar_corpus_cientifico primero (cualquier problema) → expand_agrovoc si hace
 falta traducir el término → search_corpus_inta con términos ES → search_literature con términos
-EN para contexto global y madurez de la ruta. Cuando ya tengas un producto candidato: search_kegg
-(ruta de biosíntesis) → search_rhea (reacción/EC específica) → search_pubchem (identidad química
-exacta) → search_chebi (clasificación/rol) — en ese orden, solo hasta donde la evidencia lo
-justifique, no es obligatorio agotar las cuatro.
+EN para contexto global y madurez de la ruta → buscar_web_tecnico (inglés + al menos otro idioma)
+para productos comerciales que la literatura no cubre. Cuando ya tengas un producto candidato:
+search_kegg (ruta de biosíntesis) → search_rhea (reacción/EC específica) → search_pubchem
+(identidad química exacta) → search_chebi (clasificación/rol) — en ese orden, solo hasta donde
+la evidencia lo justifique, no es obligatorio agotar las cuatro.
 
 TU PROCESO:
 1. Identificá la pregunta central: qué producto(s) de valor son candidatos a partir del material
-2. Buscá en literatura con al menos 4 variantes genuinamente distintas de search_literature
-   (sinónimos, términos relacionados, otro idioma, otro ángulo) + buscar_corpus_cientifico +
-   search_corpus_inta — el mínimo que exige el sistema, no un techo: si el problema lo amerita
-   (producto raro, sin antecedentes obvios), seguí buscando más allá del mínimo
+2. Buscá con al menos 4 variantes genuinamente distintas de search_literature (sinónimos,
+   términos relacionados, otro idioma, otro ángulo) + buscar_corpus_cientifico +
+   search_corpus_inta + al menos 2 variantes de buscar_web_tecnico en idiomas distintos — el
+   mínimo que exige el sistema, no un techo: si el problema lo amerita (producto raro, sin
+   antecedentes obvios), seguí buscando más allá del mínimo
 3. Para cada producto candidato con evidencia real, sumá search_kegg/search_rhea/search_pubchem/
    search_chebi según haga falta para precisar la ruta y la identidad química
 4. Evaluá qué rutas biotecnológicas aplican y con qué madurez
@@ -542,7 +578,7 @@ INPUT_CONTRACT = {
         "conocimiento": "{'frente_id': str} (modelo de casos.yaml) — único camino soportado, ver Design Gate decisión C del contrato.",
         "herramientas": [
             "search_literature", "buscar_corpus_cientifico", "expand_agrovoc", "search_corpus_inta",
-            "search_kegg", "search_rhea", "search_pubchem", "search_chebi",
+            "buscar_web_tecnico", "search_kegg", "search_rhea", "search_pubchem", "search_chebi",
             "submit_evaluacion_tecnica",
         ],
     },
@@ -709,6 +745,13 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool, consulta
         # Etapa 22: limit fijo — 150 (no 2000, el primer intento) da cobertura real del corpus
         # (que es chico, ~2000 fichas totales) sin repetir el mismo error de contexto que arriba.
         return await _buscar_corpus_cientifico_fn(consulta=consulta, limit=150)
+    if nombre == "buscar_web_tecnico":
+        query = tool_input.get("query", "")
+        if verbose:
+            print(f"  -> buscar_web_tecnico ({tool_input.get('idioma', 'en')}): {query[:80]}")
+        if consultas_tracker is not None:
+            consultas_tracker.setdefault("buscar_web_tecnico", []).append(query)
+        return _buscar_web_tecnico_fn(query=query, idioma=tool_input.get("idioma", "en"), pais=tool_input.get("pais"), max_total=30)
     if nombre == "search_kegg":
         query = tool_input.get("query", "")
         if verbose:
@@ -756,6 +799,7 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool, consulta
 # bloqueado en código hasta que se cumpla un mínimo real, el modelo no puede decidir saltearlo.
 
 _MIN_VARIANTES_SEARCH_LITERATURE = 4
+_MIN_VARIANTES_WEB_TECNICO = 2  # al menos 2 idiomas/ángulos — Etapa 22 (cont.), Bright Data SERP
 _MAX_RECHAZOS_EXHAUSTIVIDAD = 3  # válvula de seguridad — ver uso en _run_loop
 
 
@@ -822,6 +866,16 @@ def _chequear_exhaustividad(consultas_tracker: dict) -> str | None:
         return (
             "No se puede cerrar todavía — falta usar search_corpus_inta al menos una vez antes "
             "de cerrar."
+        )
+    web = consultas_tracker.get("buscar_web_tecnico", [])
+    distintas_web = {q.strip().lower() for q in web if q.strip()}
+    if len(distintas_web) < _MIN_VARIANTES_WEB_TECNICO:
+        return (
+            f"No se puede cerrar todavía — falta cumplir el mínimo de buscar_web_tecnico. Se "
+            f"usó con {len(distintas_web)} consulta(s) distinta(s), hacen falta al menos "
+            f"{_MIN_VARIANTES_WEB_TECNICO} (probá al menos un idioma distinto — un producto de "
+            f"una empresa extranjera puede no estar bien indexado solo en inglés o solo en "
+            f"español)."
         )
     return None
 
@@ -945,6 +999,8 @@ async def _run_loop(
     fuentes_y_cobertura["gate_exhaustividad"] = {
         "variantes_search_literature": len({q.strip().lower() for q in consultas_tracker.get("search_literature", []) if q.strip()}),
         "minimo_requerido": _MIN_VARIANTES_SEARCH_LITERATURE,
+        "variantes_buscar_web_tecnico": len({q.strip().lower() for q in consultas_tracker.get("buscar_web_tecnico", []) if q.strip()}),
+        "minimo_requerido_web": _MIN_VARIANTES_WEB_TECNICO,
         "cumplido_de_verdad": rechazos_exhaustividad < _MAX_RECHAZOS_EXHAUSTIVIDAD or _chequear_exhaustividad(consultas_tracker) is None,
     }
 
