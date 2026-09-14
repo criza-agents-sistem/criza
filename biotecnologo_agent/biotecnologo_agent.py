@@ -40,7 +40,7 @@ sys.path.insert(0, str(_CRIZA_DIR))
 sys.path.insert(0, str(_AGENT_DIR))
 
 from utils.ai_client import complete as _ai_complete, resolver_modelo as _resolver_modelo
-from utils.openalex import search_literature as _search_literature_fn
+from utils.openalex import search_literature_exhaustivo as _search_literature_exhaustivo_fn
 from km_tools.search import get_sector_corpus as _get_sector_corpus_fn
 from utils.agrovoc import expand_term as _expand_agrovoc_fn
 from utils.corpus import buscar_corpus_cientifico as _buscar_corpus_cientifico_fn
@@ -112,7 +112,9 @@ async def _check_corpus_cientifico() -> FuenteCheckResult:
 
 async def _check_openalex() -> FuenteCheckResult:
     try:
-        test = _search_literature_fn("bioprocess engineering fermentation", max_results=1)
+        test = _search_literature_exhaustivo_fn("bioprocess engineering fermentation", max_total=1)
+        if isinstance(test, dict) and test.get("error_en_pagina"):
+            return FuenteCheckResult(ok=False, detalle=str(test["error_en_pagina"])[:120])
         if isinstance(test, dict) and test.get("error"):
             return FuenteCheckResult(ok=False, detalle=str(test["error"])[:120])
         return FuenteCheckResult(ok=True, detalle="reachable")
@@ -126,16 +128,22 @@ TOOLS = [
     {
         "name": "search_literature",
         "description": (
-            "Busca en literatura científica vía OpenAlex (250M+ papers).\n"
+            "Busca en literatura científica vía OpenAlex (250M+ papers) — EXHAUSTIVA por diseño\n"
+            "(pagina sola hasta agotar resultados reales o un techo alto, no trae solo el top-10 "
+            "más citado). No hay parámetro de cantidad: cada consulta ya trae todo lo relevante "
+            "que hay.\n"
             "Usar para: evaluar qué productos/rutas de bioproceso aplican a un material dado,\n"
-            "entender madurez de una ruta biotecnológica, identificar alternativas. Siempre en\n"
-            "inglés. max_results=10 por defecto."
+            "entender madurez de una ruta biotecnológica, identificar alternativas — sobre todo\n"
+            "productos raros o poco documentados, donde una sola consulta rankeada por\n"
+            "relevancia puede dejar afuera justo lo que se busca. Siempre en inglés.\n"
+            "REQUISITO PARA CERRAR: hacen falta al menos 4 consultas genuinamente distintas\n"
+            "(sinónimos, términos relacionados, otro ángulo del problema) antes de que\n"
+            "submit_evaluacion_tecnica se acepte — no es una sugerencia, el sistema lo exige."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Búsqueda en inglés, focalizada en el producto o ruta de bioproceso buscada."},
-                "max_results": {"type": "integer", "description": "Número de resultados (5-15 recomendado).", "default": 10},
             },
             "required": ["query"],
         },
@@ -160,7 +168,8 @@ TOOLS = [
             "Áreas cubiertas: biotecnología agropecuaria, virología, patobiología animal,\n"
             "sanidad vegetal, inocuidad alimentaria, genómica aplicada.\n"
             "Complementa search_literature (OpenAlex global) con literatura local argentina.\n"
-            "Soporta español e inglés. Operadores: 'fermentación industrial', 'bioplástico AND PHA'."
+            "Soporta español e inglés. Operadores: 'fermentación industrial', 'bioplástico AND PHA'.\n"
+            "REQUISITO PARA CERRAR: usarla al menos una vez."
         ),
         "input_schema": {
             "type": "object",
@@ -172,7 +181,6 @@ TOOLS = [
                     "enum": ["paper", "reporte", "norma", "patente", "otro",
                              "tesis", "ponencia", "libro", "parte_libro", "divulgacion", "folleto"],
                 },
-                "limit": {"type": "integer", "description": "Máximo de resultados (default 1000 — exhaustivo).", "default": 1000},
             },
             "required": ["query"],
         },
@@ -183,13 +191,14 @@ TOOLS = [
             "Busca por similitud semántica en corpus_cientifico — CONICET (625 fichas, repositorios\n"
             "argentinos vía OAI-PMH) + INTA (vía el motor nuevo). Única fuente con literatura de\n"
             "CONICET — sin este tool el agente no tiene ningún acceso a CONICET. Usar para\n"
-            "literatura académica argentina sobre el producto/ruta de bioproceso buscado."
+            "literatura académica argentina sobre el producto/ruta de bioproceso buscado.\n"
+            "Trae cobertura completa del corpus por diseño (no hay parámetro de cantidad) —\n"
+            "REQUISITO PARA CERRAR: usarla al menos una vez."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "consulta": {"type": "string", "description": "Términos a buscar — producto o ruta de bioproceso buscada. ES o EN."},
-                "limit": {"type": "integer", "description": "Máximo de papers (default 100).", "default": 100},
             },
             "required": ["consulta"],
         },
@@ -446,11 +455,24 @@ QUÉ RECIBÍS: una descripción del material/problema técnico (contract_input �
 contexto). Nunca asumas un caso específico si no te lo dan explícitamente en el input de esta
 corrida.
 
+EXHAUSTIVIDAD (Etapa 22, 2026-09-14) — leelo antes de lo demás: a veces el producto que se busca
+es raro, poco documentado, o nadie en Argentina lo resolvió todavía — el tipo de caso donde una
+sola búsqueda rankeada por relevancia deja afuera justo el hallazgo marginal que importa. Por
+eso search_literature/buscar_corpus_cientifico/search_corpus_inta ya no traen un top-N que vos
+elegís: cada una trae cobertura completa por diseño. Lo que sigue siendo tu responsabilidad es la
+DIVERSIDAD de consultas — sinónimos, términos relacionados, otro idioma, otro ángulo del
+problema. El sistema exige al menos 4 consultas genuinamente distintas en search_literature (y
+al menos una en cada una de las otras dos) antes de aceptar submit_evaluacion_tecnica — no es
+una sugerencia que podés decidir saltear, un intento de cerrar sin cumplirlo te va a volver con
+un error explicando qué falta.
+
 FUENTES DISPONIBLES:
-- search_literature: literatura científica global (OpenAlex, 250M+ papers). Buscar en inglés.
+- search_literature: literatura científica global (OpenAlex, 250M+ papers), exhaustiva por
+  diseño. Buscar en inglés. Mínimo 4 consultas distintas antes de cerrar (ver arriba).
 - buscar_corpus_cientifico: corpus local — CONICET (625 fichas, todas las disciplinas) + INTA
-  vía el motor nuevo. Única fuente con literatura de CONICET — usarla siempre.
-- search_corpus_inta: corpus INTA Digital local (1.600+ papers, FTS exhaustivo). Español o
+  vía el motor nuevo, exhaustiva por diseño. Única fuente con literatura de CONICET — usarla
+  siempre.
+- search_corpus_inta: corpus INTA Digital local (1.600+ papers, exhaustivo por diseño). Español o
   inglés. Útil para problemas ligados a producción agropecuaria/agroindustrial argentina.
 - expand_agrovoc: expande un término contra el tesauro AGROVOC (FAO). Usar antes de
   search_corpus_inta cuando tenés un término en inglés para buscar en el corpus español.
@@ -476,8 +498,10 @@ justifique, no es obligatorio agotar las cuatro.
 
 TU PROCESO:
 1. Identificá la pregunta central: qué producto(s) de valor son candidatos a partir del material
-2. Buscá en literatura (3-5 búsquedas en total, usando la fuente más apropiada) — incluí
-   siempre buscar_corpus_cientifico
+2. Buscá en literatura con al menos 4 variantes genuinamente distintas de search_literature
+   (sinónimos, términos relacionados, otro idioma, otro ángulo) + buscar_corpus_cientifico +
+   search_corpus_inta — el mínimo que exige el sistema, no un techo: si el problema lo amerita
+   (producto raro, sin antecedentes obvios), seguí buscando más allá del mínimo
 3. Para cada producto candidato con evidencia real, sumá search_kegg/search_rhea/search_pubchem/
    search_chebi según haga falta para precisar la ruta y la identidad química
 4. Evaluá qué rutas biotecnológicas aplican y con qué madurez
@@ -486,8 +510,10 @@ TU PROCESO:
    podés dar — sin nombrar qué tipo de especialista, solo qué falta evaluar
 7. Llamá submit_evaluacion_tecnica con el análisis estructurado
 
-CUÁNDO CERRAR: cuando tengas suficiente evidencia para responder la pregunta técnica central. No
-acumulés papers si ya podés responder.
+CUÁNDO CERRAR: cuando cumpliste el mínimo de exhaustividad (arriba) Y tenés suficiente evidencia
+para responder la pregunta técnica central. El mínimo es un piso, no una meta — para un producto
+genuinamente raro, cumplir apenas el mínimo y cerrar puede no alcanzar; usá tu criterio sobre
+cuándo la búsqueda realmente se agotó, no solo cuándo el sistema deja de bloquearte.
 
 VERACIDAD POR DATO:
 - establecido: lo dice la fuente, citás referencia
@@ -630,10 +656,15 @@ async def _preflight() -> None:
         )
 
 
-async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
+async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool, consultas_tracker: dict | None = None) -> dict:
     """Todas las tools EXCEPTO submit_evaluacion_tecnica — esa queda especial-casada en
     `_run_loop`. Reusada por `enviar_mensaje` (chat) sin duplicar el dispatch — mismo patrón que
-    los otros 3 especialistas."""
+    los otros 3 especialistas.
+
+    `consultas_tracker` (Etapa 22, 2026-09-14): opcional — solo `_run_loop` (la corrida formal
+    que produce un documento) lo pasa, `enviar_mensaje` (chat) no. Acumula cada consulta real
+    para el gate de exhaustividad al momento de cerrar (`_chequear_exhaustividad`) — el chat no
+    tiene ese gate, es conversación libre, no un informe formal."""
     if nombre == "ver_informe_especialista":
         documento_id = tool_input.get("documento_id", "")
         if verbose:
@@ -652,19 +683,32 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
         query = tool_input.get("query", "")
         if verbose:
             print(f"  -> search_corpus_inta: {query[:80]}")
-        return await _search_inta_fn(
-            query=query, tipo=tool_input.get("tipo"), limit=tool_input.get("limit", 1000), tenant_id=_TENANT,
-        )
+        if consultas_tracker is not None:
+            consultas_tracker.setdefault("search_corpus_inta", []).append(query)
+        # Etapa 22 (2026-09-14): limit fijo, ignora lo que pida el modelo — encontrado real,
+        # sin este techo una corrida real acumuló 1.5M+ tokens de historial (resumen[:1200] por
+        # doc × hasta 1000 docs) y reventó el límite de contexto de Claude (1M) en pocos turnos.
+        return await _search_inta_fn(query=query, tipo=tool_input.get("tipo"), limit=150, tenant_id=_TENANT)
     if nombre == "search_literature":
         query = tool_input.get("query", "")
         if verbose:
             print(f"  -> search_literature: {query[:80]}")
-        return _search_literature_fn(query=query, max_results=tool_input.get("max_results", 10))
+        if consultas_tracker is not None:
+            consultas_tracker.setdefault("search_literature", []).append(query)
+        # Etapa 22: exhaustiva siempre, no un "max_results" que el modelo elige — Sebas: "si no
+        # somos exhaustivos el proyecto fracasa". max_total=40 (no 200 como el primer intento —
+        # ver utils/openalex.py, ese número sin truncar abstracts fue lo que reventó el
+        # contexto en la corrida real) — el techo y el truncado los decide el código, no el modelo.
+        return _search_literature_exhaustivo_fn(query=query, max_total=40)
     if nombre == "buscar_corpus_cientifico":
         consulta = tool_input.get("consulta", "")
         if verbose:
             print(f"  -> buscar_corpus_cientifico: {consulta[:80]}")
-        return await _buscar_corpus_cientifico_fn(consulta=consulta, limit=tool_input.get("limit", 100))
+        if consultas_tracker is not None:
+            consultas_tracker.setdefault("buscar_corpus_cientifico", []).append(consulta)
+        # Etapa 22: limit fijo — 150 (no 2000, el primer intento) da cobertura real del corpus
+        # (que es chico, ~2000 fichas totales) sin repetir el mismo error de contexto que arriba.
+        return await _buscar_corpus_cientifico_fn(consulta=consulta, limit=150)
     if nombre == "search_kegg":
         query = tool_input.get("query", "")
         if verbose:
@@ -702,6 +746,86 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
     return {"error": f"Tool '{nombre}' no implementado."}
 
 
+# ── Gate de exhaustividad (Etapa 22, 2026-09-14) ────────────────────────────────
+#
+# Sebas, sobre el Biotecnólogo buscando productos de valorización raros/poco documentados:
+# "me preocupa que el agente decida que no es importante y no busque exhaustivamente... estamos
+# ante un problema que no sabemos si alguien encontró solución... si no somos exhaustivos el
+# proyecto fracasa". Estructura, no un pedido en el prompt (CLAUDE.md: "el sesgo se atrapa con
+# estructura/proceso, no con prompts de 'tenelo en cuenta'") — submit_evaluacion_tecnica queda
+# bloqueado en código hasta que se cumpla un mínimo real, el modelo no puede decidir saltearlo.
+
+_MIN_VARIANTES_SEARCH_LITERATURE = 4
+_MAX_RECHAZOS_EXHAUSTIVIDAD = 3  # válvula de seguridad — ver uso en _run_loop
+
+
+# ── Poda de historial (Etapa 22, 2026-09-14) ────────────────────────────────────
+#
+# La API de mensajes reenvía la conversación COMPLETA en cada turno — con resultados
+# exhaustivos, eso crece sin límite. Confirmado real: una corrida real con 8 búsquedas (el doble
+# del mínimo exigido) llegó al 96% del límite de contexto de Claude (960K/1M tokens) — un caso
+# que necesite más variantes revienta. Los resultados de un tool_result ya fueron leídos por el
+# modelo en el turno donde se generó la respuesta siguiente — a partir de ahí, mantener el JSON
+# completo en el historial no aporta nada nuevo, solo pesa. Se podan (reemplazan por un
+# resumen corto) apenas se "consumieron" — nunca el último batch, que el modelo todavía no leyó.
+
+def _resumen_corto_para_poda(nombre_tool: str, tool_input: dict) -> str:
+    query = (
+        tool_input.get("query") or tool_input.get("consulta") or tool_input.get("term")
+        or tool_input.get("documento_id") or ""
+    )
+    return (
+        f"[{nombre_tool}('{query}') — resultado completo ya leído y considerado en un turno "
+        f"anterior; se omite acá para no exceder el contexto del modelo. Si hace falta volver a "
+        f"ver el detalle, repetí la consulta (cuenta para el mínimo de variantes distintas solo "
+        f"si es genuinamente una consulta nueva)."
+    )
+
+
+def _podar_tool_results_viejos(messages: list[dict], resumenes: dict[str, str]) -> None:
+    """Muta `messages` in place — reemplaza el contenido de cada tool_result cuyo tool_use_id
+    esté en `resumenes` por su resumen corto. Llamar ANTES de agregar el batch de tool_results
+    del turno actual (que todavía no está en `resumenes` — se agrega recién después de
+    despacharlo), así nunca se poda lo que el modelo todavía no leyó."""
+    for msg in messages:
+        if msg["role"] != "user" or not isinstance(msg["content"], list):
+            continue
+        for bloque in msg["content"]:
+            if isinstance(bloque, dict) and bloque.get("type") == "tool_result":
+                resumen = resumenes.get(bloque.get("tool_use_id"))
+                if resumen:
+                    bloque["content"] = resumen
+
+
+def _chequear_exhaustividad(consultas_tracker: dict) -> str | None:
+    """None si se cumplió el mínimo — un mensaje de error (para devolver como tool_result, no
+    para romper el loop) si no."""
+    literatura = consultas_tracker.get("search_literature", [])
+    distintas = {q.strip().lower() for q in literatura if q.strip()}
+    if len(distintas) < _MIN_VARIANTES_SEARCH_LITERATURE:
+        faltan = _MIN_VARIANTES_SEARCH_LITERATURE - len(distintas)
+        return (
+            f"No se puede cerrar todavía — falta cumplir el mínimo de búsqueda exhaustiva. "
+            f"search_literature se usó con {len(distintas)} consulta(s) genuinamente distinta(s) "
+            f"hasta ahora ({', '.join(sorted(distintas)) or 'ninguna'}), y hacen falta al menos "
+            f"{_MIN_VARIANTES_SEARCH_LITERATURE}. Antes de intentar cerrar de nuevo, hacé "
+            f"{faltan} búsqueda(s) más con enfoques genuinamente distintos — sinónimos, términos "
+            f"relacionados, otro idioma, un ángulo del problema que todavía no probaste. No "
+            f"repitas la misma consulta con palabras casi iguales."
+        )
+    if not consultas_tracker.get("buscar_corpus_cientifico"):
+        return (
+            "No se puede cerrar todavía — falta usar buscar_corpus_cientifico al menos una vez. "
+            "Es la única fuente con literatura de CONICET, tiene que consultarse antes de cerrar."
+        )
+    if not consultas_tracker.get("search_corpus_inta"):
+        return (
+            "No se puede cerrar todavía — falta usar search_corpus_inta al menos una vez antes "
+            "de cerrar."
+        )
+    return None
+
+
 async def _run_loop(
     identificador: str,
     system_blocks: list[dict],
@@ -714,6 +838,13 @@ async def _run_loop(
     tracker = TokenTracker(agent=_AGENTE, oportunidad_id=identificador, model=model)
     messages = [{"role": "user", "content": user_input}]
     evaluacion_result = None
+    consultas_tracker: dict[str, list[str]] = {}
+    # Válvula de seguridad: si el modelo queda atascado (intenta cerrar repetidas veces sin
+    # buscar más), no lo dejamos en loop infinito gastando tokens — a partir de este número de
+    # rechazos, se deja pasar igual (mejor un informe con menos cobertura que uno que nunca
+    # termina).
+    rechazos_exhaustividad = 0
+    resumenes_tool_results: dict[str, str] = {}
 
     while True:
         response = await _ai_complete(
@@ -744,12 +875,31 @@ async def _run_loop(
             break
 
         if response.stop_reason == "tool_use":
+            # Podar ANTES de despachar las tools de este turno — todo lo que ya está en
+            # `messages` fue leído por el modelo para generar la respuesta que acabamos de
+            # recibir, es seguro reemplazarlo por su resumen corto.
+            _podar_tool_results_viejos(messages, resumenes_tool_results)
+
             tool_results = []
             for block in response.content:
                 if block.type != "tool_use":
                     continue
 
                 if block.name == "submit_evaluacion_tecnica":
+                    error_exhaustividad = _chequear_exhaustividad(consultas_tracker) if rechazos_exhaustividad < _MAX_RECHAZOS_EXHAUSTIVIDAD else None
+                    if error_exhaustividad:
+                        rechazos_exhaustividad += 1
+                        if verbose:
+                            print(f"  -> submit_evaluacion_tecnica [rechazado {rechazos_exhaustividad}/{_MAX_RECHAZOS_EXHAUSTIVIDAD}: gate de exhaustividad]\n")
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps({"success": False, "error": error_exhaustividad}, ensure_ascii=False),
+                        })
+                        continue
+                    if rechazos_exhaustividad >= _MAX_RECHAZOS_EXHAUSTIVIDAD and verbose:
+                        print("  -> submit_evaluacion_tecnica [aceptado igual: se agotaron los reintentos del gate de exhaustividad]\n")
+
                     evaluacion_result = block.input
                     if verbose:
                         print("  -> submit_evaluacion_tecnica [capturado]\n")
@@ -760,7 +910,8 @@ async def _run_loop(
                     })
                     continue
 
-                resultado = await _despachar_tool(block.name, block.input, verbose)
+                resultado = await _despachar_tool(block.name, block.input, verbose, consultas_tracker)
+                resumenes_tool_results[block.id] = _resumen_corto_para_poda(block.name, block.input)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -787,6 +938,14 @@ async def _run_loop(
     fuentes_y_cobertura = evaluacion_result.get("fuentes_y_cobertura") or {
         "fuentes_consultadas": [],
         "cobertura_declarada": "parcial-por-falla-de-fuente",
+    }
+    # Etapa 22 (2026-09-14) — auditable aparte del auto-reporte del modelo: cuántas variantes
+    # de search_literature realmente se usaron y si el gate de exhaustividad se cumplió de
+    # verdad o se dejó pasar por la válvula de seguridad (rechazos_exhaustividad agotados).
+    fuentes_y_cobertura["gate_exhaustividad"] = {
+        "variantes_search_literature": len({q.strip().lower() for q in consultas_tracker.get("search_literature", []) if q.strip()}),
+        "minimo_requerido": _MIN_VARIANTES_SEARCH_LITERATURE,
+        "cumplido_de_verdad": rechazos_exhaustividad < _MAX_RECHAZOS_EXHAUSTIVIDAD or _chequear_exhaustividad(consultas_tracker) is None,
     }
 
     evaluacion_dict = {
