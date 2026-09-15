@@ -13,8 +13,11 @@ el 'Frente técnico' de Helios (Etapa 4): balance de masa/energía, diseño de b
 una elección en abstracto.
 
 Tools: search_literature, buscar_corpus_cientifico, search_corpus_inta, expand_agrovoc (las 4
-genéricas de corpus, mismo patrón que Microbiólogo v1), submit_evaluacion_tecnica (mismo schema
-exacto que microbiologo_agent.py — decisión E de ese Design Gate).
+genéricas de corpus, mismo patrón que Microbiólogo v1),
+analizar_estabilidad_serie/detectar_cambios_de_regimen/correlacion_con_desfase/
+comparar_fuentes_de_datos (cómputo real vía utils/estadistica.py, nuevo 2026-09-14),
+submit_evaluacion_tecnica (mismo schema exacto que microbiologo_agent.py — decisión E de ese
+Design Gate).
 
 Solo soporta invocación vía `frente_id` (modelo casos.yaml) — no `oportunidad_id` (ver
 docs/DESIGN_GATE.md decisión A: ningún caller real necesita el modelo viejo para un especialista
@@ -45,6 +48,12 @@ from utils.openalex import search_literature as _search_literature_fn
 from km_tools.search import get_sector_corpus as _get_sector_corpus_fn
 from utils.agrovoc import expand_term as _expand_agrovoc_fn
 from utils.corpus import buscar_corpus_cientifico as _buscar_corpus_cientifico_fn
+from utils.estadistica import (
+    analizar_estabilidad as _analizar_estabilidad_fn,
+    detectar_cambios_de_regimen as _detectar_cambios_de_regimen_fn,
+    correlacion_con_desfase as _correlacion_con_desfase_fn,
+    comparar_fuentes as _comparar_fuentes_fn,
+)
 from utils.casos import (
     obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente,
     obtener_documentos_de_frente, obtener_documento_por_id,
@@ -204,6 +213,111 @@ TOOLS = [
                 "limit": {"type": "integer", "description": "Máximo de papers (default 100).", "default": 100},
             },
             "required": ["consulta"],
+        },
+    },
+    {
+        "name": "analizar_estabilidad_serie",
+        "description": (
+            "Cálculo real (no estimado a ojo) de estabilidad de una serie temporal de datos de\n"
+            "planta que Sebas aportó (ej. un parámetro de proceso en el tiempo) — media, desvío,\n"
+            "CV%, tendencia real (Kendall tau) y clasificación ESTABLE/MODERADAMENTE_VARIABLE/\n"
+            "NO_ESTABLE. Usar para evaluar si un proceso/equipo se comporta de forma predecible\n"
+            "antes de dimensionar sobre esos datos. Nunca calcules esto vos mismo leyendo la tabla."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "datos": {
+                    "type": "array",
+                    "description": "Puntos [{'fecha': 'YYYY-MM-DD', 'valor': número}, ...], mínimo 5.",
+                    "items": {
+                        "type": "object",
+                        "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}},
+                        "required": ["fecha", "valor"],
+                    },
+                },
+                "umbral_estable": {"type": "number", "description": "CV% por debajo del cual se clasifica ESTABLE (default 15).", "default": 15},
+                "umbral_variable": {"type": "number", "description": "CV% por debajo del cual se clasifica MODERADAMENTE_VARIABLE (default 30).", "default": 30},
+            },
+            "required": ["datos"],
+        },
+    },
+    {
+        "name": "detectar_cambios_de_regimen",
+        "description": (
+            "Detecta si una serie temporal de planta cambió de nivel de forma real y sostenida\n"
+            "(no ruido de un solo punto) — ej. si un parámetro de proceso se movió a un nuevo\n"
+            "régimen operativo en algún momento del período. Un CV% sobre todo el período puede\n"
+            "esconder esto (mezcla regímenes distintos en un solo número). Usar cuando sospeches\n"
+            "que 'la condición típica de operación' cambió durante el período de datos disponible."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "datos": {
+                    "type": "array",
+                    "description": "Puntos [{'fecha': 'YYYY-MM-DD', 'valor': número}, ...], mínimo 10.",
+                    "items": {
+                        "type": "object",
+                        "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}},
+                        "required": ["fecha", "valor"],
+                    },
+                },
+                "periodo": {"type": "string", "description": "Código de agrupación: 'M' mensual, 'W' semanal, 'Q' trimestral (default 'M').", "default": "M"},
+            },
+            "required": ["datos"],
+        },
+    },
+    {
+        "name": "correlacion_con_desfase",
+        "description": (
+            "Correlación real con desfase temporal entre dos series (ej. una entrada de planta\n"
+            "vs. un parámetro de salida varias semanas después, por tiempo de retención). SIEMPRE\n"
+            "incluye un chequeo de robustez (series diferenciadas) — si la correlación no lo\n"
+            "pasa, vuelve marcada 'robusta: false' con una advertencia: puede ser una coincidencia\n"
+            "de tendencias compartidas, no una relación real. Nunca reportes una correlación como\n"
+            "hallazgo real (ej. para justificar un balance de masa) sin mirar ese campo."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "serie_x": {
+                    "type": "array", "description": "Variable candidata a 'causa' (ej. carga de entrada) — [{'fecha', 'valor'}, ...].",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "serie_y": {
+                    "type": "array", "description": "Variable de salida — [{'fecha', 'valor'}, ...], mínimo 10.",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "ventana_dias": {"type": "integer", "description": "Ancho del promedio móvil de X, en días (default 7).", "default": 7},
+                "lag_max_dias": {"type": "integer", "description": "Desfase máximo a probar, en días (default 90).", "default": 90},
+            },
+            "required": ["serie_x", "serie_y"],
+        },
+    },
+    {
+        "name": "comparar_fuentes_de_datos",
+        "description": (
+            "Compara dos series que deberían medir lo mismo (ej. dos laboratorios, dos sensores,\n"
+            "dos métodos) antes de combinarlas en un solo análisis — detecta sesgo sistemático\n"
+            "(razón constante entre ambas) en vez de asumir que son intercambiables. Usar antes\n"
+            "de juntar datos de fuentes distintas del mismo parámetro en una sola serie temporal."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "serie_a": {
+                    "type": "array", "description": "[{'fecha', 'valor'}, ...] de la fuente A.",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "serie_b": {
+                    "type": "array", "description": "[{'fecha', 'valor'}, ...] de la fuente B, mínimo 2 fechas en común con A.",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "nombre_a": {"type": "string", "description": "Etiqueta de la fuente A (ej. nombre del laboratorio/sensor)."},
+                "nombre_b": {"type": "string", "description": "Etiqueta de la fuente B."},
+            },
+            "required": ["serie_a", "serie_b"],
         },
     },
     {
@@ -392,6 +506,15 @@ FUENTES DISPONIBLES:
   inglés. Útil para problemas ligados a producción agropecuaria argentina.
 - expand_agrovoc: expande un término contra el tesauro AGROVOC (FAO). Usar antes de
   search_corpus_inta cuando tenés un término en inglés para buscar en el corpus español.
+- analizar_estabilidad_serie / detectar_cambios_de_regimen / correlacion_con_desfase /
+  comparar_fuentes_de_datos: cómputo numérico REAL (no estimado a ojo) sobre series de datos de
+  planta que Sebas aportó — ej. un parámetro de proceso en el tiempo. Si te dan una tabla con
+  fechas y valores y te preguntan si es estable, si cambió de régimen operativo, o si se
+  correlaciona con otra variable (ej. para un balance de masa), extraé los puntos y llamá la
+  tool correspondiente — nunca calcules una media, un CV% o una correlación vos mismo leyendo
+  la tabla, el resultado no es confiable. correlacion_con_desfase siempre incluye un chequeo de
+  robustez (series diferenciadas) — revisá el campo 'robusta' antes de reportar una correlación
+  como hallazgo real.
 - ver_informe_especialista: trae el contenido completo de un informe que vos u otro especialista ya produjo sobre este mismo frente (tu input trae la lista de títulos disponibles, si hay alguno). Usala solo cuando un título de esa lista es relevante para tu evaluación actual — no leas todos los informes de memoria, solo los que importan para tu tarea.
 
 Flujo sugerido: buscar_corpus_cientifico primero (cualquier problema) → expand_agrovoc si hace
@@ -441,7 +564,11 @@ INPUT_CONTRACT = {
         "tarea": "Evaluación de ingeniería pedida en esta corrida",
         "contexto": "Opcional — contexto adicional de otro agente o de quien invoca",
         "conocimiento": "{'frente_id': str} — requerido. Solo modelo casos.yaml (ver Design Gate, decisión A).",
-        "herramientas": ["search_literature", "buscar_corpus_cientifico", "expand_agrovoc", "search_corpus_inta", "submit_evaluacion_tecnica"],
+        "herramientas": [
+            "search_literature", "buscar_corpus_cientifico", "expand_agrovoc", "search_corpus_inta",
+            "analizar_estabilidad_serie", "detectar_cambios_de_regimen",
+            "correlacion_con_desfase", "comparar_fuentes_de_datos", "submit_evaluacion_tecnica",
+        ],
     },
 }
 
@@ -565,6 +692,34 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
         if verbose:
             print(f"  -> buscar_corpus_cientifico: {consulta[:80]}")
         return await _buscar_corpus_cientifico_fn(consulta=consulta, limit=tool_input.get("limit", 100))
+    if nombre == "analizar_estabilidad_serie":
+        if verbose:
+            print(f"  -> analizar_estabilidad_serie: {len(tool_input.get('datos', []))} puntos")
+        return _analizar_estabilidad_fn(
+            datos=tool_input.get("datos", []),
+            umbral_estable=tool_input.get("umbral_estable", 15.0),
+            umbral_variable=tool_input.get("umbral_variable", 30.0),
+        )
+    if nombre == "detectar_cambios_de_regimen":
+        if verbose:
+            print(f"  -> detectar_cambios_de_regimen: {len(tool_input.get('datos', []))} puntos")
+        return _detectar_cambios_de_regimen_fn(
+            datos=tool_input.get("datos", []), periodo=tool_input.get("periodo", "M"),
+        )
+    if nombre == "correlacion_con_desfase":
+        if verbose:
+            print(f"  -> correlacion_con_desfase: x={len(tool_input.get('serie_x', []))} y={len(tool_input.get('serie_y', []))} puntos")
+        return _correlacion_con_desfase_fn(
+            serie_x=tool_input.get("serie_x", []), serie_y=tool_input.get("serie_y", []),
+            ventana_dias=tool_input.get("ventana_dias", 7), lag_max_dias=tool_input.get("lag_max_dias", 90),
+        )
+    if nombre == "comparar_fuentes_de_datos":
+        if verbose:
+            print(f"  -> comparar_fuentes_de_datos: {tool_input.get('nombre_a', 'A')} vs {tool_input.get('nombre_b', 'B')}")
+        return _comparar_fuentes_fn(
+            serie_a=tool_input.get("serie_a", []), serie_b=tool_input.get("serie_b", []),
+            nombre_a=tool_input.get("nombre_a", "A"), nombre_b=tool_input.get("nombre_b", "B"),
+        )
     if verbose:
         print(f"  -> [tool desconocido: {nombre}]")
     return {"error": f"Tool '{nombre}' no implementado."}

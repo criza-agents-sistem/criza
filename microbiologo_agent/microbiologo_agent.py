@@ -11,7 +11,10 @@ CRIZA, y este agente da una evaluación técnica, no esa evaluación).
 Tools: search_literature (OpenAlex), buscar_corpus_cientifico (CONICET+INTA),
        search_corpus_inta (INTA legacy, exhaustivo), expand_agrovoc,
        search_kegg (rutas metabólicas), search_rhea (reacciones/EC), search_uniprot (enzimas),
-       search_bacdive (fenotipo de cepas), submit_evaluacion_tecnica.
+       search_bacdive (fenotipo de cepas), search_pubmed (literatura biomédica MeSH, nuevo
+       2026-09-14), analizar_estabilidad_serie/detectar_cambios_de_regimen/
+       correlacion_con_desfase/comparar_fuentes_de_datos (cómputo real vía
+       utils/estadistica.py, nuevo 2026-09-14), submit_evaluacion_tecnica.
 Ver docs/DESIGN_GATE.md — decisiones A-F (2026-08-16). BRENDA (cinética de enzimas, requiere
 SOAP) queda deliberadamente afuera — ver Etapa 8 del plan de construcción.
 
@@ -46,6 +49,13 @@ from utils.kegg import search_kegg as _search_kegg_fn
 from utils.rhea import search_rhea as _search_rhea_fn
 from utils.uniprot import search_uniprot as _search_uniprot_fn
 from utils.bacdive import search_bacdive as _search_bacdive_fn
+from utils.pubmed import search_pubmed as _search_pubmed_fn
+from utils.estadistica import (
+    analizar_estabilidad as _analizar_estabilidad_fn,
+    detectar_cambios_de_regimen as _detectar_cambios_de_regimen_fn,
+    correlacion_con_desfase as _correlacion_con_desfase_fn,
+    comparar_fuentes as _comparar_fuentes_fn,
+)
 from utils.casos import (
     obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente,
     obtener_documentos_de_frente, obtener_documento_por_id,
@@ -270,6 +280,128 @@ TOOLS = [
         },
     },
     {
+        "name": "search_pubmed",
+        "description": (
+            "Busca en PubMed (NCBI) — literatura biomédica con vocabulario MeSH, más preciso que\n"
+            "OpenAlex para temas de microbiología/bioquímica/salud (ej. patógenos, toxicidad,\n"
+            "mecanismos de degradación). Complementa search_literature, no lo reemplaza.\n"
+            "Query en inglés."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Búsqueda en inglés, sintaxis PubMed o texto libre."},
+                "max_results": {"type": "integer", "description": "Cantidad de resultados (default 20).", "default": 20},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "analizar_estabilidad_serie",
+        "description": (
+            "Cálculo real (no estimado a ojo) de estabilidad de una serie temporal de datos que\n"
+            "Sebas aportó (ej. composición de un efluente en el tiempo) — media, desvío, CV%,\n"
+            "tendencia real (Kendall tau) y clasificación ESTABLE/MODERADAMENTE_VARIABLE/\n"
+            "NO_ESTABLE. Usar cuando necesites saber si el proceso biológico bajo evaluación es\n"
+            "consistente en el tiempo. Nunca calcules esto vos mismo leyendo la tabla."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "datos": {
+                    "type": "array",
+                    "description": "Puntos [{'fecha': 'YYYY-MM-DD', 'valor': número}, ...], mínimo 5.",
+                    "items": {
+                        "type": "object",
+                        "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}},
+                        "required": ["fecha", "valor"],
+                    },
+                },
+                "umbral_estable": {"type": "number", "description": "CV% por debajo del cual se clasifica ESTABLE (default 15).", "default": 15},
+                "umbral_variable": {"type": "number", "description": "CV% por debajo del cual se clasifica MODERADAMENTE_VARIABLE (default 30).", "default": 30},
+            },
+            "required": ["datos"],
+        },
+    },
+    {
+        "name": "detectar_cambios_de_regimen",
+        "description": (
+            "Detecta si una serie temporal cambió de nivel de forma real y sostenida (no ruido de\n"
+            "un solo punto) — ej. si el proceso biológico se movió a un nuevo régimen en algún\n"
+            "momento del período. Un CV% sobre todo el período puede esconder esto (mezcla\n"
+            "regímenes distintos en un solo número). Usar cuando sospeches que 'lo típico' cambió\n"
+            "durante el período de datos disponible."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "datos": {
+                    "type": "array",
+                    "description": "Puntos [{'fecha': 'YYYY-MM-DD', 'valor': número}, ...], mínimo 10.",
+                    "items": {
+                        "type": "object",
+                        "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}},
+                        "required": ["fecha", "valor"],
+                    },
+                },
+                "periodo": {"type": "string", "description": "Código de agrupación: 'M' mensual, 'W' semanal, 'Q' trimestral (default 'M').", "default": "M"},
+            },
+            "required": ["datos"],
+        },
+    },
+    {
+        "name": "correlacion_con_desfase",
+        "description": (
+            "Correlación real con desfase temporal entre dos series (ej. composición del\n"
+            "material de entrada vs. un parámetro del proceso biológico varias semanas después).\n"
+            "SIEMPRE incluye un chequeo de robustez (series diferenciadas) — si la correlación no\n"
+            "lo pasa, vuelve marcada 'robusta: false' con una advertencia: puede ser una\n"
+            "coincidencia de tendencias compartidas, no una relación real. Nunca reportes una\n"
+            "correlación como hallazgo real sin mirar ese campo."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "serie_x": {
+                    "type": "array", "description": "Variable candidata a 'causa' — [{'fecha', 'valor'}, ...].",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "serie_y": {
+                    "type": "array", "description": "Variable de salida — [{'fecha', 'valor'}, ...], mínimo 10.",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "ventana_dias": {"type": "integer", "description": "Ancho del promedio móvil de X, en días (default 7).", "default": 7},
+                "lag_max_dias": {"type": "integer", "description": "Desfase máximo a probar, en días (default 90).", "default": 90},
+            },
+            "required": ["serie_x", "serie_y"],
+        },
+    },
+    {
+        "name": "comparar_fuentes_de_datos",
+        "description": (
+            "Compara dos series que deberían medir lo mismo (ej. dos laboratorios, dos métodos)\n"
+            "antes de combinarlas en un solo análisis — detecta sesgo sistemático (razón\n"
+            "constante entre ambas) en vez de asumir que son intercambiables. Usar antes de\n"
+            "juntar datos de fuentes distintas del mismo parámetro en una sola serie temporal."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "serie_a": {
+                    "type": "array", "description": "[{'fecha', 'valor'}, ...] de la fuente A.",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "serie_b": {
+                    "type": "array", "description": "[{'fecha', 'valor'}, ...] de la fuente B, mínimo 2 fechas en común con A.",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "nombre_a": {"type": "string", "description": "Etiqueta de la fuente A (ej. nombre del laboratorio)."},
+                "nombre_b": {"type": "string", "description": "Etiqueta de la fuente B."},
+            },
+            "required": ["serie_a", "serie_b"],
+        },
+    },
+    {
         "name": "ver_informe_especialista",
         "description": (
             "Trae el contenido completo de un informe puntual — ya sea uno que vos u OTRO "
@@ -458,6 +590,17 @@ FUENTES DISPONIBLES:
 - search_bacdive: fenotipo de cepas bacterianas — metabolismo, tolerancia a oxígeno, temperatura,
   hábitat. Usar para confirmar si una bacteria candidata tiene el fenotipo que el problema
   requiere (ej. anaerobia estricta, termófila, halotolerante).
+- search_pubmed: literatura biomédica (NCBI, vocabulario MeSH) — más preciso que
+  search_literature para temas de patógenos, toxicidad o mecanismos de degradación con
+  relevancia en salud. Complementa search_literature, no lo reemplaza.
+- analizar_estabilidad_serie / detectar_cambios_de_regimen / correlacion_con_desfase /
+  comparar_fuentes_de_datos: cómputo numérico REAL (no estimado a ojo) sobre series de datos
+  que Sebas aportó — ej. composición de un efluente en el tiempo. Si te dan una tabla con
+  fechas y valores y te preguntan si es estable, si cambió de nivel, o si se correlaciona con
+  otra variable, extraé los puntos y llamá la tool correspondiente — nunca calcules una media,
+  un CV% o una correlación vos mismo leyendo la tabla, el resultado no es confiable.
+  correlacion_con_desfase siempre incluye un chequeo de robustez (series diferenciadas) —
+  revisá el campo 'robusta' antes de reportar una correlación como hallazgo real.
 - ver_informe_especialista: trae el contenido completo de un informe que vos u otro especialista
   ya produjo sobre este mismo frente (tu input trae la lista de títulos disponibles, si hay
   alguno). Usala solo cuando un título de esa lista es relevante para tu evaluación actual — no
@@ -467,8 +610,9 @@ Flujo sugerido: buscar_corpus_cientifico primero (cualquier problema) → expand
 falta traducir el término → search_corpus_inta con términos ES → search_literature con términos
 EN para contexto global. Si el problema requiere precisión bioquímica (qué microorganismo/enzima
 exacta, qué ruta): search_kegg (ruta) → search_rhea (reacción/EC) → search_uniprot (proteína) →
-search_bacdive (fenotipo de la cepa candidata) — en ese orden, solo hasta donde la evidencia lo
-justifique, no es obligatorio agotar los cuatro.
+search_bacdive (fenotipo de la cepa candidata) → search_pubmed (literatura biomédica de
+precisión, si el problema tiene relevancia en salud/toxicidad) — en ese orden, solo hasta donde
+la evidencia lo justifique, no es obligatorio agotar los cinco.
 
 TU PROCESO:
 1. Identificá la pregunta técnica central del problema
@@ -516,8 +660,9 @@ INPUT_CONTRACT = {
         ),
         "herramientas": [
             "search_literature", "buscar_corpus_cientifico", "expand_agrovoc", "search_corpus_inta",
-            "search_kegg", "search_rhea", "search_uniprot", "search_bacdive",
-            "submit_evaluacion_tecnica",
+            "search_kegg", "search_rhea", "search_uniprot", "search_bacdive", "search_pubmed",
+            "analizar_estabilidad_serie", "detectar_cambios_de_regimen",
+            "correlacion_con_desfase", "comparar_fuentes_de_datos", "submit_evaluacion_tecnica",
         ],
     },
 }
@@ -725,6 +870,42 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool) -> dict:
             return _search_bacdive_fn(organism=organism, max_results=tool_input.get("max_results", 5))
         except Exception as exc:
             return {"error": str(exc), "organism": organism}
+    if nombre == "search_pubmed":
+        query = tool_input.get("query", "")
+        if verbose:
+            print(f"  -> search_pubmed: {query[:80]}")
+        try:
+            return _search_pubmed_fn(query=query, max_results=tool_input.get("max_results", 20))
+        except Exception as exc:
+            return {"error": str(exc), "query": query}
+    if nombre == "analizar_estabilidad_serie":
+        if verbose:
+            print(f"  -> analizar_estabilidad_serie: {len(tool_input.get('datos', []))} puntos")
+        return _analizar_estabilidad_fn(
+            datos=tool_input.get("datos", []),
+            umbral_estable=tool_input.get("umbral_estable", 15.0),
+            umbral_variable=tool_input.get("umbral_variable", 30.0),
+        )
+    if nombre == "detectar_cambios_de_regimen":
+        if verbose:
+            print(f"  -> detectar_cambios_de_regimen: {len(tool_input.get('datos', []))} puntos")
+        return _detectar_cambios_de_regimen_fn(
+            datos=tool_input.get("datos", []), periodo=tool_input.get("periodo", "M"),
+        )
+    if nombre == "correlacion_con_desfase":
+        if verbose:
+            print(f"  -> correlacion_con_desfase: x={len(tool_input.get('serie_x', []))} y={len(tool_input.get('serie_y', []))} puntos")
+        return _correlacion_con_desfase_fn(
+            serie_x=tool_input.get("serie_x", []), serie_y=tool_input.get("serie_y", []),
+            ventana_dias=tool_input.get("ventana_dias", 7), lag_max_dias=tool_input.get("lag_max_dias", 90),
+        )
+    if nombre == "comparar_fuentes_de_datos":
+        if verbose:
+            print(f"  -> comparar_fuentes_de_datos: {tool_input.get('nombre_a', 'A')} vs {tool_input.get('nombre_b', 'B')}")
+        return _comparar_fuentes_fn(
+            serie_a=tool_input.get("serie_a", []), serie_b=tool_input.get("serie_b", []),
+            nombre_a=tool_input.get("nombre_a", "A"), nombre_b=tool_input.get("nombre_b", "B"),
+        )
     if verbose:
         print(f"  -> [tool desconocido: {nombre}]")
     return {"error": f"Tool '{nombre}' no implementado."}

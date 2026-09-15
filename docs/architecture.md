@@ -78,6 +78,28 @@ Para arquitectura de plataforma → `KRIZA_Foundation_Document.md` en el repo `E
 
 ---
 
+### [2026-09-14] search_pubmed sumado a Biotecnólogo y Microbiólogo
+
+**Decisión:** `utils/pubmed.py::search_pubmed` (nuevo) — wrapper de NCBI E-utilities, sin API key requerida para volumen bajo. Tool nueva en `biotecnologo_agent.py` y `microbiologo_agent.py`, sin mínimo obligatorio en el gate de exhaustividad — tratada como consulta de precisión de dominio (mismo criterio que `search_kegg`/`search_rhea`/`search_pubchem`/`search_chebi`), no como otro pilar de búsqueda exhaustiva obligatoria.
+
+**Por qué:** Investigando qué sumó Anthropic para agentes científicos (Claude Science / Claude for Life Sciences), PubMed probó tener la mejor relación esfuerzo/valor — verificado real: "digestate valorization value-added products" trajo 94 resultados reales con vocabulario MeSH que OpenAlex no cubre igual. ChEMBL (otro conector nuevo evaluado) se descartó con la misma metodología: 0 resultados reales para "struvite" y "phytase" — no encaja con el dominio de bioprocesos/enzimas de CRIZA.
+
+**Detalle completo:** `decisiones_sistema` (KM), componente `biotecnologo`, id `d0514504-9fd9-46ad-9b4f-70658a550bd6`.
+
+---
+
+### [2026-09-14] utils/estadistica.py — cómputo numérico real para Biotecnólogo, Microbiólogo e Ingeniero Ambiental
+
+**Decisión:** 4 tools nuevas sobre series temporales `[{"fecha", "valor"}]`: `analizar_estabilidad_serie`, `detectar_cambios_de_regimen`, `correlacion_con_desfase`, `comparar_fuentes_de_datos` — implementadas en `utils/estadistica.py`, sumadas a `biotecnologo_agent.py` (16 tools), `microbiologo_agent.py` (15) e `ingeniero_ambiental_agent.py` (10). `agronomo_agent.py` deliberadamente excluido — sin necesidad real visible todavía. `pandas`/`numpy`/`scipy` sumados a `requirements.txt`.
+
+**Por qué:** una sesión completa de análisis real del efluente T401 de Helios demostró en la práctica que ningún agente podía hacer cómputo numérico — solo "leían" una tabla como texto y estimaban a ojo. La lección más importante quedó incorporada como obligatoria: `correlacion_con_desfase` siempre corre el chequeo de robustez por series diferenciadas — un hallazgo propio de esa sesión (r=-0.71 entre ingreso de sustrato y conductividad de un efluente) resultó espurio al aplicarlo, confirmado por un informe independiente (Claude Science) que hizo ese chequeo y encontró r=0.09, no significativo.
+
+**Verificado real:** dispatch real (sin mocks) en los 3 agentes da resultados consistentes; una corrida real de chat (API real, no mock) hizo que el Biotecnólogo llamara solo `analizar_estabilidad_serie` y `detectar_cambios_de_regimen` ante una pregunta en lenguaje natural, sin que se le indicara qué tool usar.
+
+**Detalle completo:** `decisiones_sistema` (KM), componente `biotecnologo`, id `f877cecf-d35b-4002-b0d0-798c1ef0573b`.
+
+---
+
 ### [2026-05] OpenAlex como fuente primaria de literatura
 
 **Migración:** PubMed → Semantic Scholar (v1.1) → OpenAlex (v1.4.1).

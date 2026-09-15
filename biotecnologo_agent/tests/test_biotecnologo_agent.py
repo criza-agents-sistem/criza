@@ -85,7 +85,7 @@ EVALUACION_MOCK = {
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(bt.TOOLS) == 11, f"Esperado 11 tools, tiene {len(bt.TOOLS)}"
+    assert len(bt.TOOLS) == 16, f"Esperado 16 tools, tiene {len(bt.TOOLS)}"
 
 
 @pytest.mark.unit
@@ -94,6 +94,8 @@ def test_tools_names():
     assert nombres == {
         "search_literature", "buscar_corpus_cientifico", "search_corpus_inta", "expand_agrovoc",
         "buscar_web_tecnico", "search_kegg", "search_rhea", "search_pubchem", "search_chebi",
+        "search_pubmed", "analizar_estabilidad_serie", "detectar_cambios_de_regimen",
+        "correlacion_con_desfase", "comparar_fuentes_de_datos",
         "ver_informe_especialista", "submit_evaluacion_tecnica",
     }
 
@@ -221,6 +223,67 @@ async def test_despachar_tool_search_chebi():
         result = await bt._despachar_tool("search_chebi", {"query": "glucose", "max_results": 3}, verbose=False)
     mock_fn.assert_called_once_with(query="glucose", max_results=3)
     assert result["total_encontrados"] == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_search_pubmed():
+    with patch("biotecnologo_agent._search_pubmed_fn", return_value={"total_found": 94, "results": []}) as mock_fn:
+        result = await bt._despachar_tool("search_pubmed", {"query": "digestate valorization"}, verbose=False)
+    mock_fn.assert_called_once_with(query="digestate valorization", max_results=20)
+    assert result["total_found"] == 94
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_search_pubmed_max_results_custom():
+    with patch("biotecnologo_agent._search_pubmed_fn", return_value={"total_found": 0, "results": []}) as mock_fn:
+        await bt._despachar_tool("search_pubmed", {"query": "x", "max_results": 5}, verbose=False)
+    mock_fn.assert_called_once_with(query="x", max_results=5)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_analizar_estabilidad_serie():
+    datos = [{"fecha": "2023-01-01", "valor": 1.0}]
+    with patch("biotecnologo_agent._analizar_estabilidad_fn", return_value={"clasificacion": "ESTABLE"}) as mock_fn:
+        result = await bt._despachar_tool("analizar_estabilidad_serie", {"datos": datos}, verbose=False)
+    mock_fn.assert_called_once_with(datos=datos, umbral_estable=15.0, umbral_variable=30.0)
+    assert result["clasificacion"] == "ESTABLE"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_detectar_cambios_de_regimen():
+    datos = [{"fecha": "2023-01-01", "valor": 1.0}]
+    with patch("biotecnologo_agent._detectar_cambios_de_regimen_fn", return_value={"quiebres_detectados": []}) as mock_fn:
+        result = await bt._despachar_tool("detectar_cambios_de_regimen", {"datos": datos, "periodo": "W"}, verbose=False)
+    mock_fn.assert_called_once_with(datos=datos, periodo="W")
+    assert result["quiebres_detectados"] == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_correlacion_con_desfase():
+    sx = [{"fecha": "2023-01-01", "valor": 1.0}]
+    sy = [{"fecha": "2023-01-01", "valor": 2.0}]
+    with patch("biotecnologo_agent._correlacion_con_desfase_fn", return_value={"mejor_desfase": {}}) as mock_fn:
+        result = await bt._despachar_tool("correlacion_con_desfase", {"serie_x": sx, "serie_y": sy}, verbose=False)
+    mock_fn.assert_called_once_with(serie_x=sx, serie_y=sy, ventana_dias=7, lag_max_dias=90)
+    assert "mejor_desfase" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_comparar_fuentes_de_datos():
+    sa = [{"fecha": "2023-01-01", "valor": 1.0}]
+    sb = [{"fecha": "2023-01-01", "valor": 1.1}]
+    with patch("biotecnologo_agent._comparar_fuentes_fn", return_value={"comparables": True}) as mock_fn:
+        result = await bt._despachar_tool(
+            "comparar_fuentes_de_datos", {"serie_a": sa, "serie_b": sb, "nombre_a": "X", "nombre_b": "Y"}, verbose=False
+        )
+    mock_fn.assert_called_once_with(serie_a=sa, serie_b=sb, nombre_a="X", nombre_b="Y")
+    assert result["comparables"] is True
 
 
 @pytest.mark.unit

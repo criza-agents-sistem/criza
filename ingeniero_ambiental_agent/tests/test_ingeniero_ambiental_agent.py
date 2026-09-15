@@ -84,7 +84,7 @@ EVALUACION_MOCK = {
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(ia.TOOLS) == 6, f"Esperado 6 tools, tiene {len(ia.TOOLS)}"
+    assert len(ia.TOOLS) == 10, f"Esperado 10 tools, tiene {len(ia.TOOLS)}"
 
 
 @pytest.mark.unit
@@ -92,7 +92,9 @@ def test_tools_names():
     nombres = {t["name"] for t in ia.TOOLS}
     assert nombres == {
         "search_literature", "buscar_corpus_cientifico", "search_corpus_inta",
-        "expand_agrovoc", "ver_informe_especialista", "submit_evaluacion_tecnica",
+        "expand_agrovoc", "analizar_estabilidad_serie", "detectar_cambios_de_regimen",
+        "correlacion_con_desfase", "comparar_fuentes_de_datos",
+        "ver_informe_especialista", "submit_evaluacion_tecnica",
     }
 
 
@@ -192,6 +194,50 @@ async def test_despachar_tool_ver_informe_especialista():
         result = await ia._despachar_tool("ver_informe_especialista", {"documento_id": "doc-1"}, verbose=False)
     mock_fn.assert_awaited_once_with("doc-1", tenant=ia._TENANT)
     assert result == {"titulo": "t", "contenido": "c"}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_analizar_estabilidad_serie():
+    datos = [{"fecha": "2023-01-01", "valor": 1.0}]
+    with patch("ingeniero_ambiental_agent._analizar_estabilidad_fn", return_value={"clasificacion": "ESTABLE"}) as mock_fn:
+        result = await ia._despachar_tool("analizar_estabilidad_serie", {"datos": datos}, verbose=False)
+    mock_fn.assert_called_once_with(datos=datos, umbral_estable=15.0, umbral_variable=30.0)
+    assert result["clasificacion"] == "ESTABLE"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_detectar_cambios_de_regimen():
+    datos = [{"fecha": "2023-01-01", "valor": 1.0}]
+    with patch("ingeniero_ambiental_agent._detectar_cambios_de_regimen_fn", return_value={"quiebres_detectados": []}) as mock_fn:
+        result = await ia._despachar_tool("detectar_cambios_de_regimen", {"datos": datos, "periodo": "W"}, verbose=False)
+    mock_fn.assert_called_once_with(datos=datos, periodo="W")
+    assert result["quiebres_detectados"] == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_correlacion_con_desfase():
+    sx = [{"fecha": "2023-01-01", "valor": 1.0}]
+    sy = [{"fecha": "2023-01-01", "valor": 2.0}]
+    with patch("ingeniero_ambiental_agent._correlacion_con_desfase_fn", return_value={"mejor_desfase": {}}) as mock_fn:
+        result = await ia._despachar_tool("correlacion_con_desfase", {"serie_x": sx, "serie_y": sy}, verbose=False)
+    mock_fn.assert_called_once_with(serie_x=sx, serie_y=sy, ventana_dias=7, lag_max_dias=90)
+    assert "mejor_desfase" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_comparar_fuentes_de_datos():
+    sa = [{"fecha": "2023-01-01", "valor": 1.0}]
+    sb = [{"fecha": "2023-01-01", "valor": 1.1}]
+    with patch("ingeniero_ambiental_agent._comparar_fuentes_fn", return_value={"comparables": True}) as mock_fn:
+        result = await ia._despachar_tool(
+            "comparar_fuentes_de_datos", {"serie_a": sa, "serie_b": sb, "nombre_a": "X", "nombre_b": "Y"}, verbose=False
+        )
+    mock_fn.assert_called_once_with(serie_a=sa, serie_b=sb, nombre_a="X", nombre_b="Y")
+    assert result["comparables"] is True
 
 
 # ── Unit: run_agent_desde_frente (mock) ─────────────────────────────────────────

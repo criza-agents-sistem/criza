@@ -33,10 +33,10 @@ de qué es CRIZA de acá en más — ver "Estado operativo" abajo y `docs/PROPUE
 | Investigación Amplia | `investigacion_amplia/` | 39/39 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
 | Armador | `armador/` | 31/31 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | — |
 | Especialista Proteínas | `scientific_agent/` | sin tests unit (todos integration/deselected) | 🟡 registrado, inactivo, sin DESIGN_GATE.md | — |
-| Especialista Microbiólogo | `microbiologo_agent/` | 55/55 ✅ (+2 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 4 (parte 2) del plan — Microbiólogo conectado al modelo de casos.yaml |
-| Especialista Ingeniero Ambiental | `ingeniero_ambiental_agent/` | 26/26 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 7 del plan — segundo especialista, Ingeniero Ambiental |
+| Especialista Microbiólogo | `microbiologo_agent/` | 60/60 ✅ (+2 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 4 (parte 2) del plan — Microbiólogo conectado al modelo de casos.yaml |
+| Especialista Ingeniero Ambiental | `ingeniero_ambiental_agent/` | 30/30 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 7 del plan — segundo especialista, Ingeniero Ambiental |
 | Especialista Ingeniero Agrónomo | `agronomo_agent/` | 26/26 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Tercer especialista — Ingeniero Agrónomo, pedido explícito de Sebas con señal real |
-| Especialista Biotecnólogo | `biotecnologo_agent/` | 51/51 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-14] Etapa 22 (2026-09-14) -- busqueda genuinamente exhaustiva, con gate real en codigo |
+| Especialista Biotecnólogo | `biotecnologo_agent/` | 57/57 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-14] Etapa 22 (cont.) — utils/estadistica.py: cómputo numérico real para Biotecnólogo, Microbiólogo e Ingeniero Ambiental |
 | Agente Financiero | `financiero_agent/` | 30/30 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-07] Etapa 21 (cont.) -- COMTRADE sumado + 4o bug real de serializacion |
 <!-- GENERADO:AGENTES_ACTIVOS:FIN -->
 

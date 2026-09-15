@@ -49,6 +49,11 @@ python-multipart==0.0.32    # requerido por FastAPI para parsear UploadFile — 
 pypdf==6.9.2                 # extracción de texto de PDF adjuntos — antes solo transitiva (vía
                               # knowledge_module.document_store), ahora usada directo por api/main.py
 python-docx==1.2.0           # extracción de texto de .docx adjuntos — POST /archivos/extraer
+pandas==2.3.3                 # utils/estadistica.py — estabilidad/correlación/regímenes en series
+                              # que un especialista extrae de datos aportados (Etapa 22 cont., 2026-09-14)
+numpy==2.3.4                  # utils/estadistica.py, transitiva de pandas/scipy pero fijada explícita
+scipy==1.18.0                 # utils/estadistica.py — tests estadísticos reales (Kendall, Mann-Whitney,
+                              # Pearson), no aproximaciones del modelo
 
 # mcp — server.py (KM legacy MCP server, Capa 2) lo importa pero el paquete NO está instalado
 # hoy en este entorno — server.py está roto tal cual (hallazgo del 2026-08-15, sin resolver).
