@@ -79,7 +79,7 @@ EVALUACION_MOCK = {
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(ma.TOOLS) == 15, f"Esperado 15 tools, tiene {len(ma.TOOLS)}"
+    assert len(ma.TOOLS) == 16, f"Esperado 16 tools, tiene {len(ma.TOOLS)}"
 
 
 @pytest.mark.unit
@@ -89,7 +89,7 @@ def test_tools_names():
         "search_literature", "buscar_corpus_cientifico", "search_corpus_inta", "expand_agrovoc",
         "search_kegg", "search_rhea", "search_uniprot", "search_bacdive", "search_pubmed",
         "analizar_estabilidad_serie", "detectar_cambios_de_regimen",
-        "correlacion_con_desfase", "comparar_fuentes_de_datos",
+        "correlacion_con_desfase", "comparar_fuentes_de_datos", "leer_serie_de_documento_aportado",
         "ver_informe_especialista",
         "submit_evaluacion_tecnica",
     }
@@ -700,6 +700,38 @@ async def test_despachar_tool_comparar_fuentes_de_datos():
         )
     mock_fn.assert_called_once_with(serie_a=sa, serie_b=sb, nombre_a="X", nombre_b="Y")
     assert result["comparables"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_leer_serie_de_documento_aportado():
+    with (
+        patch("microbiologo_agent.obtener_archivo_original_de_documento_aportado", new=AsyncMock(return_value={"archivo_original_b64": "QUJD", "archivo_nombre": "d.xlsx"})) as mock_get,
+        patch("microbiologo_agent._leer_serie_de_excel_fn", return_value={"serie": [], "n": 0}) as mock_leer,
+    ):
+        result = await ma._despachar_tool(
+            "leer_serie_de_documento_aportado",
+            {"documento_id": "doc-1", "hoja": "H1", "columna_fecha": "f", "columna_valor": "v"},
+            verbose=False,
+        )
+    mock_get.assert_awaited_once_with("doc-1", tenant=ma._TENANT)
+    mock_leer.assert_called_once_with(
+        archivo_b64="QUJD", hoja="H1", columna_fecha="f", columna_valor="v",
+        header_fila=0, filtro_columna=None, filtro_valor=None,
+    )
+    assert result["n"] == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_leer_serie_de_documento_aportado_sin_archivo():
+    with patch("microbiologo_agent.obtener_archivo_original_de_documento_aportado", new=AsyncMock(return_value={"error": "no tiene archivo"})):
+        result = await ma._despachar_tool(
+            "leer_serie_de_documento_aportado",
+            {"documento_id": "doc-1", "hoja": "H1", "columna_fecha": "f", "columna_valor": "v"},
+            verbose=False,
+        )
+    assert "error" in result
 
 
 @pytest.mark.unit

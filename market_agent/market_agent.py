@@ -22,8 +22,11 @@ ya produjeron sobre este frente, y para cada producto candidato razona su densid
 ver Decisión M del Design Gate.
 
 Tools: buscar_corpus_cientifico, search_series, get_series_values, search_official_stats,
-       web_search (nativo Anthropic), fetch_page_text, draft_outreach_email,
-       ver_informe_especialista, submit_analysis.
+       web_search (nativo Anthropic), fetch_page_text,
+       analizar_estabilidad_serie/detectar_cambios_de_regimen/correlacion_con_desfase/
+       comparar_fuentes_de_datos/leer_serie_de_documento_aportado (cómputo real vía
+       utils/estadistica.py y utils/archivos.py, nuevo 2026-09-15),
+       draft_outreach_email, ver_informe_especialista, submit_analysis.
 """
 
 import asyncio
@@ -62,7 +65,15 @@ from market_agent.tools import (
 from utils.casos import (
     obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente,
     obtener_documentos_de_frente, obtener_documento_por_id,
+    obtener_archivo_original_de_documento_aportado,
 )
+from utils.estadistica import (
+    analizar_estabilidad as _analizar_estabilidad_fn,
+    detectar_cambios_de_regimen as _detectar_cambios_de_regimen_fn,
+    correlacion_con_desfase as _correlacion_con_desfase_fn,
+    comparar_fuentes as _comparar_fuentes_fn,
+)
+from utils.archivos import leer_serie_de_excel as _leer_serie_de_excel_fn
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
 from utils.token_tracker import TokenTracker
@@ -274,6 +285,129 @@ TOOLS = [
                 "language": {"type": "string", "description": "'es' (default) o 'en'", "default": "es"},
             },
             "required": ["recipient_company", "recipient_role", "product_or_ingredient", "context"],
+        },
+    },
+    {
+        "name": "analizar_estabilidad_serie",
+        "description": (
+            "Cálculo real (no estimado a ojo) de estabilidad de una serie temporal — media,\n"
+            "desvío, CV%, tendencia real (Kendall tau) y clasificación ESTABLE/\n"
+            "MODERADAMENTE_VARIABLE/NO_ESTABLE. Usar para evaluar si un indicador de mercado/\n"
+            "demanda/precio es consistente en el tiempo. Nunca calcules esto vos mismo leyendo\n"
+            "la tabla."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "datos": {
+                    "type": "array",
+                    "description": "Puntos [{'fecha': 'YYYY-MM-DD', 'valor': número}, ...], mínimo 5.",
+                    "items": {
+                        "type": "object",
+                        "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}},
+                        "required": ["fecha", "valor"],
+                    },
+                },
+                "umbral_estable": {"type": "number", "description": "CV% por debajo del cual se clasifica ESTABLE (default 15).", "default": 15},
+                "umbral_variable": {"type": "number", "description": "CV% por debajo del cual se clasifica MODERADAMENTE_VARIABLE (default 30).", "default": 30},
+            },
+            "required": ["datos"],
+        },
+    },
+    {
+        "name": "detectar_cambios_de_regimen",
+        "description": (
+            "Detecta si una serie de mercado cambió de nivel de forma real y sostenida (no\n"
+            "ruido de un solo punto) — ej. si la demanda/precio de un producto se movió a un\n"
+            "nuevo régimen en algún momento del período disponible."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "datos": {
+                    "type": "array",
+                    "description": "Puntos [{'fecha': 'YYYY-MM-DD', 'valor': número}, ...], mínimo 10.",
+                    "items": {
+                        "type": "object",
+                        "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}},
+                        "required": ["fecha", "valor"],
+                    },
+                },
+                "periodo": {"type": "string", "description": "Código de agrupación: 'M' mensual, 'W' semanal, 'Q' trimestral (default 'M').", "default": "M"},
+            },
+            "required": ["datos"],
+        },
+    },
+    {
+        "name": "correlacion_con_desfase",
+        "description": (
+            "Correlación real con desfase temporal entre dos series (ej. un precio insumo vs.\n"
+            "demanda varias semanas después). SIEMPRE incluye un chequeo de robustez (series\n"
+            "diferenciadas) — si la correlación no lo pasa, vuelve marcada 'robusta: false':\n"
+            "puede ser una coincidencia de tendencias compartidas, no una relación real."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "serie_x": {
+                    "type": "array", "description": "Variable candidata a 'causa' — [{'fecha', 'valor'}, ...].",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "serie_y": {
+                    "type": "array", "description": "Variable de salida — [{'fecha', 'valor'}, ...], mínimo 10.",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "ventana_dias": {"type": "integer", "description": "Ancho del promedio móvil de X, en días (default 7).", "default": 7},
+                "lag_max_dias": {"type": "integer", "description": "Desfase máximo a probar, en días (default 90).", "default": 90},
+            },
+            "required": ["serie_x", "serie_y"],
+        },
+    },
+    {
+        "name": "comparar_fuentes_de_datos",
+        "description": (
+            "Compara dos series que deberían medir lo mismo (ej. dos fuentes del mismo precio/\n"
+            "indicador de mercado) antes de combinarlas — detecta sesgo sistemático en vez de\n"
+            "asumir que son intercambiables."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "serie_a": {
+                    "type": "array", "description": "[{'fecha', 'valor'}, ...] de la fuente A.",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "serie_b": {
+                    "type": "array", "description": "[{'fecha', 'valor'}, ...] de la fuente B, mínimo 2 fechas en común con A.",
+                    "items": {"type": "object", "properties": {"fecha": {"type": "string"}, "valor": {"type": "number"}}, "required": ["fecha", "valor"]},
+                },
+                "nombre_a": {"type": "string", "description": "Etiqueta de la fuente A."},
+                "nombre_b": {"type": "string", "description": "Etiqueta de la fuente B."},
+            },
+            "required": ["serie_a", "serie_b"],
+        },
+    },
+    {
+        "name": "leer_serie_de_documento_aportado",
+        "description": (
+            "Lee datos reales de un Excel que Sebas aportó al caso (documento_aportado) — trae\n"
+            "una serie [{'fecha','valor'}] lista para pasar a analizar_estabilidad_serie/\n"
+            "correlacion_con_desfase/etc. Usá el documento_id de la lista de documentos\n"
+            "aportados de tu input. Requiere el nombre EXACTO de hoja y columnas — no adivina la\n"
+            "estructura del archivo."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "documento_id": {"type": "string", "description": "id del documento_aportado (de la lista en tu input)."},
+                "hoja": {"type": "string", "description": "Nombre exacto de la hoja del Excel."},
+                "columna_fecha": {"type": "string", "description": "Nombre exacto de la columna de fecha."},
+                "columna_valor": {"type": "string", "description": "Nombre exacto de la columna de valor."},
+                "header_fila": {"type": "integer", "description": "Fila (0-indexed) donde está el header real, si no es la primera (default 0).", "default": 0},
+                "filtro_columna": {"type": "string", "description": "Opcional — columna para filtrar filas."},
+                "filtro_valor": {"type": "string", "description": "Opcional — valor exacto a filtrar en filtro_columna."},
+            },
+            "required": ["documento_id", "hoja", "columna_fecha", "columna_valor"],
         },
     },
     {
@@ -595,6 +729,13 @@ REGLAS:
 - Máximo 2 draft_outreach_email — solo gaps críticos irreducibles.
 - ver_informe_especialista: leé solo los informes relevantes para identificar el producto y su
   densidad de valor — no leas todos los que aparezcan en la lista.
+- analizar_estabilidad_serie / detectar_cambios_de_regimen / correlacion_con_desfase /
+  comparar_fuentes_de_datos: cómputo numérico REAL (no estimado a ojo) sobre series de
+  demanda/precio/indicadores. Nunca calcules esto vos mismo leyendo una tabla.
+  correlacion_con_desfase siempre incluye un chequeo de robustez (series diferenciadas) —
+  revisá el campo 'robusta' antes de reportar una correlación como hallazgo real.
+- leer_serie_de_documento_aportado: trae una serie real [{'fecha','valor'}] directo de un Excel
+  que Sebas aportó — usala antes de pedirle los números a mano.
 - submit_analysis es el último paso — siempre llamarlo.
   Un expediente con gaps declarados es mejor que uno que no cierra.
 - Emails: siempre PENDIENTE_APROBACION. Nunca decir "vamos a enviar"."""
@@ -614,6 +755,8 @@ INPUT_CONTRACT = {
         "herramientas": [
             "buscar_corpus_cientifico", "search_series", "get_series_values",
             "search_official_stats", "web_search", "fetch_page_text",
+            "analizar_estabilidad_serie", "detectar_cambios_de_regimen",
+            "correlacion_con_desfase", "comparar_fuentes_de_datos", "leer_serie_de_documento_aportado",
             "draft_outreach_email", "ver_informe_especialista", "submit_analysis",
         ],
     },
@@ -683,6 +826,35 @@ async def _dispatch(name: str, inputs: dict) -> str:
         )
     elif name == "ver_informe_especialista":
         result = await obtener_documento_por_id(inputs.get("documento_id", ""), tenant=_TENANT)
+    elif name == "analizar_estabilidad_serie":
+        result = _analizar_estabilidad_fn(
+            datos=inputs.get("datos", []),
+            umbral_estable=inputs.get("umbral_estable", 15.0),
+            umbral_variable=inputs.get("umbral_variable", 30.0),
+        )
+    elif name == "detectar_cambios_de_regimen":
+        result = _detectar_cambios_de_regimen_fn(datos=inputs.get("datos", []), periodo=inputs.get("periodo", "M"))
+    elif name == "correlacion_con_desfase":
+        result = _correlacion_con_desfase_fn(
+            serie_x=inputs.get("serie_x", []), serie_y=inputs.get("serie_y", []),
+            ventana_dias=inputs.get("ventana_dias", 7), lag_max_dias=inputs.get("lag_max_dias", 90),
+        )
+    elif name == "comparar_fuentes_de_datos":
+        result = _comparar_fuentes_fn(
+            serie_a=inputs.get("serie_a", []), serie_b=inputs.get("serie_b", []),
+            nombre_a=inputs.get("nombre_a", "A"), nombre_b=inputs.get("nombre_b", "B"),
+        )
+    elif name == "leer_serie_de_documento_aportado":
+        archivo = await obtener_archivo_original_de_documento_aportado(inputs.get("documento_id", ""), tenant=_TENANT)
+        if "error" in archivo:
+            result = archivo
+        else:
+            result = _leer_serie_de_excel_fn(
+                archivo_b64=archivo["archivo_original_b64"], hoja=inputs.get("hoja", ""),
+                columna_fecha=inputs.get("columna_fecha", ""), columna_valor=inputs.get("columna_valor", ""),
+                header_fila=inputs.get("header_fila", 0),
+                filtro_columna=inputs.get("filtro_columna"), filtro_valor=inputs.get("filtro_valor"),
+            )
     else:
         result = {"error": f"Tool desconocida: {name}"}
     return json.dumps(result, ensure_ascii=False, indent=2)

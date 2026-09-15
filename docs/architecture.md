@@ -100,6 +100,20 @@ Para arquitectura de plataforma → `KRIZA_Foundation_Document.md` en el repo `E
 
 ---
 
+### [2026-09-15] Agentes leen Excel real de un caso (no solo texto extraído)
+
+**Decisión:** `utils/archivos.py` (codificar/previsualizar/leer una serie real de un Excel, con hoja/columnas/filtro explícitos — nunca adivina estructura) + `utils/casos.py` extendido (`guardar_documento_aportado_desde_excel`, `obtener_archivo_original_de_documento_aportado` — deliberadamente separada de `obtener_documento_por_id` para no inflar el contexto de `ver_informe_especialista` con base64). Tool `leer_serie_de_documento_aportado` sumada a Biotecnólogo (17 tools), Microbiólogo (16), Ingeniero Ambiental (11), y a Financiero + Mercado (que además sumaron las 4 tools de estadística de ayer, que no tenían). Conductor y Agrónomo quedan afuera — sin necesidad real mostrada.
+
+**Por qué:** Sebas, sobre el monitoreo en curso de T401: "los agentes no se pueden auto-abastecer... necesitan que yo le pida a Claude Science o a vos esos datos, con los riesgos que eso tiene". Una extracción manual cada vez que el dato se actualiza no escala ni es auditable. Alcance acotado con evidencia real, no en abstracto — Sebas confirmó "hay mucho Excel" en Financiero/Mercado, y excluyó explícitamente Conductor/Agrónomo tras discutir el costo real de sumar tools sin necesidad.
+
+**Fuera de alcance deliberado:** el endpoint web de subida (`api/main.py /archivos/extraer`) sigue sin soportar `.xlsx` — hoy solo se puede adjuntar un Excel real vía `guardar_documento_aportado_desde_excel` desde un script/sesión de Claude Code, no desde el chat web.
+
+**Verificado real:** el Excel real de T401 se adjuntó al Frente técnico real de Helios, y el Biotecnólogo lo leyó del KM real sin mocks — n=813 (hoja limpia, coincide exacto con el análisis manual previo) y n=154 (hoja con 4 códigos de digestor mezclados, filtrado a T401, coincide con el conteo real), encadenado con `analizar_estabilidad_serie` real.
+
+**Detalle completo:** `decisiones_sistema` (KM), componente `casos`, id `3a7680dc-d0cf-4c9b-a796-de9a6e9fbea4`.
+
+---
+
 ### [2026-05] OpenAlex como fuente primaria de literatura
 
 **Migración:** PubMed → Semantic Scholar (v1.1) → OpenAlex (v1.4.1).

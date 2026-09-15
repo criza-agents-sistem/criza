@@ -280,6 +280,70 @@ async def test_guardar_documento_aportado_falla_al_crear_ficha():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_guardar_documento_aportado_con_archivo_original():
+    """Etapa 22 cont., 2026-09-15 — los campos del archivo original solo se suman si se pasan."""
+    with (
+        patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "doc-1"})) as mock_guardar,
+        patch("utils.casos.motor_api.guardar_conexion", new=AsyncMock(return_value={"success": True, "id": "conn-1"})),
+    ):
+        await casos.guardar_documento_aportado(
+            frente_id="frente-1", titulo="datos.xlsx", contenido="preview", tenant="criza",
+            archivo_original_b64="QUJD", archivo_nombre="datos.xlsx",
+        )
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["campos"]["archivo_original_b64"] == "QUJD"
+    assert kwargs["campos"]["archivo_nombre"] == "datos.xlsx"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_guardar_documento_aportado_sin_archivo_no_agrega_campos():
+    with (
+        patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "doc-1"})) as mock_guardar,
+        patch("utils.casos.motor_api.guardar_conexion", new=AsyncMock(return_value={"success": True, "id": "conn-1"})),
+    ):
+        await casos.guardar_documento_aportado(
+            frente_id="frente-1", titulo="t", contenido="c", tenant="criza",
+        )
+    _, kwargs = mock_guardar.call_args
+    assert "archivo_original_b64" not in kwargs["campos"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_guardar_documento_aportado_desde_excel_exito(tmp_path):
+    import pandas as pd
+
+    excel_path = tmp_path / "datos.xlsx"
+    pd.DataFrame({"fecha": ["2023-01-01"], "valor": [1.0]}).to_excel(excel_path, index=False)
+
+    with (
+        patch("utils.casos.motor_api.guardar_ficha", new=AsyncMock(return_value={"success": True, "id": "doc-1"})) as mock_guardar,
+        patch("utils.casos.motor_api.guardar_conexion", new=AsyncMock(return_value={"success": True, "id": "conn-1"})),
+    ):
+        result = await casos.guardar_documento_aportado_desde_excel(
+            frente_id="frente-1", titulo="datos.xlsx", path_archivo=str(excel_path), tenant="criza",
+        )
+
+    assert result["success"] is True
+    _, kwargs = mock_guardar.call_args
+    assert kwargs["campos"]["archivo_nombre"] == "datos.xlsx"
+    assert "archivo_original_b64" in kwargs["campos"]
+    assert "Hoja1" in kwargs["campos"]["contenido"] or "fecha" in kwargs["campos"]["contenido"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_guardar_documento_aportado_desde_excel_archivo_inexistente():
+    result = await casos.guardar_documento_aportado_desde_excel(
+        frente_id="frente-1", titulo="t", path_archivo="/no/existe.xlsx", tenant="criza",
+    )
+    assert result["success"] is False
+    assert "No se pudo leer" in result["error"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_obtener_documentos_aportados_de_frente():
     docs = [{"id": "doc-1", "tipo": "documento_aportado", "props": {"titulo": "t"}}]
     with patch("utils.casos.motor_api.conexiones_de", new=AsyncMock(return_value=docs)) as mock_conn:

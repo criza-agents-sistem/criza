@@ -118,6 +118,33 @@ async def obtener_documento_por_id(documento_id: str, tenant: str) -> dict:
     }
 
 
+async def obtener_archivo_original_de_documento_aportado(documento_id: str, tenant: str) -> dict:
+    """
+    Trae el archivo original (base64) de un `documento_aportado` guardado con
+    guardar_documento_aportado_desde_excel — Etapa 22 cont., 2026-09-15. Deliberadamente separada
+    de obtener_documento_por_id: esa función alimenta ver_informe_especialista (lectura de texto
+    para el modelo) — si devolviera también el base64, cada lectura de informe inflaría el
+    contexto con datos binarios que nadie pidió. Esta solo la usan las tools de lectura de series
+    (utils/archivos.py::leer_serie_de_excel).
+
+    Returns: {"archivo_original_b64": str, "archivo_nombre": str | None} si existe, o
+    {"error": str} si el documento no existe o no tiene un archivo original guardado.
+    """
+    try:
+        doc = await motor_api.obtener(documento_id, tenant=tenant)
+    except Exception:
+        doc = None
+    if not doc or doc.get("tipo") != "documento_aportado":
+        return {"error": f"No se encontró ningún documento_aportado con id '{documento_id}'."}
+
+    props = doc.get("props") or {}
+    archivo_b64 = props.get("archivo_original_b64")
+    if not archivo_b64:
+        return {"error": f"El documento '{documento_id}' no tiene un archivo original guardado."}
+
+    return {"archivo_original_b64": archivo_b64, "archivo_nombre": props.get("archivo_nombre")}
+
+
 async def obtener_pendientes_de_caso(caso_id: str, tenant: str, solo_abiertos: bool = True) -> list[dict]:
     """
     Pendientes de un caso — cuelgan del caso completo, no de un frente específico
@@ -227,6 +254,8 @@ async def guardar_documento_aportado(
     contenido: str,
     tenant: str,
     fuente: str = "archivo_subido",
+    archivo_original_b64: str | None = None,
+    archivo_nombre: str | None = None,
 ) -> dict:
     """
     Persiste un documento que Sebas aporta al caso (no producido por un agente), conectado al
@@ -235,11 +264,21 @@ async def guardar_documento_aportado(
     sobre este caso, y cualquier corrida formal de un especialista sobre este frente, lo tienen
     disponible, no solo la conversación en la que se subió.
 
+    `archivo_original_b64`/`archivo_nombre` (Etapa 22 cont., 2026-09-15): opcional — si el
+    documento viene de un Excel, además del texto de previsualización (`contenido`) se guardan
+    los bytes originales en base64 (mismo prop JSONB, sin migración de schema) para que un
+    especialista pueda pedir una serie real más adelante vía utils/archivos.py::leer_serie_de_excel,
+    sin depender de que alguien la re-extraiga a mano cada vez que el archivo se actualiza.
+
     Returns: {"success": bool, "documento_id": str | None, "error": str | None}
     """
+    campos = {"titulo": titulo, "contenido": contenido, "fuente": fuente}
+    if archivo_original_b64:
+        campos["archivo_original_b64"] = archivo_original_b64
+        campos["archivo_nombre"] = archivo_nombre
+
     doc = await motor_api.guardar_ficha(
-        area=_AREA, tipo="documento_aportado", tenant=tenant,
-        campos={"titulo": titulo, "contenido": contenido, "fuente": fuente},
+        area=_AREA, tipo="documento_aportado", tenant=tenant, campos=campos,
     )
     if not doc.get("success"):
         return {"success": False, "documento_id": None, "error": doc.get("error")}
@@ -252,6 +291,45 @@ async def guardar_documento_aportado(
         return {"success": False, "documento_id": doc["id"], "error": conexion.get("error")}
 
     return {"success": True, "documento_id": doc["id"], "error": None}
+
+
+async def guardar_documento_aportado_desde_excel(
+    frente_id: str,
+    titulo: str,
+    path_archivo: str,
+    tenant: str,
+    fuente: str = "archivo_subido",
+) -> dict:
+    """
+    Lee un .xlsx real de disco y lo persiste como documento_aportado con el archivo original
+    incluido (base64) — mismo camino que se usó a mano durante toda la Etapa 22 (leer un Excel
+    que Sebas comparte por ruta) pero dejando el resultado conectado al caso, no en una sesión
+    de chat que se pierde. `contenido` (el texto que se lee en el chat) es una previsualización
+    (hojas/columnas/primeras filas, ver utils/archivos.py::previsualizar_excel) — para cómputo
+    real sobre los datos, un especialista usa leer_serie_de_excel con este documento_id.
+
+    Returns: {"success": bool, "documento_id": str | None, "error": str | None}
+    """
+    from pathlib import Path
+
+    from utils.archivos import codificar_archivo, previsualizar_excel
+
+    try:
+        contenido_bytes = Path(path_archivo).read_bytes()
+    except OSError as e:
+        return {"success": False, "documento_id": None, "error": f"No se pudo leer '{path_archivo}': {e}"}
+
+    try:
+        archivo_b64 = codificar_archivo(contenido_bytes)
+    except ValueError as e:
+        return {"success": False, "documento_id": None, "error": str(e)}
+
+    preview = previsualizar_excel(contenido_bytes)
+
+    return await guardar_documento_aportado(
+        frente_id=frente_id, titulo=titulo, contenido=preview, tenant=tenant, fuente=fuente,
+        archivo_original_b64=archivo_b64, archivo_nombre=Path(path_archivo).name,
+    )
 
 
 async def guardar_documento_de_frente(

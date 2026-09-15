@@ -60,9 +60,11 @@ from utils.estadistica import (
     correlacion_con_desfase as _correlacion_con_desfase_fn,
     comparar_fuentes as _comparar_fuentes_fn,
 )
+from utils.archivos import leer_serie_de_excel as _leer_serie_de_excel_fn
 from utils.casos import (
     obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente,
     obtener_documentos_de_frente, obtener_documento_por_id,
+    obtener_archivo_original_de_documento_aportado,
 )
 from knowledge_module.motor import api as motor_api
 import knowledge_module.aprendizaje as aprendizaje
@@ -439,6 +441,31 @@ TOOLS = [
         },
     },
     {
+        "name": "leer_serie_de_documento_aportado",
+        "description": (
+            "Lee datos reales de un Excel que Sebas aportó al caso (documento_aportado) — trae\n"
+            "una serie [{'fecha','valor'}] lista para pasar a analizar_estabilidad_serie/\n"
+            "correlacion_con_desfase/etc. Usá el documento_id de la lista de documentos\n"
+            "aportados de tu input. Requiere el nombre EXACTO de hoja y columnas — no adivina la\n"
+            "estructura del archivo. Si no sabés cuáles son, mirá primero el texto de\n"
+            "previsualización de ese documento (título/contenido en tu input) para ver qué hojas\n"
+            "y columnas tiene antes de llamar esta tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "documento_id": {"type": "string", "description": "id del documento_aportado (de la lista en tu input)."},
+                "hoja": {"type": "string", "description": "Nombre exacto de la hoja del Excel."},
+                "columna_fecha": {"type": "string", "description": "Nombre exacto de la columna de fecha."},
+                "columna_valor": {"type": "string", "description": "Nombre exacto de la columna de valor."},
+                "header_fila": {"type": "integer", "description": "Fila (0-indexed) donde está el header real, si no es la primera (default 0).", "default": 0},
+                "filtro_columna": {"type": "string", "description": "Opcional — columna para filtrar filas (ej. un código de digestor/tanque, para no mezclar puntos de fuentes distintas en la misma hoja)."},
+                "filtro_valor": {"type": "string", "description": "Opcional — valor exacto a filtrar en filtro_columna."},
+            },
+            "required": ["documento_id", "hoja", "columna_fecha", "columna_valor"],
+        },
+    },
+    {
         "name": "ver_informe_especialista",
         "description": (
             "Trae el contenido completo de un informe puntual — ya sea uno que vos u OTRO "
@@ -666,6 +693,11 @@ FUENTES DISPONIBLES:
   media, un CV% o una correlación vos mismo leyendo la tabla, el resultado no es confiable.
   correlacion_con_desfase siempre incluye un chequeo de robustez (series diferenciadas) —
   revisá el campo 'robusta' antes de reportar una correlación como hallazgo real.
+- leer_serie_de_documento_aportado: trae una serie real [{'fecha','valor'}] directo de un Excel
+  que Sebas aportó (documento_aportado con archivo original guardado) — usala ANTES de pedirle a
+  Sebas los números a mano si el documento ya está en la lista de "Documentos aportados" de tu
+  input. Necesita el nombre exacto de hoja/columnas — si no los sabés, el título/contenido del
+  documento en tu input trae una previsualización.
 - ver_informe_especialista: trae el contenido completo de un informe que vos u otro especialista
   ya produjo sobre este mismo frente (tu input trae la lista de títulos disponibles, si hay
   alguno). Usala solo cuando un título de esa lista es relevante para tu evaluación actual — no
@@ -729,7 +761,8 @@ INPUT_CONTRACT = {
             "search_literature", "buscar_corpus_cientifico", "expand_agrovoc", "search_corpus_inta",
             "buscar_web_tecnico", "search_kegg", "search_rhea", "search_pubchem", "search_chebi",
             "search_pubmed", "analizar_estabilidad_serie", "detectar_cambios_de_regimen",
-            "correlacion_con_desfase", "comparar_fuentes_de_datos", "submit_evaluacion_tecnica",
+            "correlacion_con_desfase", "comparar_fuentes_de_datos",
+            "leer_serie_de_documento_aportado", "submit_evaluacion_tecnica",
         ],
     },
 }
@@ -856,6 +889,19 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool, consulta
         if verbose:
             print(f"  -> ver_informe_especialista: {documento_id}")
         return await obtener_documento_por_id(documento_id, tenant=_TENANT)
+    if nombre == "leer_serie_de_documento_aportado":
+        documento_id = tool_input.get("documento_id", "")
+        if verbose:
+            print(f"  -> leer_serie_de_documento_aportado: {documento_id} hoja={tool_input.get('hoja')}")
+        archivo = await obtener_archivo_original_de_documento_aportado(documento_id, tenant=_TENANT)
+        if "error" in archivo:
+            return archivo
+        return _leer_serie_de_excel_fn(
+            archivo_b64=archivo["archivo_original_b64"], hoja=tool_input.get("hoja", ""),
+            columna_fecha=tool_input.get("columna_fecha", ""), columna_valor=tool_input.get("columna_valor", ""),
+            header_fila=tool_input.get("header_fila", 0),
+            filtro_columna=tool_input.get("filtro_columna"), filtro_valor=tool_input.get("filtro_valor"),
+        )
     if nombre == "expand_agrovoc":
         term = tool_input.get("term", "")
         if verbose:

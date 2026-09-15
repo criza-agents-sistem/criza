@@ -233,6 +233,68 @@ async def test_dispatch_search_comtrade():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_dispatch_analizar_estabilidad_serie():
+    datos = [{"fecha": "2023-01-01", "valor": 1.0}]
+    with patch("financiero_agent.financiero_agent._analizar_estabilidad_fn", return_value={"clasificacion": "ESTABLE"}) as mock_fn:
+        result = await fa._dispatch("analizar_estabilidad_serie", {"datos": datos}, caso_id="caso-1", verbose=False)
+    mock_fn.assert_called_once_with(datos=datos, umbral_estable=15.0, umbral_variable=30.0)
+    assert "ESTABLE" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dispatch_detectar_cambios_de_regimen():
+    datos = [{"fecha": "2023-01-01", "valor": 1.0}]
+    with patch("financiero_agent.financiero_agent._detectar_cambios_de_regimen_fn", return_value={"quiebres_detectados": []}) as mock_fn:
+        await fa._dispatch("detectar_cambios_de_regimen", {"datos": datos, "periodo": "W"}, caso_id="caso-1", verbose=False)
+    mock_fn.assert_called_once_with(datos=datos, periodo="W")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dispatch_correlacion_con_desfase():
+    sx = [{"fecha": "2023-01-01", "valor": 1.0}]
+    sy = [{"fecha": "2023-01-01", "valor": 2.0}]
+    with patch("financiero_agent.financiero_agent._correlacion_con_desfase_fn", return_value={"mejor_desfase": {}}) as mock_fn:
+        result = await fa._dispatch("correlacion_con_desfase", {"serie_x": sx, "serie_y": sy}, caso_id="caso-1", verbose=False)
+    mock_fn.assert_called_once_with(serie_x=sx, serie_y=sy, ventana_dias=7, lag_max_dias=90)
+    assert "mejor_desfase" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dispatch_comparar_fuentes_de_datos():
+    sa = [{"fecha": "2023-01-01", "valor": 1.0}]
+    sb = [{"fecha": "2023-01-01", "valor": 1.1}]
+    with patch("financiero_agent.financiero_agent._comparar_fuentes_fn", return_value={"comparables": True}) as mock_fn:
+        await fa._dispatch(
+            "comparar_fuentes_de_datos", {"serie_a": sa, "serie_b": sb, "nombre_a": "X", "nombre_b": "Y"}, caso_id="caso-1", verbose=False
+        )
+    mock_fn.assert_called_once_with(serie_a=sa, serie_b=sb, nombre_a="X", nombre_b="Y")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dispatch_leer_serie_de_documento_aportado():
+    with (
+        patch("financiero_agent.financiero_agent.obtener_archivo_original_de_documento_aportado", new=AsyncMock(return_value={"archivo_original_b64": "QUJD"})) as mock_get,
+        patch("financiero_agent.financiero_agent._leer_serie_de_excel_fn", return_value={"serie": [], "n": 0}) as mock_leer,
+    ):
+        result = await fa._dispatch(
+            "leer_serie_de_documento_aportado",
+            {"documento_id": "doc-1", "hoja": "H1", "columna_fecha": "f", "columna_valor": "v"},
+            caso_id="caso-1", verbose=False,
+        )
+    mock_get.assert_awaited_once_with("doc-1", tenant=fa._TENANT)
+    mock_leer.assert_called_once_with(
+        archivo_b64="QUJD", hoja="H1", columna_fecha="f", columna_valor="v",
+        header_fila=0, filtro_columna=None, filtro_valor=None,
+    )
+    assert '"n": 0' in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_dispatch_pedir_informacion_faltante_con_caso():
     with patch("financiero_agent.financiero_agent.crear_pendiente", new=AsyncMock(return_value={"success": True, "pendiente_id": "pend-1", "error": None})) as mock_fn:
         result = await fa._dispatch("pedir_informacion_faltante", {"descripcion": "falta el costo"}, caso_id="caso-1", verbose=False)
