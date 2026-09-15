@@ -79,6 +79,60 @@ class TestPrevisualizarExcel:
         preview = arch.previsualizar_excel(b"esto no es un excel")
         assert "No se pudo abrir" in preview
 
+    def test_reporta_rango_de_fechas_real_calculado(self):
+        """El fix de fondo: el rango de fechas viene de un cómputo real (pandas), no de una
+        adivinanza del modelo que lee el texto — caso raíz del bug de fabricación del Conductor
+        (2026-09-15, "febrero 2022" inventado al no tener este dato)."""
+        preview = arch.previsualizar_excel(_excel_simple())
+        assert "2023-01-01 a 2023-03-01" in preview
+        assert "3 de 3 filas" in preview
+
+    def test_con_varias_columnas_de_fecha_reporta_la_mas_completa(self):
+        """Caso real (T401, Helios): 6 columnas con 'fecha' en el nombre, la mayoría
+        administrativas y casi vacías. Tomar la primera (en vez de la más completa) da un rango
+        técnicamente calculado pero igual de engañoso que uno inventado — encontrado corriendo el
+        fix contra el archivo real, antes de dárselo al Conductor."""
+        df = pd.DataFrame({
+            "fecha solicitud": [None, None, "2024-05-01", None, None],
+            "fecha muestreo": ["2023-01-01", "2023-06-01", "2024-01-01", "2024-06-01", "2025-01-01"],
+        })
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="Datos", index=False)
+        preview = arch.previsualizar_excel(buf.getvalue())
+        assert "fecha muestreo" in preview
+        assert "2023-01-01 a 2025-01-01" in preview
+        assert "5 de 5 filas" in preview
+
+    def test_columna_con_espacios_en_el_nombre_no_rompe(self):
+        """Bug real: sin re-asignar df.columns con los nombres 'stripeados', df[col] tiraba
+        KeyError apenas el header tenía un salto de línea o espacios — rompía la previsualización
+        entera (encontrado con 'Base de datos Logística.xlsx' real)."""
+        df = pd.DataFrame({"fecha \n": ["2023-01-01", "2023-02-01"], "valor": [1, 2]})
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="Datos", index=False)
+        preview = arch.previsualizar_excel(buf.getvalue())
+        assert "No se pudo" not in preview
+        assert "2023-01-01 a 2023-02-01" in preview
+
+    def test_detecta_header_desplazado_y_reporta_filas_correctas(self):
+        """Caso real de Helios: metadata de laboratorio antes del header — la previsualización
+        debe encontrar el header real (fila 6) y no confundir la fila de metadata con datos."""
+        preview = arch.previsualizar_excel(_excel_header_desplazado())
+        assert "fila 6" in preview
+        assert "Filas de datos: 2" in preview
+        assert "2024-01-01 a 2024-02-01" in preview
+        assert "2 de 2 filas" in preview
+
+    def test_sin_columna_de_fecha_lo_dice_explicitamente(self):
+        df = pd.DataFrame({"codigo": ["A", "B"], "valor": [1, 2]})
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="SinFecha", index=False)
+        preview = arch.previsualizar_excel(buf.getvalue())
+        assert "sin columna de fecha reconocible" in preview
+
 
 class TestLeerSerieDeExcel:
 

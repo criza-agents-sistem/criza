@@ -36,12 +36,46 @@ def codificar_archivo(contenido: bytes) -> str:
     return base64.b64encode(contenido).decode("ascii")
 
 
-def previsualizar_excel(contenido: bytes, max_filas_preview: int = 5) -> str:
+def _detectar_fila_header(df_crudo: pd.DataFrame) -> int:
     """
-    Texto legible para mostrar en el chat / guardar como 'contenido' del documento_aportado —
-    lista de hojas, sus columnas (fila 1 cruda, sin asumir dónde está el header real) y las
-    primeras filas. NO reemplaza leer_serie_de_excel para cómputo real — es solo para que Sebas
-    o el agente vean qué hay antes de pedir una serie puntual con los parámetros correctos.
+    Heurística real (no asume fila 0): una fila de header típica tiene la mayoría de sus celdas
+    no-nulas y de tipo texto (nombres de columna) — a diferencia de filas de metadata/título
+    (casi todo NaN) o filas de datos reales (mezcla de números/fechas). Encontrado real (Etapa 22
+    cont., 2026-09-15): un archivo del proyecto tiene el header en la fila 6, con metadata de
+    laboratorio arriba — mostrar la fila 0 ahí daba una previsualización vacía y engañosa (el
+    Conductor la leyó como "el archivo está vacío", que era falso).
+
+    Si ninguna fila escaneada supera un umbral mínimo de "parece header", devuelve 0 (mismo
+    comportamiento que antes, sin cambio para el caso simple).
+    """
+    mejor_fila, mejor_score = 0, -1.0
+    for i in range(len(df_crudo)):
+        fila = df_crudo.iloc[i]
+        no_nulos = fila.notna()
+        frac_no_nulos = float(no_nulos.mean()) if len(fila) else 0.0
+        if frac_no_nulos == 0:
+            continue
+        valores_no_nulos = fila[no_nulos]
+        frac_texto = sum(isinstance(v, str) for v in valores_no_nulos) / len(valores_no_nulos)
+        score = frac_no_nulos * frac_texto
+        if score > mejor_score:
+            mejor_fila, mejor_score = i, score
+    return mejor_fila if mejor_score > 0.3 else 0
+
+
+def previsualizar_excel(contenido: bytes, max_filas_preview: int = 5, max_filas_scan_header: int = 15) -> str:
+    """
+    Texto legible para mostrar en el chat / guardar como 'contenido' del documento_aportado.
+
+    Detecta el header real de cada hoja (no asume que es la fila 0) y reporta hechos calculados
+    en Python — cantidad de filas y, si hay una columna de fecha reconocible, su rango real
+    (min/max) — en vez de dejar que el modelo que lee esto adivine o invente esos datos.
+    Encontrado real (2026-09-15): sin este cálculo, el Conductor completó un rango de fechas que
+    no existía en ningún lado ("desde febrero 2022") al no tener un dato real para citar — este
+    texto ahora se lo da, así no hace falta que lo invente.
+
+    NO reemplaza leer_serie_de_excel para cómputo real — es solo para que Sebas o el Conductor
+    vean qué hay antes de pedir una serie puntual con los parámetros correctos.
     """
     try:
         xls = pd.ExcelFile(io.BytesIO(contenido))
@@ -51,15 +85,55 @@ def previsualizar_excel(contenido: bytes, max_filas_preview: int = 5) -> str:
     partes = []
     for nombre_hoja in xls.sheet_names:
         try:
-            df = pd.read_excel(xls, sheet_name=nombre_hoja, header=None, nrows=max_filas_preview + 1)
+            df_crudo = pd.read_excel(xls, sheet_name=nombre_hoja, header=None, nrows=max_filas_scan_header)
         except Exception as e:
             partes.append(f"## Hoja: {nombre_hoja}\n(no se pudo previsualizar: {e})")
             continue
-        primera_fila = list(df.iloc[0].astype(str)) if len(df) else []
+        if df_crudo.empty:
+            partes.append(f"## Hoja: {nombre_hoja}\n(hoja sin filas)")
+            continue
+
+        fila_header = _detectar_fila_header(df_crudo)
+        try:
+            df = pd.read_excel(xls, sheet_name=nombre_hoja, header=fila_header)
+        except Exception as e:
+            partes.append(f"## Hoja: {nombre_hoja}\n(no se pudo leer con header en la fila {fila_header}: {e})")
+            continue
+
+        columnas = [str(c).strip() for c in df.columns]
+        df.columns = columnas  # bug real (2026-09-15): sin esto, df[col] con un nombre ya
+        # "stripeado" tiraba KeyError apenas el header tenía un \n o espacios (caso real:
+        # 'Base de datos Logística.xlsx' rompía la previsualización entera con esto).
+        total_filas = len(df)
+
+        # Bug real (2026-09-15): con VARIAS columnas de fecha (ej. el archivo real de T401 tiene
+        # 6: presupuesto, envío, aprobación, recepción, análisis, muestreo), tomar la PRIMERA que
+        # matcheaba el nombre agarró una columna administrativa casi vacía (25 fechas válidas de
+        # 893 filas) en vez de la fecha de muestreo real — un rango de fechas técnicamente
+        # calculado pero igual de engañoso que uno inventado. Ahora se evalúan todas las columnas
+        # candidatas y se reporta la que tiene MÁS fechas válidas (la más completa / representativa).
+        rango_fecha_txt = "sin columna de fecha reconocible"
+        mejor_col, mejor_fechas = None, None
+        for col in columnas:
+            if "fecha" in col.lower() or "date" in col.lower():
+                fechas_validas = pd.to_datetime(df[col], errors="coerce").dropna()
+                if len(fechas_validas) >= 2 and (mejor_fechas is None or len(fechas_validas) > len(mejor_fechas)):
+                    mejor_col, mejor_fechas = col, fechas_validas
+        if mejor_col is not None:
+            rango_fecha_txt = (
+                f"columna '{mejor_col}': {mejor_fechas.min().date()} a "
+                f"{mejor_fechas.max().date()} ({len(mejor_fechas)} de {total_filas} filas tienen "
+                f"fecha válida en esta columna — puede no ser la única columna de fecha, ver "
+                f"'Columnas' abajo)"
+            )
+
         partes.append(
             f"## Hoja: {nombre_hoja}\n"
-            f"Fila 1 (puede o no ser el header real): {primera_fila}\n"
-            f"Primeras filas:\n{df.head(max_filas_preview).to_string(index=False, header=False)}"
+            f"Header real detectado en la fila {fila_header + 1} del archivo (1-indexed).\n"
+            f"Filas de datos: {total_filas} (sin contar el header).\n"
+            f"Rango de fechas: {rango_fecha_txt}.\n"
+            f"Columnas: {columnas}\n"
+            f"Primeras filas:\n{df.head(max_filas_preview).to_string(index=False)}"
         )
     return "\n\n".join(partes) or "(Excel sin hojas legibles)"
 

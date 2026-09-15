@@ -126,6 +126,24 @@ Para arquitectura de plataforma → `KRIZA_Foundation_Document.md` en el repo `E
 
 ---
 
+### [2026-09-15] Previsualización de Excel confiable + freno anti-fabricación en el Conductor
+
+**Bug real en producción:** al preguntarle al Conductor (sesión real) el rango de fechas de T401, inventó "desde febrero 2022" — fecha que no existía en ningún tool output real disponible. Causa raíz: `previsualizar_excel` leía ciegamente las primeras 5 filas sin detectar el header real y sin calcular ningún hecho — el Conductor no tenía nada real que citar, así que completó con un valor plausible.
+
+**Fix de dos partes:**
+1. `previsualizar_excel` (`utils/archivos.py`) detecta el header real por hoja (heurística: fracción no-nula × fracción de texto sobre las primeras 15 filas) y calcula en Python — nunca deja que el modelo adivine — filas totales y, si hay columna de fecha reconocible, su rango real (min/max).
+2. Párrafo explícito agregado a la tool `ver_documento` en el `SYSTEM_PROMPT` del Conductor (`conductor/conductor.py`), citando el incidente real por nombre e instruyendo a decir "no sé" en vez de completar con un valor plausible.
+
+**Dos bugs adicionales encontrados corriendo el fix contra los 3 Excel reales de Helios** (antes de tocar el Conductor): (a) `df.columns` no se reasignaba con los nombres "stripeados" → `KeyError` apenas un header tenía `\n` o espacios, rompía toda la previsualización (reventaba con "Base de datos Logística.xlsx" real); (b) con varias columnas que contienen "fecha" en el nombre (T401 real tiene 6), tomar la primera agarraba una columna administrativa casi vacía (25 de 893 filas) en vez de la fecha de muestreo real — corregido: se evalúan todas las candidatas y se reporta la más completa.
+
+**Por qué:** Sebas: "es que no me genera confianza esa visión parcial que tiene el conductor de los archivos excel" y luego "no me termina de convencer... siento que está ciego o ve poco". Decisión previa reconfirmada: el Conductor NO recibe las tools de cómputo real (esas viven en los 5 especialistas) — con esa frontera fija, se aplicaron las dos palancas restantes (mejor previsualización + freno explícito) juntas, porque ninguna sola garantiza que no fabrique otra cosa distinta más adelante.
+
+**Verificado real (API real, sin mocks):** se regeneró el `contenido` de los 3 `documento_aportado` ya subidos al Frente técnico real de Helios con la función corregida — T401 (hoja limpia) dio 893 filas, 2023-03-15 a 2026-03-02, coincide exacto con el análisis manual verificado días atrás. Se le hizo al Conductor la misma pregunta que gatilló la fabricación original ("¿cuál es el rango de fechas real de T401?"): citó correctamente el rango real por hoja, identificó por su cuenta que "T401" es un código dentro de una columna mezclada con otros (T301/T302/etc.) y **se negó explícitamente a inventar el rango filtrado**, ofreciendo correr un especialista en su lugar. Cero fabricación.
+
+**Detalle completo:** `decisiones_sistema` (KM), componente `conductor`, id `b646108a-bf56-41a7-9178-46291463df40`.
+
+---
+
 ### [2026-05] OpenAlex como fuente primaria de literatura
 
 **Migración:** PubMed → Semantic Scholar (v1.1) → OpenAlex (v1.4.1).
