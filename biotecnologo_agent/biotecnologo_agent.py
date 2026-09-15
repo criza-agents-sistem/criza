@@ -18,7 +18,9 @@ Tools: search_literature (OpenAlex), buscar_corpus_cientifico (CONICET+INTA),
        search_pubmed (literatura biomédica MeSH, nuevo 2026-09-14),
        analizar_estabilidad_serie/detectar_cambios_de_regimen/correlacion_con_desfase/
        comparar_fuentes_de_datos (cómputo real vía utils/estadistica.py, nuevo 2026-09-14),
-       submit_evaluacion_tecnica.
+       leer_serie_de_documento_aportado (lectura real de Excel, nuevo 2026-09-15),
+       calcular_rendimiento_teorico (balance de masa real vía utils/bioproceso.py, nuevo
+       2026-09-15), submit_evaluacion_tecnica.
 Ver docs/DESIGN_GATE.md — decisiones A-D (2026-08-17). Búsqueda de patentes queda
 deliberadamente afuera (requiere API key que nadie consiguió todavía) — ver Scope §4.
 
@@ -61,6 +63,7 @@ from utils.estadistica import (
     comparar_fuentes as _comparar_fuentes_fn,
 )
 from utils.archivos import leer_serie_de_excel as _leer_serie_de_excel_fn
+from utils.bioproceso import calcular_rendimiento_teorico as _calcular_rendimiento_teorico_fn
 from utils.casos import (
     obtener_frente_con_caso, obtener_pendientes_de_caso, obtener_documentos_aportados_de_frente,
     obtener_documentos_de_frente, obtener_documento_por_id,
@@ -466,6 +469,38 @@ TOOLS = [
         },
     },
     {
+        "name": "calcular_rendimiento_teorico",
+        "description": (
+            "Balance de masa REAL (no estimado a ojo) — rendimiento máximo TEÓRICO de un\n"
+            "producto candidato a partir del sustrato disponible: moles de sustrato → moles de\n"
+            "producto (según la relación estequiométrica real de la reacción) → masa de\n"
+            "producto, ajustado por una eficiencia de conversión asumida. Usar para responder\n"
+            "'¿vale la pena esta ruta con el sustrato real que hay?', no solo '¿es posible según\n"
+            "la literatura?'.\n"
+            "Antes de llamarla necesitás 3 datos REALES, nunca inventados:\n"
+            "1) masa de sustrato disponible en gramos — de la composición real del caso (ej.\n"
+            "   leer_serie_de_documento_aportado + conversión de concentración a masa).\n"
+            "2) pesos moleculares de sustrato y producto — de search_pubchem.\n"
+            "3) la relación estequiométrica (mol producto : mol sustrato) — de la reacción real\n"
+            "   que encontraste con search_kegg/search_rhea, o de un rendimiento reportado en un\n"
+            "   paper de search_literature. NUNCA inventes esta relación — si no la tenés\n"
+            "   confirmada, decilo como a-confirmar en vez de adivinar un número.\n"
+            "El resultado es siempre un TECHO TEÓRICO, no una medición — así se declara."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "masa_sustrato_disponible_g": {"type": "number", "description": "Masa de sustrato limitante disponible, en gramos."},
+                "peso_molecular_sustrato": {"type": "number", "description": "g/mol del sustrato (de search_pubchem)."},
+                "peso_molecular_producto": {"type": "number", "description": "g/mol del producto (de search_pubchem)."},
+                "relacion_estequiometrica_producto_sustrato": {"type": "number", "description": "mol de producto por mol de sustrato consumido, de la reacción real."},
+                "fuente_relacion_estequiometrica": {"type": "string", "description": "De dónde sale la relación estequiométrica (ej. 'KEGG R00014', o cita del paper) — obligatorio."},
+                "eficiencia_conversion_pct": {"type": "number", "description": "% del máximo teórico asumido alcanzable (default 100 = techo puro, sin pérdidas).", "default": 100},
+            },
+            "required": ["masa_sustrato_disponible_g", "peso_molecular_sustrato", "peso_molecular_producto", "relacion_estequiometrica_producto_sustrato", "fuente_relacion_estequiometrica"],
+        },
+    },
+    {
         "name": "ver_informe_especialista",
         "description": (
             "Trae el contenido completo de un informe puntual — ya sea uno que vos u OTRO "
@@ -698,6 +733,12 @@ FUENTES DISPONIBLES:
   Sebas los números a mano si el documento ya está en la lista de "Documentos aportados" de tu
   input. Necesita el nombre exacto de hoja/columnas — si no los sabés, el título/contenido del
   documento en tu input trae una previsualización.
+- calcular_rendimiento_teorico: balance de masa real — rendimiento máximo TEÓRICO de un
+  producto candidato dado el sustrato real disponible. Combina search_pubchem (pesos
+  moleculares) + search_kegg/search_rhea o un paper de search_literature (la relación
+  estequiométrica real — NUNCA la inventes) + la masa real de sustrato (de la composición del
+  caso). Usala cuando ya identificaste un producto candidato y querés saber si el sustrato real
+  alcanza, no solo si es biológicamente posible en teoría.
 - ver_informe_especialista: trae el contenido completo de un informe que vos u otro especialista
   ya produjo sobre este mismo frente (tu input trae la lista de títulos disponibles, si hay
   alguno). Usala solo cuando un título de esa lista es relevante para tu evaluación actual — no
@@ -710,7 +751,12 @@ para productos comerciales que la literatura no cubre. Cuando ya tengas un produ
 search_kegg (ruta de biosíntesis) → search_rhea (reacción/EC específica) → search_pubchem
 (identidad química exacta) → search_chebi (clasificación/rol) → search_pubmed (literatura
 biomédica de precisión, si el producto tiene relevancia en microbiología/toxicología/salud) — en
-ese orden, solo hasta donde la evidencia lo justifique, no es obligatorio agotar las cinco.
+ese orden, solo hasta donde la evidencia lo justifique, no es obligatorio agotar las cinco. Si
+además tenés (o podés conseguir con leer_serie_de_documento_aportado) la composición real del
+sustrato del caso: calcular_rendimiento_teorico usando los pesos moleculares de search_pubchem y
+la relación estequiométrica que confirmaste en search_kegg/search_rhea — así el hallazgo no
+queda solo en "es posible", sino en "con el sustrato real disponible, esto es lo máximo que se
+podría obtener".
 
 TU PROCESO:
 1. Identificá la pregunta central: qué producto(s) de valor son candidatos a partir del material
@@ -762,7 +808,8 @@ INPUT_CONTRACT = {
             "buscar_web_tecnico", "search_kegg", "search_rhea", "search_pubchem", "search_chebi",
             "search_pubmed", "analizar_estabilidad_serie", "detectar_cambios_de_regimen",
             "correlacion_con_desfase", "comparar_fuentes_de_datos",
-            "leer_serie_de_documento_aportado", "submit_evaluacion_tecnica",
+            "leer_serie_de_documento_aportado", "calcular_rendimiento_teorico",
+            "submit_evaluacion_tecnica",
         ],
     },
 }
@@ -884,6 +931,17 @@ async def _despachar_tool(nombre: str, tool_input: dict, verbose: bool, consulta
     que produce un documento) lo pasa, `enviar_mensaje` (chat) no. Acumula cada consulta real
     para el gate de exhaustividad al momento de cerrar (`_chequear_exhaustividad`) — el chat no
     tiene ese gate, es conversación libre, no un informe formal."""
+    if nombre == "calcular_rendimiento_teorico":
+        if verbose:
+            print(f"  -> calcular_rendimiento_teorico: sustrato={tool_input.get('masa_sustrato_disponible_g')}g")
+        return _calcular_rendimiento_teorico_fn(
+            masa_sustrato_disponible_g=tool_input.get("masa_sustrato_disponible_g", 0),
+            peso_molecular_sustrato=tool_input.get("peso_molecular_sustrato", 0),
+            peso_molecular_producto=tool_input.get("peso_molecular_producto", 0),
+            relacion_estequiometrica_producto_sustrato=tool_input.get("relacion_estequiometrica_producto_sustrato", 0),
+            fuente_relacion_estequiometrica=tool_input.get("fuente_relacion_estequiometrica", ""),
+            eficiencia_conversion_pct=tool_input.get("eficiencia_conversion_pct", 100.0),
+        )
     if nombre == "ver_informe_especialista":
         documento_id = tool_input.get("documento_id", "")
         if verbose:

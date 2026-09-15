@@ -36,7 +36,7 @@ de qué es CRIZA de acá en más — ver "Estado operativo" abajo y `docs/PROPUE
 | Especialista Microbiólogo | `microbiologo_agent/` | 62/62 ✅ (+2 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 4 (parte 2) del plan — Microbiólogo conectado al modelo de casos.yaml |
 | Especialista Ingeniero Ambiental | `ingeniero_ambiental_agent/` | 32/32 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Etapa 7 del plan — segundo especialista, Ingeniero Ambiental |
 | Especialista Ingeniero Agrónomo | `agronomo_agent/` | 26/26 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-08-16] Tercer especialista — Ingeniero Agrónomo, pedido explícito de Sebas con señal real |
-| Especialista Biotecnólogo | `biotecnologo_agent/` | 59/59 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-14] Etapa 22 (cont.) — utils/estadistica.py: cómputo numérico real para Biotecnólogo, Microbiólogo e Ingeniero Ambiental |
+| Especialista Biotecnólogo | `biotecnologo_agent/` | 60/60 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-15] Etapa 22 (cont.) — calcular_rendimiento_teorico: balance de masa real para el Biotecnólogo |
 | Agente Financiero | `financiero_agent/` | 35/35 ✅ (+1 integration) | ✅ activo, DESIGN_GATE.md ✅ | [2026-09-07] Etapa 21 (cont.) -- COMTRADE sumado + 4o bug real de serializacion |
 <!-- GENERADO:AGENTES_ACTIVOS:FIN -->
 

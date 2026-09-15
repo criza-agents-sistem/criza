@@ -85,7 +85,7 @@ EVALUACION_MOCK = {
 
 @pytest.mark.unit
 def test_tools_count():
-    assert len(bt.TOOLS) == 17, f"Esperado 17 tools, tiene {len(bt.TOOLS)}"
+    assert len(bt.TOOLS) == 18, f"Esperado 18 tools, tiene {len(bt.TOOLS)}"
 
 
 @pytest.mark.unit
@@ -96,6 +96,7 @@ def test_tools_names():
         "buscar_web_tecnico", "search_kegg", "search_rhea", "search_pubchem", "search_chebi",
         "search_pubmed", "analizar_estabilidad_serie", "detectar_cambios_de_regimen",
         "correlacion_con_desfase", "comparar_fuentes_de_datos", "leer_serie_de_documento_aportado",
+        "calcular_rendimiento_teorico",
         "ver_informe_especialista", "submit_evaluacion_tecnica",
     }
 
@@ -232,6 +233,23 @@ async def test_despachar_tool_search_pubmed():
         result = await bt._despachar_tool("search_pubmed", {"query": "digestate valorization"}, verbose=False)
     mock_fn.assert_called_once_with(query="digestate valorization", max_results=20)
     assert result["total_found"] == 94
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_despachar_tool_calcular_rendimiento_teorico():
+    with patch("biotecnologo_agent._calcular_rendimiento_teorico_fn", return_value={"rendimiento_masico_pct": 51.14}) as mock_fn:
+        result = await bt._despachar_tool("calcular_rendimiento_teorico", {
+            "masa_sustrato_disponible_g": 100.0, "peso_molecular_sustrato": 180.16,
+            "peso_molecular_producto": 46.07, "relacion_estequiometrica_producto_sustrato": 2.0,
+            "fuente_relacion_estequiometrica": "KEGG R00014",
+        }, verbose=False)
+    mock_fn.assert_called_once_with(
+        masa_sustrato_disponible_g=100.0, peso_molecular_sustrato=180.16,
+        peso_molecular_producto=46.07, relacion_estequiometrica_producto_sustrato=2.0,
+        fuente_relacion_estequiometrica="KEGG R00014", eficiencia_conversion_pct=100.0,
+    )
+    assert result["rendimiento_masico_pct"] == 51.14
 
 
 @pytest.mark.unit

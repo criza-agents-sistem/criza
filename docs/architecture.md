@@ -114,6 +114,18 @@ Para arquitectura de plataforma → `KRIZA_Foundation_Document.md` en el repo `E
 
 ---
 
+### [2026-09-15] calcular_rendimiento_teorico — balance de masa real para el Biotecnólogo
+
+**Decisión:** `utils/bioproceso.py::calcular_rendimiento_teorico` — balance de masa vía pesos moleculares (moles de sustrato → moles de producto según relación estequiométrica real, nunca inventada → masa de producto, ajustada por eficiencia). NO es un balanceador de ecuaciones de propósito general — la relación estequiométrica es un dato que el especialista trae de `search_kegg`/`search_rhea`/`search_literature`, con `fuente_relacion_estequiometrica` obligatoria. Sumada solo a `biotecnologo_agent.py` (18 tools) — ningún otro agente mostró necesidad real.
+
+**Por qué:** identificada como la brecha real entre "es posible según la literatura" y "vale la pena con el sustrato real de Helios" — la función de mayor impacto proyectada para el proyecto, no en abstracto, apoyada en que la composición real ya estaba disponible desde la tool de lectura de Excel del mismo día.
+
+**Verificado real:** cálculo verificado contra química de libro (fermentación alcohólica de glucosa, ~51.1% rendimiento clásico) + corrida real de chat (API real) donde el Biotecnólogo investigó solo (search_pubchem/kegg/rhea/chebi/literature) y calculó 500g de acetato → 250.9g de PHB teórico al 70% de eficiencia — declaró honestamente qué verificó con tools reales vs. qué dato vino dado, y reportó explícitamente cuando `buscar_web_tecnico` falló por falta de credencial en vez de esconderlo.
+
+**Detalle completo:** `decisiones_sistema` (KM), componente `biotecnologo`, id `c3d38405-e076-4ceb-9146-26236981c82e`.
+
+---
+
 ### [2026-05] OpenAlex como fuente primaria de literatura
 
 **Migración:** PubMed → Semantic Scholar (v1.1) → OpenAlex (v1.4.1).
