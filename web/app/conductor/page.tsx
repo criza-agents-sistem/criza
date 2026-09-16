@@ -247,9 +247,9 @@ export default function ConductorPage() {
 
   return (
     <div className="flex h-[calc(100vh-140px)] flex-col">
-      <div className="mb-1 flex items-center justify-between">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Conductor</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm text-neutral-600 disabled:opacity-40"
             value={modeloElegido}
@@ -280,7 +280,7 @@ export default function ConductorPage() {
               🕘 Historial
             </button>
             {mostrarHistorial && (
-              <div className="absolute right-0 z-10 mt-2 max-h-96 w-96 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-2 shadow-lg">
+              <div className="absolute left-0 z-10 mt-2 max-h-96 w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-2 shadow-lg sm:left-auto sm:right-0 sm:w-96">
                 {cargandoHistorial ? (
                   <p className="p-2 text-sm text-neutral-400">Cargando...</p>
                 ) : historial.length === 0 ? (

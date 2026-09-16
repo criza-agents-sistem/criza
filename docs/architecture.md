@@ -158,6 +158,18 @@ Para arquitectura de plataforma → `KRIZA_Foundation_Document.md` en el repo `E
 
 ---
 
+### [2026-09-16] El botón Historial del Conductor quedaba fuera de pantalla en mobile
+
+**Bug real:** Sebas reportó "no puedo cambiar entre conversaciones con el conductor" probando en el sitio desplegado. El mecanismo en sí (`web/app/conductor/page.tsx`) funcionaba perfecto en desktop — probado 4 veces (local y contra el sitio real vía Chrome ya autenticado del propio Sebas) sin fallar una sola vez. La causa apareció recién al emular un viewport de celular (375px): la fila de botones del header no tenía `flex-wrap`, la página se desbordaba a 632px, y el botón Historial quedaba literalmente fuera del viewport visible — confirmado con el propio tooling de automatización, que no pudo hacer click por estar "entirely outside the viewport".
+
+**Fix:** `flex-wrap` agregado al contenedor del header y al de los botones. El panel desplegable de Historial (antes `w-96` anclado a la derecha, sin cap de ancho) ahora usa `w-72` anclado a la izquierda en pantallas chicas (con `max-w-[calc(100vw-2rem)]`) y vuelve al comportamiento original (`w-96` anclado a la derecha) desde el breakpoint `sm` — verificado que desktop quedó pixel-idéntico.
+
+**Verificado real:** en mobile (375×812), el botón es alcanzable, el panel abre completo dentro del viewport, y hacer click en una conversación distinta cambia el chat visible a esa conversación.
+
+**Detalle completo:** `decisiones_sistema` (KM), componente `web`, id `e3f1f01c-5898-4fea-b651-3ddd4ebacd90`.
+
+---
+
 ### [2026-05] OpenAlex como fuente primaria de literatura
 
 **Migración:** PubMed → Semantic Scholar (v1.1) → OpenAlex (v1.4.1).
