@@ -144,6 +144,20 @@ Para arquitectura de plataforma → `KRIZA_Foundation_Document.md` en el repo `E
 
 ---
 
+### [2026-09-15] El Conductor respeta el rol de cada agente, incluido el suyo
+
+**Bug real (deploy), distinto del de arriba:** ante una pregunta sobre estabilidad de T401 y su relación con los sustratos de ingreso, el Conductor calculó él mismo rangos de pH/conductividad/FOS-TAC leyendo a ojo 5 filas de muestra de una previsualización, y concluyó "indica proceso biológico controlado" — una lectura técnica que le corresponde al Ingeniero Ambiental o al Microbiólogo. No era fabricación (los números eran reales) sino una generalización no representativa (5 filas de un dataset de cientos) presentada con la confianza de un cálculo real.
+
+**Fix:** se agregó un "SEGUNDO PRINCIPIO" al `SYSTEM_PROMPT` del Conductor (`conductor/conductor.py`), a la par del principio de no inventar el estado de un caso: respetar el rol de cada agente — microbiólogo/ingeniero ambiental/agrónomo/biotecnólogo/mercado/financiero, cada uno dueño de un tipo de pregunta, y el propio Conductor orquesta, no analiza. Regla operativa: puede citar un hecho ya calculado por una tool real (ej. el rango de fechas que la previsualización corregida hoy sí calcula), pero no puede promediar, sacar rangos, comparar tendencias ni sacar conclusiones técnicas de lo que ve — eso se deriva siempre al especialista que corresponde.
+
+**Por qué:** Sebas, mostrando la conversación real donde pasó: "¿por qué me respondés con datos, para eso están los agentes, lo que te pido que hagamos es entender cómo conducirlos?" — y, para el encuadre del fix: "qué te parece si ir por el lado de respetar las funciones de cada agente, incluyendo la suya" — un principio general de rol, no un parche puntual sobre pH/conductividad.
+
+**Verificado real (API real, sin mocks):** se le hizo al Conductor la misma pregunta (estabilidad de T401 + correlación con sustratos de ingreso) que antes lo hizo mezclar roles. En la primera respuesta, sin que nadie lo corrija, identificó qué datos hay (~4.500 filas combinadas), qué falta (nadie corrió el análisis de estabilidad ni la correlación), se negó explícitamente a calcularlo él mismo ("sería exactamente el error que ya se detectó antes — leer 5 filas y opinar como si fuera representativo"), y propuso correr al Ingeniero Ambiental con una tarea puntual, esperando confirmación.
+
+**Detalle completo:** `decisiones_sistema` (KM), componente `conductor`, id `60d22e84-19d5-40a4-b5ed-7e491b16bd39`.
+
+---
+
 ### [2026-05] OpenAlex como fuente primaria de literatura
 
 **Migración:** PubMed → Semantic Scholar (v1.1) → OpenAlex (v1.4.1).
