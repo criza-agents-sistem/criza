@@ -36,7 +36,7 @@ opción y qué tan lejos está el efluente actual de cumplirlos, con foco en el 
 | Conductividad | 33,27 mS/cm (~33.000 µS/cm) | bajo riesgo ~1,4; severo > 2,5 (unidades confusas en la transcripción) |
 | Sodio | ~1.600 ppm | límite ~69–70 ppm |
 | RAS | en el límite superior (compensado por mucho Ca/Mg) | fuera de las tablas de referencia por exceso de Na |
-| Potasio | "casi 4 veces más que el sodio" | — |
+| Potasio | "casi 4 veces más que el sodio" | **Corregido con JLA:** K 5.565 ± 1.558 mg/kg vs Na 1.676 en T401 (19/11/2025) → ~3,3× en masa, ~2× molar. Ver `2026-10-09_helios_analisis_potasio_vinaza.md` |
 | Tolerancia de cultivos | algodón/cebada: crecimiento óptimo hasta ~5; sin crecimiento a ~19 | estamos en ~33 |
 
 **Conclusión:** el efluente crudo **no sirve para riego** y **ninguna tecnología puede tomarlo tal
